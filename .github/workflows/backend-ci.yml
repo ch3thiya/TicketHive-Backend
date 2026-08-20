@@ -1,0 +1,52 @@
+name: Backend CI
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+      - "feature/**"
+      - "fix/**"
+  pull_request:
+    branches:
+      - main
+      - dev
+
+jobs:
+  build-and-test:
+    name: Build, Test & Dockerize Backend
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Restore Solution Dependencies
+        run: dotnet restore
+
+      - name: Build Solution
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Run Tests
+        run: dotnet test --no-build --configuration Release --verbosity normal
+
+      - name: Build Identity Docker Image
+        run: docker build -f services/Identity/Dockerfile -t tickethive-identity .
+
+      - name: Build Catalog Docker Image
+        run: docker build -f services/Catalog/Dockerfile -t tickethive-catalog .
+
+      # Uncomment these as the remaining services are initialized:
+      # - name: Build Inventory Docker Image
+      #   run: docker build -t tickethive-inventory ./services/Inventory
+      # - name: Build Booking Docker Image
+      #   run: docker build -t tickethive-booking ./services/Booking
+      # - name: Build Payment Docker Image
+      #   run: docker build -t tickethive-payment ./services/Payment
+      # - name: Build Notification Docker Image
+      #   run: docker build -t tickethive-notification ./services/Notification

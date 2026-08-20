@@ -308,10 +308,11 @@ TicketHive backend services are containerized using Docker.
 
 ### Build a Service Image
 
-Navigate to the appropriate service directory or use the Dockerfile location defined by the project.
+Run these commands from the backend repository root:
 
 ```bash
-docker build -t tickethive-identity .
+docker build -f services/Identity/Dockerfile -t tickethive-identity .
+docker build -f services/Catalog/Dockerfile -t tickethive-catalog .
 ```
 
 ### Run a Service Container
