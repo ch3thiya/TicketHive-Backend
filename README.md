@@ -4,14 +4,16 @@ TicketHive is a ticket booking platform designed to handle events, seat availabi
 
 This repository contains the backend services for TicketHive. The backend is implemented using ASP.NET Core and follows a microservices architecture.
 
-The system consists of six main services:
+The planned system consists of six main services:
 
 - Identity Service
 - Catalog Service
-- Inventory Service
-- Booking Service
-- Payment Service
-- Notification Service
+- Inventory Service (planned)
+- Booking Service (planned)
+- Payment Service (planned)
+- Notification Service (planned)
+
+Identity and Catalog are currently implemented in this repository. Inventory, Booking, Payment, and Notification are planned for future sprints.
 
 Development of the services will be completed incrementally across the project sprints.
 
@@ -39,15 +41,11 @@ TicketHive uses a microservices architecture.
                     |      Backend APIs      |
                     +------------------------+
                                 |
-          +---------------------+---------------------+
-          |          |          |          |          |
-          v          v          v          v          v
-      Identity    Catalog   Inventory   Booking    Payment
-      Service     Service    Service    Service    Service
-                                                     |
-                                                     v
-                                             Notification
-                                               Service
+            +---------------------+
+            |          |          |
+            v          v          v
+       Identity    Catalog   Future services
+       Service     Service   (planned)
 
                  Apache Kafka
           ----------------------------
@@ -77,12 +75,12 @@ TicketHive-Backend/
 ├── TicketHive.slnx
 ├── services/
 │   ├── Identity/
-│   ├── Catalog/
-│   ├── Inventory/
-│   ├── Booking/
-│   ├── Payment/
-│   └── Notification/
-├── Dockerfiles/
+│   │   ├── Identity.Service.csproj
+│   │   └── Dockerfile
+│   └── Catalog/
+│       ├── Catalog.Service.csproj
+│       └── Dockerfile
+├── .dockerignore
 ├── README.md
 └── .github/
     └── workflows/
@@ -96,11 +94,9 @@ TicketHive follows a structured Git branching strategy:
 
 ```text
 main
-  ↑
-develop
-  ↑
-integration
-  ↑
+     ↑
+dev
+     ↑
 feature/* / fix/*
 ```
 
@@ -113,13 +109,9 @@ feature/* / fix/*
 - Required CI checks must pass.
 - Code review is required.
 
-### `develop`
+### `dev`
 
-`develop` contains the latest integrated development version. It is used to prepare upcoming stable releases. Changes should be introduced through Pull Requests.
-
-### `integration`
-
-`integration` combines work from multiple developers and services. It allows the team to identify integration problems before changes are promoted to `develop`.
+`dev` contains the latest integrated development version. It is used to prepare upcoming stable releases. Changes should be introduced through Pull Requests.
 
 ### `feature/*`
 
@@ -308,10 +300,11 @@ TicketHive backend services are containerized using Docker.
 
 ### Build a Service Image
 
-Navigate to the appropriate service directory or use the Dockerfile location defined by the project.
+Run these commands from the backend repository root:
 
 ```bash
-docker build -t tickethive-identity .
+docker build -f services/Identity/Dockerfile -t tickethive-identity .
+docker build -f services/Catalog/Dockerfile -t tickethive-catalog .
 ```
 
 ### Run a Service Container
@@ -485,7 +478,7 @@ git push origin feature/seat-availability
 
 ### 7. Create a Pull Request
 
-Create a Pull Request from the feature branch to the appropriate integration or development branch. The Pull Request should contain:
+Create a Pull Request from the feature branch to `dev`. The Pull Request should contain:
 
 - A clear title
 - A description of the changes
