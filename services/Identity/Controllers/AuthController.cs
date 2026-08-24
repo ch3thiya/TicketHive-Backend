@@ -166,6 +166,89 @@ public class AuthController : ControllerBase
             return StatusCode(500, new { message = "An error occurred during registration. Please try again.", details = ex.Message });
         }
     }
+
+    /// <summary>
+    /// Custom signup form endpoint for Customers.
+    /// Creates the user in WSO2 IS in an 'approved' state and records their account details locally.
+    /// </summary>
+    [HttpPost("register-customer")]
+    public async Task<IActionResult> RegisterCustomer([FromBody] RegisterCustomerRequest request)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(ModelState);
+        }
+
+        _logger.LogInformation("Registering customer: {Email}", request.Email);
+
+        // Pre-check if an account with this email already exists in our local database
+        var existingAccount = await _repository.GetUserAccountByEmailAsync(request.Email);
+        if (existingAccount != null)
+        {
+            return BadRequest(new { message = $"An account with the email '{request.Email}' already exists in the system." });
+        }
+
+        try
+        {
+            // 1. Create user in WSO2 IS via SCIM 2.0 with isapproved = "approved" (auto-approved)
+            string wso2UserId = await _scimClient.CreateUserAsync(
+                username: request.Email,
+                password: request.Password,
+                email: request.Email,
+                fullName: request.FullName,
+                initialStatus: "approved"
+            );
+
+            // 2. Create the local UserAccount
+            var localAccount = new UserAccount
+            {
+                Id = Guid.NewGuid(),
+                Wso2Sub = wso2UserId,
+                Email = request.Email,
+                FullName = request.FullName,
+                Role = "Customer",
+                ApprovalStatus = "approved",
+                CreatedAt = DateTime.UtcNow
+            };
+
+            await _repository.CreateUserAccountAsync(localAccount);
+
+            return Ok(new { message = "Registration successful. You can now log in.", wso2UserId });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to register customer.");
+            
+            // Extract clean SCIM error message details if returned by Asgardeo
+            var message = ex.Message;
+            if (message.Contains("Failed to create user in identity provider:"))
+            {
+                var jsonPart = message.Replace("Failed to create user in identity provider:", "").Trim();
+                try
+                {
+                    using var doc = JsonDocument.Parse(jsonPart);
+                    if (doc.RootElement.TryGetProperty("detail", out var detailProp))
+                    {
+                        var scimError = detailProp.GetString();
+                        if (!string.IsNullOrEmpty(scimError))
+                        {
+                            if (scimError.Contains("already exists"))
+                            {
+                                return BadRequest(new { message = $"An account with the email '{request.Email}' already exists in the system." });
+                            }
+                            return BadRequest(new { message = scimError });
+                        }
+                    }
+                }
+                catch
+                {
+                    // Fallback
+                }
+            }
+
+            return StatusCode(500, new { message = "An error occurred during registration. Please try again.", details = ex.Message });
+        }
+    }
 }
 
 public record RegisterOrganizerRequest(
@@ -177,4 +260,10 @@ public record RegisterOrganizerRequest(
     string Phone,
     string EventType,
     string About
+);
+
+public record RegisterCustomerRequest(
+    string FullName,
+    string Email,
+    string Password
 );
