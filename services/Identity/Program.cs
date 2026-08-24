@@ -65,7 +65,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateAudience = true,
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
-            RoleClaimType = "roles" // Map WSO2's role claim to the standard .NET Role
+            RoleClaimType = "groups" // Map Asgardeo's groups claim to the standard .NET Role
         };
 
         // Bypass SSL validation for JWKS key discovery during local development

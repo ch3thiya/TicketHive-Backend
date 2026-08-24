@@ -76,6 +76,10 @@ public class Wso2ScimClient
         var givenName = nameParts[0];
         var familyName = nameParts.Length > 1 ? nameParts[1] : string.Empty;
 
+        // Target the writeable customer user store (default: DEFAULT)
+        var userStoreDomain = "DEFAULT";
+        var finalUsername = $"{userStoreDomain}/{username}";
+
         var requestPayload = new
         {
             schemas = new[]
@@ -83,7 +87,7 @@ public class Wso2ScimClient
                 "urn:ietf:params:scim:schemas:core:2.0:User",
                 _customSchemaUrn
             },
-            userName = username,
+            userName = finalUsername,
             name = new
             {
                 familyName = familyName,
