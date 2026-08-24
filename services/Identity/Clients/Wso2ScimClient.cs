@@ -189,6 +189,27 @@ public class Wso2ScimClient
     }
 
     /// <summary>
+    /// Deletes a user in WSO2 Asgardeo via SCIM
+    /// </summary>
+    public async Task DeleteUserAsync(string wso2UserId)
+    {
+        _logger.LogInformation("Deleting user {Wso2UserId} from Asgardeo via SCIM", wso2UserId);
+
+        var m2mToken = await GetM2mAccessTokenAsync();
+        _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", m2mToken);
+
+        var response = await _httpClient.DeleteAsync($"scim2/Users/{wso2UserId}");
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorContent = await response.Content.ReadAsStringAsync();
+            _logger.LogError("Failed to delete user {Wso2UserId} from Asgardeo. Status: {Status}, Error: {Error}", wso2UserId, response.StatusCode, errorContent);
+            throw new Exception($"Failed to delete user from identity provider: {errorContent}");
+        }
+        
+        _logger.LogInformation("Successfully deleted user {Wso2UserId} from Asgardeo via SCIM", wso2UserId);
+    }
+
+    /// <summary>
     /// Assigns a user to a Group (Role).
     /// </summary>
     public async Task AssignUserToGroupAsync(string wso2UserId, string username, string groupName)

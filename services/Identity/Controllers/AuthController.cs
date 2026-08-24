@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Identity.Service.Clients;
 using Identity.Service.Db;
 using Identity.Service.Models;
+using System.Text.Json;
 
 namespace Identity.Service.Controllers;
 
@@ -79,6 +80,13 @@ public class AuthController : ControllerBase
 
         _logger.LogInformation("Registering organizer: {Email} for organization {Org}", request.Email, request.OrganizationName);
 
+        // Pre-check if an account with this email already exists in our local database
+        var existingAccount = await _repository.GetUserAccountByEmailAsync(request.Email);
+        if (existingAccount != null)
+        {
+            return BadRequest(new { message = $"An account with the email '{request.Email}' already exists in the system." });
+        }
+
         try
         {
             // 1. Create user in WSO2 IS via SCIM 2.0 with isapproved = "pending"
@@ -126,6 +134,35 @@ public class AuthController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to register organizer.");
+            
+            // Extract clean SCIM error message details if returned by Asgardeo
+            var message = ex.Message;
+            if (message.Contains("Failed to create user in identity provider:"))
+            {
+                var jsonPart = message.Replace("Failed to create user in identity provider:", "").Trim();
+                try
+                {
+                    using var doc = JsonDocument.Parse(jsonPart);
+                    if (doc.RootElement.TryGetProperty("detail", out var detailProp))
+                    {
+                        var scimError = detailProp.GetString();
+                        if (!string.IsNullOrEmpty(scimError))
+                        {
+                            // If it is a duplicate account warning, translate the masked username to a clean email warning
+                            if (scimError.Contains("already exists"))
+                            {
+                                return BadRequest(new { message = $"An account with the email '{request.Email}' already exists in the system." });
+                            }
+                            return BadRequest(new { message = scimError });
+                        }
+                    }
+                }
+                catch
+                {
+                    // Fail-safe to return default message
+                }
+            }
+
             return StatusCode(500, new { message = "An error occurred during registration. Please try again.", details = ex.Message });
         }
     }
