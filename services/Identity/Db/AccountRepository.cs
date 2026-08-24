@@ -225,4 +225,94 @@ public class AccountRepository
 
         await command.ExecuteNonQueryAsync();
     }
+
+    public async Task DeleteUserAccountAsync(Guid accountId)
+    {
+        using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
+        
+        // 1. Delete associated organizer requests
+        const string deleteRequestsSql = @"
+            DELETE FROM organizer_requests
+            WHERE user_account_id = @UserAccountId;
+        ";
+        using (var commandReq = new NpgsqlCommand(deleteRequestsSql, connection))
+        {
+            commandReq.Parameters.AddWithValue("UserAccountId", accountId);
+            await commandReq.ExecuteNonQueryAsync();
+        }
+
+        // 2. Delete the user account record
+        const string deleteAccountSql = @"
+            DELETE FROM user_accounts
+            WHERE id = @Id;
+        ";
+        using (var commandAcc = new NpgsqlCommand(deleteAccountSql, connection))
+        {
+            commandAcc.Parameters.AddWithValue("Id", accountId);
+            await commandAcc.ExecuteNonQueryAsync();
+        }
+    }
+
+    public async Task<List<Dictionary<string, object>>> GetApprovedOrganizersAsync()
+    {
+        using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
+        
+        const string sql = @"
+            SELECT ua.id, ua.email, ua.full_name, ua.created_at, oreq.organization_name, oreq.business_email, oreq.event_type
+            FROM user_accounts ua
+            LEFT JOIN organizer_requests oreq ON ua.id = oreq.user_account_id
+            WHERE ua.role = 'Organizer' AND ua.approval_status = 'approved';
+        ";
+
+        using var command = new NpgsqlCommand(sql, connection);
+        using var reader = await command.ExecuteReaderAsync();
+        
+        var list = new List<Dictionary<string, object>>();
+        while (await reader.ReadAsync())
+        {
+            list.Add(new Dictionary<string, object>
+            {
+                { "accountId", reader.GetGuid(0) },
+                { "email", reader.GetString(1) },
+                { "fullName", reader.GetString(2) },
+                { "createdAt", reader.GetDateTime(3) },
+                { "organizationName", reader.IsDBNull(4) ? "" : reader.GetString(4) },
+                { "businessEmail", reader.IsDBNull(5) ? "" : reader.GetString(5) },
+                { "eventType", reader.IsDBNull(6) ? "" : reader.GetString(6) }
+            });
+        }
+        
+        return list;
+    }
+
+    public async Task<UserAccount?> GetUserAccountByEmailAsync(string email)
+    {
+        using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
+        
+        const string sql = @"
+            SELECT id, wso2_sub, email, full_name, role, approval_status, created_at
+            FROM user_accounts
+            WHERE email = @Email;
+        ";
+
+        using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("Email", email);
+
+        using var reader = await command.ExecuteReaderAsync();
+        if (await reader.ReadAsync())
+        {
+            return new UserAccount
+            {
+                Id = reader.GetGuid(0),
+                Wso2Sub = reader.GetString(1),
+                Email = reader.GetString(2),
+                FullName = reader.GetString(3),
+                Role = reader.GetString(4),
+                ApprovalStatus = reader.GetString(5),
+                CreatedAt = reader.GetDateTime(6)
+            };
+        }
+
+        return null;
+    }
 }

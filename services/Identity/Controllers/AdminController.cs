@@ -118,14 +118,11 @@ public class AdminController : ControllerBase
                 return NotFound(new { message = "Associated user account not found." });
             }
 
-            // 1. Update WSO2 IS status attribute to 'rejected'
-            await _scimClient.UpdateApprovalStatusAsync(account.Wso2Sub, "rejected");
+            // 1. Delete user account from WSO2 Asgardeo via SCIM
+            await _scimClient.DeleteUserAsync(account.Wso2Sub);
 
-            // 2. Update local database account approval status to 'rejected' (Role remains 'Customer')
-            await _repository.UpdateUserAccountRoleAndStatusAsync(account.Id, "Customer", "rejected");
-
-            // 3. Update the organizer request workflow state to 'rejected'
-            await _repository.UpdateOrganizerRequestStatusAsync(id, "rejected");
+            // 2. Delete user account and organizer request from the local database
+            await _repository.DeleteUserAccountAsync(account.Id);
 
             _logger.LogInformation("Successfully rejected organizer request: {Id} for account {AccountId}", id, account.Id);
             return Ok(new { message = "Organizer request rejected successfully." });
@@ -134,6 +131,25 @@ public class AdminController : ControllerBase
         {
             _logger.LogError(ex, "Failed to reject request {Id}", id);
             return StatusCode(500, new { message = "Failed to reject request.", details = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Lists all approved organizers.
+    /// </summary>
+    [HttpGet("organizers")]
+    public async Task<IActionResult> GetApprovedOrganizers()
+    {
+        _logger.LogInformation("Admin requested approved organizers list");
+        try
+        {
+            var organizers = await _repository.GetApprovedOrganizersAsync();
+            return Ok(organizers);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get approved organizers.");
+            return StatusCode(500, new { message = "Failed to retrieve organizers.", details = ex.Message });
         }
     }
 }
