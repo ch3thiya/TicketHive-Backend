@@ -7,7 +7,7 @@ namespace Identity.Service.Controllers;
 
 [ApiController]
 [Route("api/identity/organizer-requests")]
-[Authorize(Roles = "Admin")] // Requires the Admin role
+[Authorize(Roles = "Admin,admin")] // Requires the Admin or admin role
 public class AdminController : ControllerBase
 {
     private readonly AccountRepository _repository;
