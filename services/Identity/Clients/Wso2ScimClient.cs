@@ -65,6 +65,8 @@ public class Wso2ScimClient
         return doc.RootElement.GetProperty("access_token").GetString()!;
     }
 
+
+
     /// <summary>
     /// Creates a user in WSO2 Asgardeo via SCIM
     /// </summary>
