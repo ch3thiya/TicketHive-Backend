@@ -10,11 +10,11 @@ namespace Identity.Service.Controllers;
 [Authorize(Roles = "Admin,admin")] // Requires the Admin or admin role
 public class AdminController : ControllerBase
 {
-    private readonly AccountRepository _repository;
-    private readonly Wso2ScimClient _scimClient;
+    private readonly IAccountRepository _repository;
+    private readonly IWso2ScimClient _scimClient;
     private readonly ILogger<AdminController> _logger;
 
-    public AdminController(AccountRepository repository, Wso2ScimClient scimClient, ILogger<AdminController> logger)
+    public AdminController(IAccountRepository repository, IWso2ScimClient scimClient, ILogger<AdminController> logger)
     {
         _repository = repository;
         _scimClient = scimClient;
