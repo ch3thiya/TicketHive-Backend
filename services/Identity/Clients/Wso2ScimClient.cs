@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Identity.Service.Clients;
 
-public class Wso2ScimClient
+public class Wso2ScimClient : IWso2ScimClient
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<Wso2ScimClient> _logger;
