@@ -26,10 +26,10 @@ builder.Services.AddCors(options =>
 // Register DB Connection and Initializer
 builder.Services.AddSingleton<DbConnectionFactory>();
 builder.Services.AddScoped<DbInitializer>();
-builder.Services.AddScoped<AccountRepository>();
+builder.Services.AddScoped<IAccountRepository, AccountRepository>();
 
 // Register WSO2 SCIM 2.0 HttpClient with basic auth credentials
-builder.Services.AddHttpClient<Wso2ScimClient>(client =>
+builder.Services.AddHttpClient<IWso2ScimClient, Wso2ScimClient>(client =>
 {
     var wso2BaseUrl = builder.Configuration["Wso2:BaseUrl"] ?? "https://localhost:9443/";
     client.BaseAddress = new Uri(wso2BaseUrl);

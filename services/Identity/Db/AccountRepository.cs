@@ -7,7 +7,7 @@ using Identity.Service.Models;
 
 namespace Identity.Service.Db;
 
-public class AccountRepository
+public class AccountRepository : IAccountRepository
 {
     private readonly DbConnectionFactory _connectionFactory;
 
