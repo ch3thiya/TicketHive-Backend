@@ -42,6 +42,26 @@ public class DbInitializer
 
                 CREATE INDEX IF NOT EXISTS idx_events_organizer_id ON events(organizer_id);
                 CREATE INDEX IF NOT EXISTS idx_events_status ON events(status);
+
+                CREATE TABLE IF NOT EXISTS shows (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    event_id UUID NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+                    show_date DATE NOT NULL,
+                    show_time TIME NOT NULL,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS ticket_categories (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    show_id UUID NOT NULL REFERENCES shows(id) ON DELETE CASCADE,
+                    name VARCHAR(100) NOT NULL,
+                    price NUMERIC(10, 2) NOT NULL,
+                    capacity INT NOT NULL,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_shows_event_id ON shows(event_id);
+                CREATE INDEX IF NOT EXISTS idx_ticket_categories_show_id ON ticket_categories(show_id);
             ";
 
             using var command = new NpgsqlCommand(ddl, connection);
