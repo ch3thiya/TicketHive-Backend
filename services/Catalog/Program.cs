@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Catalog.Service.Db;
+using Catalog.Service.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -8,9 +9,12 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 
-// Register DB Connection and Initializer
+// Register DB Connection, Repositories and Services
 builder.Services.AddSingleton<DbConnectionFactory>();
 builder.Services.AddScoped<DbInitializer>();
+builder.Services.AddScoped<IEventRepository, EventRepository>();
+builder.Services.AddScoped<IEventService, EventService>();
+
 
 // Register CORS to allow React Frontend requests
 builder.Services.AddCors(options =>
