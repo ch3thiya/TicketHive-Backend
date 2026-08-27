@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS shows (
     event_id UUID NOT NULL REFERENCES events(id) ON DELETE CASCADE,
     show_date DATE NOT NULL,
     show_time TIME NOT NULL,
+    status VARCHAR(50) NOT NULL DEFAULT 'Active',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
@@ -40,5 +41,7 @@ CREATE TABLE IF NOT EXISTS ticket_categories (
 
 -- Foreign key indexes
 CREATE INDEX IF NOT EXISTS idx_shows_event_id ON shows(event_id);
+CREATE INDEX IF NOT EXISTS idx_shows_status ON shows(status);
 CREATE INDEX IF NOT EXISTS idx_ticket_categories_show_id ON ticket_categories(show_id);
+
 
