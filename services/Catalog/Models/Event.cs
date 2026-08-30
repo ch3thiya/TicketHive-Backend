@@ -13,5 +13,6 @@ public class Event
     public TimeOnly? EventTime { get; set; }
     public string BannerUrl { get; set; } = string.Empty;
     public string Status { get; set; } = "Draft";
+    public int? CancellationCutoffHours { get; set; }
     public DateTime CreatedAt { get; set; }
 }
