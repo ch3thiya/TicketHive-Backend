@@ -34,7 +34,8 @@ public class EventServiceTests
             Category: "Concert",
             EventDate: new DateOnly(2026, 9, 15),
             EventTime: new TimeOnly(18, 0),
-            BannerUrl: "http://example.com/banner.jpg"
+            BannerUrl: "http://example.com/banner.jpg",
+            CancellationCutoffHours: 48
         );
 
         Event? savedEvt = null;
@@ -50,6 +51,7 @@ public class EventServiceTests
         Assert.Equal("Neon Summer Concert", result.Name);
         Assert.Equal("Draft", result.Status); // Must start as Draft
         Assert.Equal(organizerId, result.OrganizerId);
+        Assert.Equal(48, result.CancellationCutoffHours);
         _mockRepo.Verify(r => r.CreateEventAsync(It.IsAny<Event>()), Times.Once);
     }
 
@@ -64,7 +66,8 @@ public class EventServiceTests
             Category: "General",
             EventDate: null,
             EventTime: null,
-            BannerUrl: ""
+            BannerUrl: "",
+            CancellationCutoffHours: null
         );
 
         // Act & Assert
@@ -78,6 +81,7 @@ public class EventServiceTests
         // Arrange
         var organizerId = Guid.NewGuid();
         var eventId = Guid.NewGuid();
+        var venueId = Guid.NewGuid();
 
         var existingEvt = new Event
         {
@@ -96,7 +100,11 @@ public class EventServiceTests
             {
                 new CreateTicketCategoryDto("General", 50.00m, 100),
                 new CreateTicketCategoryDto("VIP", 150.00m, 20)
-            }
+            },
+            VenueId: venueId,
+            OnSaleAt: new DateTime(2026, 9, 1, 10, 0, 0, DateTimeKind.Utc),
+            HighDemandThreshold: 50,
+            ReminderMinutesBefore: 120
         );
 
         _mockRepo.Setup(r => r.CreateShowWithCategoriesAsync(It.IsAny<Show>(), It.IsAny<List<TicketCategory>>()))
@@ -108,6 +116,9 @@ public class EventServiceTests
         // Assert
         Assert.NotNull(result);
         Assert.Equal(eventId, result.EventId);
+        Assert.Equal(venueId, result.VenueId);
+        Assert.Equal(50, result.HighDemandThreshold);
+        Assert.Equal(120, result.ReminderMinutesBefore);
         Assert.Equal(2, result.TicketCategories.Count);
         _mockRepo.Verify(r => r.CreateShowWithCategoriesAsync(It.IsAny<Show>(), It.IsAny<List<TicketCategory>>()), Times.Once);
     }
@@ -225,6 +236,68 @@ public class EventServiceTests
     }
 
     [Fact]
+    public async Task UpdateEvent_AuthorizedOrganizer_UpdatesFieldsSuccessfully()
+    {
+        // Arrange
+        var organizerId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+
+        var existingEvt = new Event
+        {
+            Id = eventId,
+            OrganizerId = organizerId,
+            Name = "Old Name",
+            Status = "Draft"
+        };
+
+        _mockRepo.Setup(r => r.GetEventByIdAsync(eventId)).ReturnsAsync(existingEvt);
+
+        var updateDto = new UpdateEventDto(
+            Name: "Updated Festival",
+            Description: "Updated description",
+            Category: "Festival",
+            EventDate: new DateOnly(2026, 11, 20),
+            EventTime: new TimeOnly(19, 30),
+            BannerUrl: "http://example.com/new.jpg",
+            CancellationCutoffHours: 72
+        );
+
+        // Act
+        await _service.UpdateEventAsync(organizerId, eventId, updateDto);
+
+        // Assert
+        Assert.Equal("Updated Festival", existingEvt.Name);
+        Assert.Equal(72, existingEvt.CancellationCutoffHours);
+        _mockRepo.Verify(r => r.UpdateEventAsync(existingEvt), Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateEvent_UnauthorizedOrganizer_ThrowsUnauthorizedAccessException()
+    {
+        // Arrange
+        var ownerId = Guid.NewGuid();
+        var otherOrganizerId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+
+        _mockRepo.Setup(r => r.GetEventByIdAsync(eventId))
+                 .ReturnsAsync(new Event { Id = eventId, OrganizerId = ownerId, Name = "Rock Show" });
+
+        var updateDto = new UpdateEventDto(
+            Name: "Hacked Name",
+            Description: "",
+            Category: "",
+            EventDate: null,
+            EventTime: null,
+            BannerUrl: "",
+            CancellationCutoffHours: null
+        );
+
+        // Act & Assert
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _service.UpdateEventAsync(otherOrganizerId, eventId, updateDto));
+        _mockRepo.Verify(r => r.UpdateEventAsync(It.IsAny<Event>()), Times.Never);
+    }
+
+    [Fact]
     public async Task CancelEvent_AuthorizedOrganizer_UpdatesStatusToCancelled()
     {
         // Arrange
@@ -239,6 +312,46 @@ public class EventServiceTests
 
         // Assert
         _mockRepo.Verify(r => r.UpdateEventStatusAsync(eventId, "Cancelled"), Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateShow_AuthorizedOrganizer_UpdatesShowDetails()
+    {
+        // Arrange
+        var organizerId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+        var showId = Guid.NewGuid();
+        var venueId = Guid.NewGuid();
+
+        var existingShow = new Show
+        {
+            Id = showId,
+            EventId = eventId,
+            ShowDate = new DateOnly(2026, 9, 1),
+            ShowTime = new TimeOnly(18, 0),
+            Status = "Active"
+        };
+
+        _mockRepo.Setup(r => r.GetShowByIdAsync(showId)).ReturnsAsync(existingShow);
+        _mockRepo.Setup(r => r.GetEventByIdAsync(eventId)).ReturnsAsync(new Event { Id = eventId, OrganizerId = organizerId });
+
+        var updateDto = new UpdateShowDto(
+            ShowDate: new DateOnly(2026, 9, 2),
+            ShowTime: new TimeOnly(20, 0),
+            VenueId: venueId,
+            OnSaleAt: new DateTime(2026, 8, 20, 0, 0, 0, DateTimeKind.Utc),
+            HighDemandThreshold: 100,
+            ReminderMinutesBefore: 60
+        );
+
+        // Act
+        await _service.UpdateShowAsync(organizerId, showId, updateDto);
+
+        // Assert
+        Assert.Equal(new DateOnly(2026, 9, 2), existingShow.ShowDate);
+        Assert.Equal(venueId, existingShow.VenueId);
+        Assert.Equal(100, existingShow.HighDemandThreshold);
+        _mockRepo.Verify(r => r.UpdateShowAsync(existingShow), Times.Once);
     }
 
     [Fact]
@@ -260,5 +373,169 @@ public class EventServiceTests
 
         // Assert
         _mockRepo.Verify(r => r.UpdateShowStatusAsync(showId, "Cancelled"), Times.Once);
+    }
+
+    [Fact]
+    public async Task PublishEvent_ShowsWithNoTicketCategories_ThrowsInvalidOperationException()
+    {
+        // Arrange
+        var organizerId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+        var showId = Guid.NewGuid();
+
+        _mockRepo.Setup(r => r.GetEventByIdAsync(eventId))
+                 .ReturnsAsync(new Event { Id = eventId, OrganizerId = organizerId, Status = "Draft" });
+
+        _mockRepo.Setup(r => r.GetShowsByEventIdAsync(eventId))
+                 .ReturnsAsync(new List<Show> { new Show { Id = showId, EventId = eventId, Status = "Active" } });
+
+        _mockRepo.Setup(r => r.GetTicketCategoriesByShowIdAsync(showId))
+                 .ReturnsAsync(new List<TicketCategory>()); // Empty categories
+
+        // Act & Assert
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _service.PublishEventAsync(organizerId, eventId));
+        _mockRepo.Verify(r => r.UpdateEventStatusAsync(It.IsAny<Guid>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task PublishEvent_UnauthorizedOrganizer_ThrowsUnauthorizedAccessException()
+    {
+        // Arrange
+        var ownerId = Guid.NewGuid();
+        var callerId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+
+        _mockRepo.Setup(r => r.GetEventByIdAsync(eventId))
+                 .ReturnsAsync(new Event { Id = eventId, OrganizerId = ownerId, Status = "Draft" });
+
+        // Act & Assert
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _service.PublishEventAsync(callerId, eventId));
+        _mockRepo.Verify(r => r.UpdateEventStatusAsync(It.IsAny<Guid>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CancelEvent_UnauthorizedOrganizer_ThrowsUnauthorizedAccessException()
+    {
+        // Arrange
+        var ownerId = Guid.NewGuid();
+        var callerId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+
+        _mockRepo.Setup(r => r.GetEventByIdAsync(eventId))
+                 .ReturnsAsync(new Event { Id = eventId, OrganizerId = ownerId, Status = "Published" });
+
+        // Act & Assert
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _service.CancelEventAsync(callerId, eventId));
+        _mockRepo.Verify(r => r.UpdateEventStatusAsync(It.IsAny<Guid>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateShow_UnauthorizedOrganizer_ThrowsUnauthorizedAccessException()
+    {
+        // Arrange
+        var ownerId = Guid.NewGuid();
+        var callerId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+        var showId = Guid.NewGuid();
+
+        _mockRepo.Setup(r => r.GetShowByIdAsync(showId))
+                 .ReturnsAsync(new Show { Id = showId, EventId = eventId, Status = "Active" });
+
+        _mockRepo.Setup(r => r.GetEventByIdAsync(eventId))
+                 .ReturnsAsync(new Event { Id = eventId, OrganizerId = ownerId });
+
+        var updateDto = new UpdateShowDto(
+            ShowDate: new DateOnly(2026, 9, 2),
+            ShowTime: new TimeOnly(20, 0)
+        );
+
+        // Act & Assert
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _service.UpdateShowAsync(callerId, showId, updateDto));
+        _mockRepo.Verify(r => r.UpdateShowAsync(It.IsAny<Show>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CancelShow_UnauthorizedOrganizer_ThrowsUnauthorizedAccessException()
+    {
+        // Arrange
+        var ownerId = Guid.NewGuid();
+        var callerId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+        var showId = Guid.NewGuid();
+
+        _mockRepo.Setup(r => r.GetShowByIdAsync(showId))
+                 .ReturnsAsync(new Show { Id = showId, EventId = eventId, Status = "Active" });
+
+        _mockRepo.Setup(r => r.GetEventByIdAsync(eventId))
+                 .ReturnsAsync(new Event { Id = eventId, OrganizerId = ownerId });
+
+        // Act & Assert
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _service.CancelShowAsync(callerId, showId));
+        _mockRepo.Verify(r => r.UpdateShowStatusAsync(It.IsAny<Guid>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateShow_EventNotFound_ThrowsKeyNotFoundException()
+    {
+        // Arrange
+        var organizerId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+
+        _mockRepo.Setup(r => r.GetEventByIdAsync(eventId)).ReturnsAsync((Event?)null);
+
+        var dto = new CreateShowRequestDto(
+            ShowDate: new DateOnly(2026, 10, 1),
+            ShowTime: new TimeOnly(20, 0),
+            Categories: new List<CreateTicketCategoryDto> { new CreateTicketCategoryDto("GA", 50, 100) }
+        );
+
+        // Act & Assert
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => _service.CreateShowAsync(organizerId, eventId, dto));
+        _mockRepo.Verify(r => r.CreateShowWithCategoriesAsync(It.IsAny<Show>(), It.IsAny<List<TicketCategory>>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateShow_ZeroCategories_ThrowsArgumentException()
+    {
+        // Arrange
+        var organizerId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+
+        _mockRepo.Setup(r => r.GetEventByIdAsync(eventId))
+                 .ReturnsAsync(new Event { Id = eventId, OrganizerId = organizerId });
+
+        var dto = new CreateShowRequestDto(
+            ShowDate: new DateOnly(2026, 10, 1),
+            ShowTime: new TimeOnly(20, 0),
+            Categories: new List<CreateTicketCategoryDto>() // Empty categories
+        );
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ArgumentException>(() => _service.CreateShowAsync(organizerId, eventId, dto));
+        _mockRepo.Verify(r => r.CreateShowWithCategoriesAsync(It.IsAny<Show>(), It.IsAny<List<TicketCategory>>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateShow_EmptyCategoryName_ThrowsArgumentException()
+    {
+        // Arrange
+        var organizerId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+
+        _mockRepo.Setup(r => r.GetEventByIdAsync(eventId))
+                 .ReturnsAsync(new Event { Id = eventId, OrganizerId = organizerId });
+
+        var dto = new CreateShowRequestDto(
+            ShowDate: new DateOnly(2026, 10, 1),
+            ShowTime: new TimeOnly(20, 0),
+            Categories: new List<CreateTicketCategoryDto>
+            {
+                new CreateTicketCategoryDto("", 50.00m, 100) // Empty name
+            }
+        );
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ArgumentException>(() => _service.CreateShowAsync(organizerId, eventId, dto));
+        _mockRepo.Verify(r => r.CreateShowWithCategoriesAsync(It.IsAny<Show>(), It.IsAny<List<TicketCategory>>()), Times.Never);
     }
 }
