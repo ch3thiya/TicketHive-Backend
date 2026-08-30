@@ -42,6 +42,7 @@ public class EventService : IEventService
             EventTime = dto.EventTime,
             BannerUrl = dto.BannerUrl?.Trim() ?? string.Empty,
             Status = "Draft", // Always starts as Draft
+            CancellationCutoffHours = dto.CancellationCutoffHours,
             CreatedAt = DateTime.UtcNow
         };
 
@@ -100,6 +101,10 @@ public class EventService : IEventService
             EventId = eventId,
             ShowDate = dto.ShowDate,
             ShowTime = dto.ShowTime,
+            VenueId = dto.VenueId,
+            OnSaleAt = dto.OnSaleAt,
+            HighDemandThreshold = dto.HighDemandThreshold,
+            ReminderMinutesBefore = dto.ReminderMinutesBefore,
             Status = "Active"
         };
 
@@ -111,6 +116,10 @@ public class EventService : IEventService
             show.EventId,
             show.ShowDate,
             show.ShowTime,
+            show.VenueId,
+            show.OnSaleAt,
+            show.HighDemandThreshold,
+            show.ReminderMinutesBefore,
             show.Status,
             show.CreatedAt,
             domainCategories
@@ -130,7 +139,7 @@ public class EventService : IEventService
             foreach (var s in shows)
             {
                 var categories = await _repository.GetTicketCategoriesByShowIdAsync(s.Id);
-                showDtos.Add(new ShowDetailsDto(s.Id, s.EventId, s.ShowDate, s.ShowTime, s.Status, s.CreatedAt, categories));
+                showDtos.Add(new ShowDetailsDto(s.Id, s.EventId, s.ShowDate, s.ShowTime, s.VenueId, s.OnSaleAt, s.HighDemandThreshold, s.ReminderMinutesBefore, s.Status, s.CreatedAt, categories));
             }
 
             result.Add(new EventWithShowsDto(
@@ -142,6 +151,7 @@ public class EventService : IEventService
                 evt.EventDate,
                 evt.EventTime,
                 evt.BannerUrl,
+                evt.CancellationCutoffHours,
                 evt.Status,
                 evt.CreatedAt,
                 showDtos
@@ -164,7 +174,7 @@ public class EventService : IEventService
             foreach (var s in shows)
             {
                 var categories = await _repository.GetTicketCategoriesByShowIdAsync(s.Id);
-                showDtos.Add(new ShowDetailsDto(s.Id, s.EventId, s.ShowDate, s.ShowTime, s.Status, s.CreatedAt, categories));
+                showDtos.Add(new ShowDetailsDto(s.Id, s.EventId, s.ShowDate, s.ShowTime, s.VenueId, s.OnSaleAt, s.HighDemandThreshold, s.ReminderMinutesBefore, s.Status, s.CreatedAt, categories));
             }
 
             result.Add(new EventWithShowsDto(
@@ -176,6 +186,7 @@ public class EventService : IEventService
                 evt.EventDate,
                 evt.EventTime,
                 evt.BannerUrl,
+                evt.CancellationCutoffHours,
                 evt.Status,
                 evt.CreatedAt,
                 showDtos
@@ -199,7 +210,7 @@ public class EventService : IEventService
         foreach (var s in shows)
         {
             var categories = await _repository.GetTicketCategoriesByShowIdAsync(s.Id);
-            showDtos.Add(new ShowDetailsDto(s.Id, s.EventId, s.ShowDate, s.ShowTime, s.Status, s.CreatedAt, categories));
+            showDtos.Add(new ShowDetailsDto(s.Id, s.EventId, s.ShowDate, s.ShowTime, s.VenueId, s.OnSaleAt, s.HighDemandThreshold, s.ReminderMinutesBefore, s.Status, s.CreatedAt, categories));
         }
 
         return new EventWithShowsDto(
@@ -211,6 +222,7 @@ public class EventService : IEventService
             evt.EventDate,
             evt.EventTime,
             evt.BannerUrl,
+            evt.CancellationCutoffHours,
             evt.Status,
             evt.CreatedAt,
             showDtos
@@ -280,6 +292,7 @@ public class EventService : IEventService
         evt.EventDate = dto.EventDate;
         evt.EventTime = dto.EventTime;
         evt.BannerUrl = dto.BannerUrl?.Trim() ?? string.Empty;
+        evt.CancellationCutoffHours = dto.CancellationCutoffHours;
 
         await _repository.UpdateEventAsync(evt);
     }
@@ -317,6 +330,10 @@ public class EventService : IEventService
 
         show.ShowDate = dto.ShowDate;
         show.ShowTime = dto.ShowTime;
+        show.VenueId = dto.VenueId;
+        show.OnSaleAt = dto.OnSaleAt;
+        show.HighDemandThreshold = dto.HighDemandThreshold;
+        show.ReminderMinutesBefore = dto.ReminderMinutesBefore;
 
         await _repository.UpdateShowAsync(show);
     }

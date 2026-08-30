@@ -11,13 +11,18 @@ public record CreateEventDto(
     string Category,
     DateOnly? EventDate,
     TimeOnly? EventTime,
-    string BannerUrl
+    string BannerUrl,
+    int? CancellationCutoffHours = null
 );
 
 public record CreateShowRequestDto(
     DateOnly ShowDate,
     TimeOnly ShowTime,
-    List<CreateTicketCategoryDto> Categories
+    List<CreateTicketCategoryDto> Categories,
+    Guid? VenueId = null,
+    DateTime? OnSaleAt = null,
+    int? HighDemandThreshold = null,
+    int? ReminderMinutesBefore = null
 );
 
 public record CreateTicketCategoryDto(
@@ -32,12 +37,17 @@ public record UpdateEventDto(
     string Category,
     DateOnly? EventDate,
     TimeOnly? EventTime,
-    string BannerUrl
+    string BannerUrl,
+    int? CancellationCutoffHours = null
 );
 
 public record UpdateShowDto(
     DateOnly ShowDate,
-    TimeOnly ShowTime
+    TimeOnly ShowTime,
+    Guid? VenueId = null,
+    DateTime? OnSaleAt = null,
+    int? HighDemandThreshold = null,
+    int? ReminderMinutesBefore = null
 );
 
 public record ShowDetailsDto(
@@ -45,6 +55,10 @@ public record ShowDetailsDto(
     Guid EventId,
     DateOnly ShowDate,
     TimeOnly ShowTime,
+    Guid? VenueId,
+    DateTime? OnSaleAt,
+    int? HighDemandThreshold,
+    int? ReminderMinutesBefore,
     string Status,
     DateTime CreatedAt,
     List<TicketCategory> TicketCategories
@@ -59,6 +73,7 @@ public record EventWithShowsDto(
     DateOnly? EventDate,
     TimeOnly? EventTime,
     string BannerUrl,
+    int? CancellationCutoffHours,
     string Status,
     DateTime CreatedAt,
     List<ShowDetailsDto> Shows

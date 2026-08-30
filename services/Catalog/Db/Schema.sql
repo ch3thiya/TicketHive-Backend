@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS events (
     event_time TIME,
     banner_url TEXT NOT NULL DEFAULT '',
     status VARCHAR(50) NOT NULL DEFAULT 'Draft',
+    cancellation_cutoff_hours INT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
@@ -25,6 +26,10 @@ CREATE TABLE IF NOT EXISTS shows (
     event_id UUID NOT NULL REFERENCES events(id) ON DELETE CASCADE,
     show_date DATE NOT NULL,
     show_time TIME NOT NULL,
+    venue_id UUID,
+    on_sale_at TIMESTAMP WITH TIME ZONE,
+    high_demand_threshold INT,
+    reminder_minutes_before INT,
     status VARCHAR(50) NOT NULL DEFAULT 'Active',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
