@@ -25,8 +25,8 @@ public class EventRepository : IEventRepository
         }
 
         const string sql = @"
-            INSERT INTO events (id, organizer_id, name, description, category, event_date, event_time, banner_url, status)
-            VALUES (@Id, @OrganizerId, @Name, @Description, @Category, @EventDate, @EventTime, @BannerUrl, @Status)
+            INSERT INTO events (id, organizer_id, name, description, category, event_date, event_time, banner_url, status, cancellation_cutoff_hours)
+            VALUES (@Id, @OrganizerId, @Name, @Description, @Category, @EventDate, @EventTime, @BannerUrl, @Status, @CancellationCutoffHours)
             RETURNING id, created_at;
         ";
 
@@ -40,6 +40,7 @@ public class EventRepository : IEventRepository
         command.Parameters.AddWithValue("EventTime", (object?)evt.EventTime ?? DBNull.Value);
         command.Parameters.AddWithValue("BannerUrl", evt.BannerUrl);
         command.Parameters.AddWithValue("Status", evt.Status);
+        command.Parameters.AddWithValue("CancellationCutoffHours", (object?)evt.CancellationCutoffHours ?? DBNull.Value);
 
         using var reader = await command.ExecuteReaderAsync();
         if (await reader.ReadAsync())
@@ -55,7 +56,7 @@ public class EventRepository : IEventRepository
         using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
 
         const string sql = @"
-            SELECT id, organizer_id, name, description, category, event_date, event_time, banner_url, status, created_at
+            SELECT id, organizer_id, name, description, category, event_date, event_time, banner_url, status, cancellation_cutoff_hours, created_at
             FROM events
             WHERE id = @Id;
         ";
@@ -77,7 +78,7 @@ public class EventRepository : IEventRepository
         using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
 
         const string sql = @"
-            SELECT id, organizer_id, name, description, category, event_date, event_time, banner_url, status, created_at
+            SELECT id, organizer_id, name, description, category, event_date, event_time, banner_url, status, cancellation_cutoff_hours, created_at
             FROM events
             WHERE organizer_id = @OrganizerId
             ORDER BY created_at DESC;
@@ -101,7 +102,7 @@ public class EventRepository : IEventRepository
         using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
 
         const string sql = @"
-            SELECT id, organizer_id, name, description, category, event_date, event_time, banner_url, status, created_at
+            SELECT id, organizer_id, name, description, category, event_date, event_time, banner_url, status, cancellation_cutoff_hours, created_at
             FROM events
             WHERE status = 'Published'
             ORDER BY created_at DESC;
@@ -131,7 +132,8 @@ public class EventRepository : IEventRepository
                 event_date = @EventDate,
                 event_time = @EventTime,
                 banner_url = @BannerUrl,
-                status = @Status
+                status = @Status,
+                cancellation_cutoff_hours = @CancellationCutoffHours
             WHERE id = @Id;
         ";
 
@@ -144,6 +146,7 @@ public class EventRepository : IEventRepository
         command.Parameters.AddWithValue("EventTime", (object?)evt.EventTime ?? DBNull.Value);
         command.Parameters.AddWithValue("BannerUrl", evt.BannerUrl);
         command.Parameters.AddWithValue("Status", evt.Status);
+        command.Parameters.AddWithValue("CancellationCutoffHours", (object?)evt.CancellationCutoffHours ?? DBNull.Value);
 
         await command.ExecuteNonQueryAsync();
     }
@@ -178,8 +181,8 @@ public class EventRepository : IEventRepository
             }
 
             const string showSql = @"
-                INSERT INTO shows (id, event_id, show_date, show_time, status)
-                VALUES (@Id, @EventId, @ShowDate, @ShowTime, @Status)
+                INSERT INTO shows (id, event_id, show_date, show_time, venue_id, on_sale_at, high_demand_threshold, reminder_minutes_before, status)
+                VALUES (@Id, @EventId, @ShowDate, @ShowTime, @VenueId, @OnSaleAt, @HighDemandThreshold, @ReminderMinutesBefore, @Status)
                 RETURNING created_at;
             ";
 
@@ -189,6 +192,10 @@ public class EventRepository : IEventRepository
                 showCmd.Parameters.AddWithValue("EventId", show.EventId);
                 showCmd.Parameters.AddWithValue("ShowDate", show.ShowDate);
                 showCmd.Parameters.AddWithValue("ShowTime", show.ShowTime);
+                showCmd.Parameters.AddWithValue("VenueId", (object?)show.VenueId ?? DBNull.Value);
+                showCmd.Parameters.AddWithValue("OnSaleAt", (object?)show.OnSaleAt ?? DBNull.Value);
+                showCmd.Parameters.AddWithValue("HighDemandThreshold", (object?)show.HighDemandThreshold ?? DBNull.Value);
+                showCmd.Parameters.AddWithValue("ReminderMinutesBefore", (object?)show.ReminderMinutesBefore ?? DBNull.Value);
                 showCmd.Parameters.AddWithValue("Status", show.Status);
 
                 using var reader = await showCmd.ExecuteReaderAsync();
@@ -241,7 +248,7 @@ public class EventRepository : IEventRepository
         using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
 
         const string sql = @"
-            SELECT id, event_id, show_date, show_time, status, created_at
+            SELECT id, event_id, show_date, show_time, venue_id, on_sale_at, high_demand_threshold, reminder_minutes_before, status, created_at
             FROM shows
             WHERE id = @Id;
         ";
@@ -263,7 +270,7 @@ public class EventRepository : IEventRepository
         using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
 
         const string sql = @"
-            SELECT id, event_id, show_date, show_time, status, created_at
+            SELECT id, event_id, show_date, show_time, venue_id, on_sale_at, high_demand_threshold, reminder_minutes_before, status, created_at
             FROM shows
             WHERE event_id = @EventId AND status != 'Cancelled'
             ORDER BY show_date ASC, show_time ASC;
@@ -322,6 +329,10 @@ public class EventRepository : IEventRepository
             UPDATE shows
             SET show_date = @ShowDate,
                 show_time = @ShowTime,
+                venue_id = @VenueId,
+                on_sale_at = @OnSaleAt,
+                high_demand_threshold = @HighDemandThreshold,
+                reminder_minutes_before = @ReminderMinutesBefore,
                 status = @Status
             WHERE id = @Id;
         ";
@@ -330,6 +341,10 @@ public class EventRepository : IEventRepository
         command.Parameters.AddWithValue("Id", show.Id);
         command.Parameters.AddWithValue("ShowDate", show.ShowDate);
         command.Parameters.AddWithValue("ShowTime", show.ShowTime);
+        command.Parameters.AddWithValue("VenueId", (object?)show.VenueId ?? DBNull.Value);
+        command.Parameters.AddWithValue("OnSaleAt", (object?)show.OnSaleAt ?? DBNull.Value);
+        command.Parameters.AddWithValue("HighDemandThreshold", (object?)show.HighDemandThreshold ?? DBNull.Value);
+        command.Parameters.AddWithValue("ReminderMinutesBefore", (object?)show.ReminderMinutesBefore ?? DBNull.Value);
         command.Parameters.AddWithValue("Status", show.Status);
 
         await command.ExecuteNonQueryAsync();
@@ -365,7 +380,8 @@ public class EventRepository : IEventRepository
             EventTime = reader.IsDBNull(6) ? null : TimeOnly.FromTimeSpan(reader.GetTimeSpan(6)),
             BannerUrl = reader.GetString(7),
             Status = reader.GetString(8),
-            CreatedAt = reader.GetDateTime(9)
+            CancellationCutoffHours = reader.IsDBNull(9) ? null : reader.GetInt32(9),
+            CreatedAt = reader.GetDateTime(10)
         };
     }
 
@@ -377,8 +393,12 @@ public class EventRepository : IEventRepository
             EventId = reader.GetGuid(1),
             ShowDate = DateOnly.FromDateTime(reader.GetDateTime(2)),
             ShowTime = TimeOnly.FromTimeSpan(reader.GetTimeSpan(3)),
-            Status = reader.GetString(4),
-            CreatedAt = reader.GetDateTime(5)
+            VenueId = reader.IsDBNull(4) ? null : reader.GetGuid(4),
+            OnSaleAt = reader.IsDBNull(5) ? null : reader.GetDateTime(5),
+            HighDemandThreshold = reader.IsDBNull(6) ? null : reader.GetInt32(6),
+            ReminderMinutesBefore = reader.IsDBNull(7) ? null : reader.GetInt32(7),
+            Status = reader.GetString(8),
+            CreatedAt = reader.GetDateTime(9)
         };
     }
 }
