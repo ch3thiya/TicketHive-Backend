@@ -127,12 +127,48 @@ public class EventsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<IActionResult> GetAllPublishedEvents()
+    public async Task<IActionResult> GetAllPublishedEvents(
+        [FromQuery] string? search = null,
+        [FromQuery] string? category = null,
+        [FromQuery] string? fromDate = null,
+        [FromQuery] string? toDate = null,
+        [FromQuery] Guid? venueId = null)
     {
         try
         {
-            var events = await _eventService.GetAllPublishedEventsAsync();
+            // Parse optional date filters
+            DateOnly? parsedFromDate = null;
+            DateOnly? parsedToDate = null;
+
+            if (!string.IsNullOrWhiteSpace(fromDate))
+            {
+                if (!DateOnly.TryParse(fromDate, out var fd))
+                    return BadRequest(new { message = "Invalid 'fromDate' format. Use YYYY-MM-DD." });
+                parsedFromDate = fd;
+            }
+
+            if (!string.IsNullOrWhiteSpace(toDate))
+            {
+                if (!DateOnly.TryParse(toDate, out var td))
+                    return BadRequest(new { message = "Invalid 'toDate' format. Use YYYY-MM-DD." });
+                parsedToDate = td;
+            }
+
+            bool hasFilters = !string.IsNullOrWhiteSpace(search) ||
+                              !string.IsNullOrWhiteSpace(category) ||
+                              parsedFromDate.HasValue ||
+                              parsedToDate.HasValue ||
+                              venueId.HasValue;
+
+            var events = hasFilters
+                ? await _eventService.GetPublishedEventsAsync(search, category, parsedFromDate, parsedToDate, venueId)
+                : await _eventService.GetAllPublishedEventsAsync();
+
             return Ok(events);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
         }
         catch (Exception ex)
         {
@@ -141,12 +177,17 @@ public class EventsController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Public event detail endpoint. Returns only Published events.
+    /// Draft and Cancelled events return 404 to prevent information leakage.
+    /// Note: Organizer-specific event detail is served via GET /my-events which returns all statuses.
+    /// </summary>
     [HttpGet("{eventId}")]
     public async Task<IActionResult> GetEventById(Guid eventId)
     {
         try
         {
-            var evt = await _eventService.GetEventByIdAsync(eventId);
+            var evt = await _eventService.GetPublishedEventByIdAsync(eventId);
             if (evt == null)
             {
                 return NotFound(new { message = $"Event with ID '{eventId}' was not found." });
