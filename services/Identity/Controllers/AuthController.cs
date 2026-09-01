@@ -44,23 +44,47 @@ public class AuthController : ControllerBase
 
         _logger.LogInformation("Syncing account for sub: {Sub}", subClaim);
 
+        // Extract roles from token claims (e.g. groups or roles claims from Asgardeo)
+        var roles = User.FindAll("groups").Select(c => c.Value)
+            .Concat(User.FindAll(ClaimTypes.Role).Select(c => c.Value))
+            .Concat(User.FindAll("roles").Select(c => c.Value))
+            .ToList();
+
+        string tokenRole = "Customer";
+        if (roles.Any(r => r.Equals("Admin", StringComparison.OrdinalIgnoreCase)))
+        {
+            tokenRole = "Admin";
+        }
+        else if (roles.Any(r => r.Equals("Organizer", StringComparison.OrdinalIgnoreCase)))
+        {
+            tokenRole = "Organizer";
+        }
+
         var existingAccount = await _repository.GetUserAccountBySubAsync(subClaim);
         if (existingAccount == null)
         {
-            // First time login - provision user locally as Customer
+            // First time login - provision user locally using claims-based role
             var newAccount = new UserAccount
             {
                 Id = Guid.NewGuid(),
                 Wso2Sub = subClaim,
                 Email = emailClaim ?? "unknown@tickethive.com",
                 FullName = nameClaim ?? "Unknown User",
-                Role = "Customer",
-                ApprovalStatus = "approved", // Customers are auto-approved
+                Role = tokenRole,
+                ApprovalStatus = "approved",
                 CreatedAt = DateTime.UtcNow
             };
 
             await _repository.CreateUserAccountAsync(newAccount);
             return Ok(newAccount);
+        }
+
+        // If user was assigned elevated role in Asgardeo (e.g. Admin or Organizer), sync database
+        if (!existingAccount.Role.Equals(tokenRole, StringComparison.OrdinalIgnoreCase) && tokenRole != "Customer")
+        {
+            existingAccount.Role = tokenRole;
+            existingAccount.ApprovalStatus = "approved";
+            await _repository.UpdateUserAccountRoleAndStatusAsync(existingAccount.Id, tokenRole, "approved");
         }
 
         return Ok(existingAccount);
