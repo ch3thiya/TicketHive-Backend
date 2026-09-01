@@ -11,6 +11,8 @@ public interface IEventRepository
     Task<Event?> GetEventByIdAsync(Guid id);
     Task<List<Event>> GetEventsByOrganizerIdAsync(Guid organizerId);
     Task<List<Event>> GetAllPublishedEventsAsync();
+    Task<List<Event>> GetPublishedEventsAsync(string? search, string? category, DateOnly? fromDate, DateOnly? toDate, Guid? venueId);
+    Task<Event?> GetPublishedEventByIdAsync(Guid id);
     Task UpdateEventAsync(Event evt);
     Task UpdateEventStatusAsync(Guid eventId, string status);
 
