@@ -3,6 +3,9 @@ using Microsoft.IdentityModel.Tokens;
 using Catalog.Service.Db;
 using Catalog.Service.Services;
 
+// Load root .env file if available
+DotNetEnv.Env.TraversePath().Load();
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
@@ -39,7 +42,9 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
+            ValidIssuer = builder.Configuration["Jwt:Authority"],
             ValidateAudience = true,
+            ValidAudience = builder.Configuration["Jwt:Audience"],
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
             RoleClaimType = "groups" // Map Asgardeo's groups claim to the standard .NET Role
