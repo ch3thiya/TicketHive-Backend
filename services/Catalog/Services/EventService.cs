@@ -196,9 +196,82 @@ public class EventService : IEventService
         return result;
     }
 
+    public async Task<List<EventWithShowsDto>> GetPublishedEventsAsync(string? search, string? category, DateOnly? fromDate, DateOnly? toDate, Guid? venueId)
+    {
+        if (fromDate.HasValue && toDate.HasValue && fromDate.Value > toDate.Value)
+        {
+            throw new ArgumentException("'fromDate' cannot be after 'toDate'.");
+        }
+
+        var events = await _repository.GetPublishedEventsAsync(search, category, fromDate, toDate, venueId);
+        var result = new List<EventWithShowsDto>();
+
+        foreach (var evt in events)
+        {
+            var shows = await _repository.GetShowsByEventIdAsync(evt.Id);
+            var showDtos = new List<ShowDetailsDto>();
+
+            foreach (var s in shows)
+            {
+                var categories = await _repository.GetTicketCategoriesByShowIdAsync(s.Id);
+                showDtos.Add(new ShowDetailsDto(s.Id, s.EventId, s.ShowDate, s.ShowTime, s.VenueId, s.OnSaleAt, s.HighDemandThreshold, s.ReminderMinutesBefore, s.Status, s.CreatedAt, categories));
+            }
+
+            result.Add(new EventWithShowsDto(
+                evt.Id,
+                evt.OrganizerId,
+                evt.Name,
+                evt.Description,
+                evt.Category,
+                evt.EventDate,
+                evt.EventTime,
+                evt.BannerUrl,
+                evt.CancellationCutoffHours,
+                evt.Status,
+                evt.CreatedAt,
+                showDtos
+            ));
+        }
+
+        return result;
+    }
+
     public async Task<EventWithShowsDto?> GetEventByIdAsync(Guid eventId)
     {
         var evt = await _repository.GetEventByIdAsync(eventId);
+        if (evt == null)
+        {
+            return null;
+        }
+
+        var shows = await _repository.GetShowsByEventIdAsync(evt.Id);
+        var showDtos = new List<ShowDetailsDto>();
+
+        foreach (var s in shows)
+        {
+            var categories = await _repository.GetTicketCategoriesByShowIdAsync(s.Id);
+            showDtos.Add(new ShowDetailsDto(s.Id, s.EventId, s.ShowDate, s.ShowTime, s.VenueId, s.OnSaleAt, s.HighDemandThreshold, s.ReminderMinutesBefore, s.Status, s.CreatedAt, categories));
+        }
+
+        return new EventWithShowsDto(
+            evt.Id,
+            evt.OrganizerId,
+            evt.Name,
+            evt.Description,
+            evt.Category,
+            evt.EventDate,
+            evt.EventTime,
+            evt.BannerUrl,
+            evt.CancellationCutoffHours,
+            evt.Status,
+            evt.CreatedAt,
+            showDtos
+        );
+    }
+
+    public async Task<EventWithShowsDto?> GetPublishedEventByIdAsync(Guid eventId)
+    {
+        var evt = await _repository.GetPublishedEventByIdAsync(eventId);
         if (evt == null)
         {
             return null;
