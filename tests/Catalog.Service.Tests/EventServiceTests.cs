@@ -538,4 +538,254 @@ public class EventServiceTests
         await Assert.ThrowsAsync<ArgumentException>(() => _service.CreateShowAsync(organizerId, eventId, dto));
         _mockRepo.Verify(r => r.CreateShowWithCategoriesAsync(It.IsAny<Show>(), It.IsAny<List<TicketCategory>>()), Times.Never);
     }
+
+    [Fact]
+    public async Task GetPublishedEvents_ReturnsOnlyPublishedEventsWithShowsAndCategories()
+    {
+        // Arrange
+        var eventId = Guid.NewGuid();
+        var showId = Guid.NewGuid();
+        var publishedEvent = new Event
+        {
+            Id = eventId,
+            OrganizerId = Guid.NewGuid(),
+            Name = "Published Concert",
+            Category = "Concerts",
+            Status = "Published",
+            CreatedAt = DateTime.UtcNow
+        };
+
+        _mockRepo.Setup(r => r.GetPublishedEventsAsync(null, null, null, null, null))
+                 .ReturnsAsync(new List<Event> { publishedEvent });
+
+        _mockRepo.Setup(r => r.GetShowsByEventIdAsync(eventId))
+                 .ReturnsAsync(new List<Show>
+                 {
+                     new Show { Id = showId, EventId = eventId, ShowDate = new DateOnly(2026, 10, 1), ShowTime = new TimeOnly(19, 30), Status = "Active" }
+                 });
+
+        _mockRepo.Setup(r => r.GetTicketCategoriesByShowIdAsync(showId))
+                 .ReturnsAsync(new List<TicketCategory>
+                 {
+                     new TicketCategory { Id = Guid.NewGuid(), ShowId = showId, Name = "VIP", Price = 100m, Capacity = 50 }
+                 });
+
+        // Act
+        var result = await _service.GetPublishedEventsAsync(null, null, null, null, null);
+
+        // Assert
+        Assert.Single(result);
+        Assert.Equal(eventId, result[0].Id);
+        Assert.Equal("Published Concert", result[0].Name);
+        Assert.Equal("Published", result[0].Status);
+        Assert.Single(result[0].Shows);
+        Assert.Single(result[0].Shows[0].TicketCategories);
+        _mockRepo.Verify(r => r.GetPublishedEventsAsync(null, null, null, null, null), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetPublishedEvents_WithKeywordSearch_PassesSearchParamToRepository()
+    {
+        // Arrange
+        _mockRepo.Setup(r => r.GetPublishedEventsAsync("Rock", null, null, null, null))
+                 .ReturnsAsync(new List<Event>());
+
+        // Act
+        var result = await _service.GetPublishedEventsAsync("Rock", null, null, null, null);
+
+        // Assert
+        Assert.Empty(result);
+        _mockRepo.Verify(r => r.GetPublishedEventsAsync("Rock", null, null, null, null), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetPublishedEvents_WithCategoryFilter_PassesCategoryParamToRepository()
+    {
+        // Arrange
+        _mockRepo.Setup(r => r.GetPublishedEventsAsync(null, "Movies", null, null, null))
+                 .ReturnsAsync(new List<Event>());
+
+        // Act
+        var result = await _service.GetPublishedEventsAsync(null, "Movies", null, null, null);
+
+        // Assert
+        Assert.Empty(result);
+        _mockRepo.Verify(r => r.GetPublishedEventsAsync(null, "Movies", null, null, null), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetPublishedEvents_WithDateRange_PassesDateRangeToRepository()
+    {
+        // Arrange
+        var fromDate = new DateOnly(2026, 9, 1);
+        var toDate = new DateOnly(2026, 9, 30);
+        _mockRepo.Setup(r => r.GetPublishedEventsAsync(null, null, fromDate, toDate, null))
+                 .ReturnsAsync(new List<Event>());
+
+        // Act
+        var result = await _service.GetPublishedEventsAsync(null, null, fromDate, toDate, null);
+
+        // Assert
+        Assert.Empty(result);
+        _mockRepo.Verify(r => r.GetPublishedEventsAsync(null, null, fromDate, toDate, null), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetPublishedEvents_WithVenueFilter_PassesVenueIdToRepository()
+    {
+        // Arrange
+        var venueId = Guid.NewGuid();
+        _mockRepo.Setup(r => r.GetPublishedEventsAsync(null, null, null, null, venueId))
+                 .ReturnsAsync(new List<Event>());
+
+        // Act
+        var result = await _service.GetPublishedEventsAsync(null, null, null, null, venueId);
+
+        // Assert
+        Assert.Empty(result);
+        _mockRepo.Verify(r => r.GetPublishedEventsAsync(null, null, null, null, venueId), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetPublishedEvents_WithCombinedFilters_PassesAllParamsToRepository()
+    {
+        // Arrange
+        var fromDate = new DateOnly(2026, 9, 1);
+        var toDate = new DateOnly(2026, 9, 30);
+        var venueId = Guid.NewGuid();
+
+        _mockRepo.Setup(r => r.GetPublishedEventsAsync("Jazz", "Concerts", fromDate, toDate, venueId))
+                 .ReturnsAsync(new List<Event>());
+
+        // Act
+        var result = await _service.GetPublishedEventsAsync("Jazz", "Concerts", fromDate, toDate, venueId);
+
+        // Assert
+        Assert.Empty(result);
+        _mockRepo.Verify(r => r.GetPublishedEventsAsync("Jazz", "Concerts", fromDate, toDate, venueId), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetPublishedEvents_NoMatchingEvents_ReturnsEmptyList()
+    {
+        // Arrange
+        _mockRepo.Setup(r => r.GetPublishedEventsAsync("NonExistent", null, null, null, null))
+                 .ReturnsAsync(new List<Event>());
+
+        // Act
+        var result = await _service.GetPublishedEventsAsync("NonExistent", null, null, null, null);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public async Task GetPublishedEvents_InvalidDateRange_ThrowsArgumentException()
+    {
+        // Arrange
+        var fromDate = new DateOnly(2026, 10, 1);
+        var toDate = new DateOnly(2026, 9, 1); // fromDate > toDate
+
+        // Act & Assert
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.GetPublishedEventsAsync(null, null, fromDate, toDate, null));
+
+        Assert.Contains("fromDate", ex.Message);
+        _mockRepo.Verify(r => r.GetPublishedEventsAsync(It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<DateOnly?>(), It.IsAny<DateOnly?>(), It.IsAny<Guid?>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetPublishedEventById_PublishedEvent_ReturnsEventDetails()
+    {
+        // Arrange
+        var eventId = Guid.NewGuid();
+        var showId = Guid.NewGuid();
+        var publishedEvent = new Event
+        {
+            Id = eventId,
+            OrganizerId = Guid.NewGuid(),
+            Name = "Festival 2026",
+            Category = "Festival",
+            Status = "Published",
+            CreatedAt = DateTime.UtcNow
+        };
+
+        _mockRepo.Setup(r => r.GetPublishedEventByIdAsync(eventId))
+                 .ReturnsAsync(publishedEvent);
+
+        _mockRepo.Setup(r => r.GetShowsByEventIdAsync(eventId))
+                 .ReturnsAsync(new List<Show>
+                 {
+                     new Show { Id = showId, EventId = eventId, ShowDate = new DateOnly(2026, 11, 1), ShowTime = new TimeOnly(18, 0), Status = "Active" }
+                 });
+
+        _mockRepo.Setup(r => r.GetTicketCategoriesByShowIdAsync(showId))
+                 .ReturnsAsync(new List<TicketCategory>
+                 {
+                     new TicketCategory { Id = Guid.NewGuid(), ShowId = showId, Name = "GA", Price = 45m, Capacity = 200 }
+                 });
+
+        // Act
+        var result = await _service.GetPublishedEventByIdAsync(eventId);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal(eventId, result.Id);
+        Assert.Equal("Festival 2026", result.Name);
+        Assert.Equal("Published", result.Status);
+        Assert.Single(result.Shows);
+        Assert.Single(result.Shows[0].TicketCategories);
+        _mockRepo.Verify(r => r.GetPublishedEventByIdAsync(eventId), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetPublishedEventById_DraftEvent_ReturnsNull()
+    {
+        // Arrange
+        var eventId = Guid.NewGuid();
+        // Repository returns null because GetPublishedEventByIdAsync has `status = 'Published'` filter in DB
+        _mockRepo.Setup(r => r.GetPublishedEventByIdAsync(eventId))
+                 .ReturnsAsync((Event?)null);
+
+        // Act
+        var result = await _service.GetPublishedEventByIdAsync(eventId);
+
+        // Assert
+        Assert.Null(result);
+        _mockRepo.Verify(r => r.GetPublishedEventByIdAsync(eventId), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetPublishedEventById_CancelledEvent_ReturnsNull()
+    {
+        // Arrange
+        var eventId = Guid.NewGuid();
+        // Repository returns null for cancelled events when querying published-only
+        _mockRepo.Setup(r => r.GetPublishedEventByIdAsync(eventId))
+                 .ReturnsAsync((Event?)null);
+
+        // Act
+        var result = await _service.GetPublishedEventByIdAsync(eventId);
+
+        // Assert
+        Assert.Null(result);
+        _mockRepo.Verify(r => r.GetPublishedEventByIdAsync(eventId), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetPublishedEventById_NonExistentEvent_ReturnsNull()
+    {
+        // Arrange
+        var eventId = Guid.NewGuid();
+        _mockRepo.Setup(r => r.GetPublishedEventByIdAsync(eventId))
+                 .ReturnsAsync((Event?)null);
+
+        // Act
+        var result = await _service.GetPublishedEventByIdAsync(eventId);
+
+        // Assert
+        Assert.Null(result);
+        _mockRepo.Verify(r => r.GetPublishedEventByIdAsync(eventId), Times.Once);
+    }
 }

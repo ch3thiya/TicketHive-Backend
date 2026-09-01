@@ -120,6 +120,98 @@ public class EventRepository : IEventRepository
         return list;
     }
 
+    public async Task<List<Event>> GetPublishedEventsAsync(string? search, string? category, DateOnly? fromDate, DateOnly? toDate, Guid? venueId)
+    {
+        using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
+
+        var sql = @"
+            SELECT DISTINCT e.id, e.organizer_id, e.name, e.description, e.category, e.event_date, e.event_time, e.banner_url, e.status, e.cancellation_cutoff_hours, e.created_at
+            FROM events e";
+
+        // JOIN to shows only when filtering by show-level fields (date range or venue)
+        bool joinShows = fromDate.HasValue || toDate.HasValue || venueId.HasValue;
+        if (joinShows)
+        {
+            sql += @"
+            INNER JOIN shows s ON s.event_id = e.id AND s.status != 'Cancelled'";
+        }
+
+        sql += @"
+            WHERE e.status = 'Published'";
+
+        var parameters = new List<NpgsqlParameter>();
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            sql += " AND e.name ILIKE @Search";
+            parameters.Add(new NpgsqlParameter("Search", $"%{search.Trim()}%"));
+        }
+
+        if (!string.IsNullOrWhiteSpace(category))
+        {
+            sql += " AND e.category = @Category";
+            parameters.Add(new NpgsqlParameter("Category", category.Trim()));
+        }
+
+        if (fromDate.HasValue)
+        {
+            sql += " AND s.show_date >= @FromDate";
+            parameters.Add(new NpgsqlParameter("FromDate", fromDate.Value));
+        }
+
+        if (toDate.HasValue)
+        {
+            sql += " AND s.show_date <= @ToDate";
+            parameters.Add(new NpgsqlParameter("ToDate", toDate.Value));
+        }
+
+        if (venueId.HasValue)
+        {
+            sql += " AND s.venue_id = @VenueId";
+            parameters.Add(new NpgsqlParameter("VenueId", venueId.Value));
+        }
+
+        sql += @"
+            ORDER BY e.created_at DESC;";
+
+        using var command = new NpgsqlCommand(sql, connection);
+        foreach (var param in parameters)
+        {
+            command.Parameters.Add(param);
+        }
+
+        using var reader = await command.ExecuteReaderAsync();
+        var list = new List<Event>();
+        while (await reader.ReadAsync())
+        {
+            list.Add(MapEvent(reader));
+        }
+
+        return list;
+    }
+
+    public async Task<Event?> GetPublishedEventByIdAsync(Guid id)
+    {
+        using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
+
+        const string sql = @"
+            SELECT id, organizer_id, name, description, category, event_date, event_time, banner_url, status, cancellation_cutoff_hours, created_at
+            FROM events
+            WHERE id = @Id AND status = 'Published';
+        ";
+
+        using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("Id", id);
+
+        using var reader = await command.ExecuteReaderAsync();
+        if (await reader.ReadAsync())
+        {
+            return MapEvent(reader);
+        }
+
+        return null;
+    }
+
     public async Task UpdateEventAsync(Event evt)
     {
         using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
