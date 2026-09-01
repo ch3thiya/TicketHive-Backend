@@ -85,7 +85,9 @@ public interface IEventService
     Task<ShowDetailsDto> CreateShowAsync(Guid organizerId, Guid eventId, CreateShowRequestDto dto);
     Task<List<EventWithShowsDto>> GetEventsByOrganizerIdAsync(Guid organizerId);
     Task<List<EventWithShowsDto>> GetAllPublishedEventsAsync();
+    Task<List<EventWithShowsDto>> GetPublishedEventsAsync(string? search, string? category, DateOnly? fromDate, DateOnly? toDate, Guid? venueId);
     Task<EventWithShowsDto?> GetEventByIdAsync(Guid eventId);
+    Task<EventWithShowsDto?> GetPublishedEventByIdAsync(Guid eventId);
     Task PublishEventAsync(Guid organizerId, Guid eventId);
     Task UpdateEventAsync(Guid organizerId, Guid eventId, UpdateEventDto dto);
     Task CancelEventAsync(Guid organizerId, Guid eventId);
