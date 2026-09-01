@@ -47,7 +47,8 @@ public record UpdateShowDto(
     Guid? VenueId = null,
     DateTime? OnSaleAt = null,
     int? HighDemandThreshold = null,
-    int? ReminderMinutesBefore = null
+    int? ReminderMinutesBefore = null,
+    List<CreateTicketCategoryDto>? Categories = null
 );
 
 public record ShowDetailsDto(

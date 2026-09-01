@@ -459,6 +459,49 @@ public class EventRepository : IEventRepository
         await command.ExecuteNonQueryAsync();
     }
 
+    public async Task ReplaceTicketCategoriesAsync(Guid showId, List<TicketCategory> categories)
+    {
+        using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
+        using var transaction = await connection.BeginTransactionAsync();
+
+        try
+        {
+            const string deleteSql = "DELETE FROM ticket_categories WHERE show_id = @ShowId;";
+            using (var deleteCmd = new NpgsqlCommand(deleteSql, connection, transaction))
+            {
+                deleteCmd.Parameters.AddWithValue("ShowId", showId);
+                await deleteCmd.ExecuteNonQueryAsync();
+            }
+
+            foreach (var category in categories)
+            {
+                category.Id = Guid.NewGuid();
+                category.ShowId = showId;
+                category.CreatedAt = DateTime.UtcNow;
+
+                const string insertSql = @"
+                    INSERT INTO ticket_categories (id, show_id, name, price, capacity, created_at)
+                    VALUES (@Id, @ShowId, @Name, @Price, @Capacity, @CreatedAt);
+                ";
+                using var catCmd = new NpgsqlCommand(insertSql, connection, transaction);
+                catCmd.Parameters.AddWithValue("Id", category.Id);
+                catCmd.Parameters.AddWithValue("ShowId", category.ShowId);
+                catCmd.Parameters.AddWithValue("Name", category.Name);
+                catCmd.Parameters.AddWithValue("Price", category.Price);
+                catCmd.Parameters.AddWithValue("Capacity", category.Capacity);
+                catCmd.Parameters.AddWithValue("CreatedAt", category.CreatedAt);
+                await catCmd.ExecuteNonQueryAsync();
+            }
+
+            await transaction.CommitAsync();
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
+        }
+    }
+
     private static Event MapEvent(NpgsqlDataReader reader)
     {
         return new Event
