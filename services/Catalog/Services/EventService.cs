@@ -336,6 +336,21 @@ public class EventService : IEventService
         show.ReminderMinutesBefore = dto.ReminderMinutesBefore;
 
         await _repository.UpdateShowAsync(show);
+
+        if (dto.Categories != null && dto.Categories.Count > 0)
+        {
+            var categories = dto.Categories.Select(c => new TicketCategory
+            {
+                Id = Guid.NewGuid(),
+                ShowId = showId,
+                Name = c.Name,
+                Price = c.Price,
+                Capacity = c.Capacity,
+                CreatedAt = DateTime.UtcNow
+            }).ToList();
+
+            await _repository.ReplaceTicketCategoriesAsync(showId, categories);
+        }
     }
 
     public async Task CancelShowAsync(Guid organizerId, Guid showId)

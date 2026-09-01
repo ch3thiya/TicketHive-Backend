@@ -19,5 +19,6 @@ public interface IEventRepository
     Task<List<Show>> GetShowsByEventIdAsync(Guid eventId);
     Task<List<TicketCategory>> GetTicketCategoriesByShowIdAsync(Guid showId);
     Task UpdateShowAsync(Show show);
+    Task ReplaceTicketCategoriesAsync(Guid showId, List<TicketCategory> categories);
     Task UpdateShowStatusAsync(Guid showId, string status);
 }
