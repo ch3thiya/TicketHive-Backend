@@ -149,8 +149,12 @@ public class EventRepository : IEventRepository
 
         if (!string.IsNullOrWhiteSpace(category))
         {
-            sql += " AND e.category = @Category";
-            parameters.Add(new NpgsqlParameter("Category", category.Trim()));
+            var rawCategory = category.Trim();
+            var stemmedCategory = rawCategory.TrimEnd('s', 'S');
+
+            sql += " AND (e.category ILIKE @CategoryRaw OR e.category ILIKE @CategoryStemmed)";
+            parameters.Add(new NpgsqlParameter("CategoryRaw", $"%{rawCategory}%"));
+            parameters.Add(new NpgsqlParameter("CategoryStemmed", $"%{stemmedCategory}%"));
         }
 
         if (fromDate.HasValue)
