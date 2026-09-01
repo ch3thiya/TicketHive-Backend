@@ -41,6 +41,27 @@ jobs:
       - name: Build Catalog Docker Image
         run: docker build -f services/Catalog/Dockerfile -t tickethive-catalog .
 
+      - name: Login to Azure Container Registry
+        uses: azure/docker-login@v2
+        with:
+          login-server: tickethiveacr.azurecr.io
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Tag and Push Identity Service
+        run: |
+          docker tag tickethive-identity:latest tickethiveacr.azurecr.io/tickethive-identity:${{ github.sha }}
+          docker tag tickethive-identity:latest tickethiveacr.azurecr.io/tickethive-identity:latest
+          docker push tickethiveacr.azurecr.io/tickethive-identity:${{ github.sha }}
+          docker push tickethiveacr.azurecr.io/tickethive-identity:latest
+
+      - name: Tag and Push Catalog Service
+        run: |
+          docker tag tickethive-catalog:latest tickethiveacr.azurecr.io/tickethive-catalog:${{ github.sha }}
+          docker tag tickethive-catalog:latest tickethiveacr.azurecr.io/tickethive-catalog:latest
+          docker push tickethiveacr.azurecr.io/tickethive-catalog:${{ github.sha }}
+          docker push tickethiveacr.azurecr.io/tickethive-catalog:latest
+
       # Uncomment these as the remaining services are initialized:
       # - name: Build Inventory Docker Image
       #   run: docker build -t tickethive-inventory ./services/Inventory
