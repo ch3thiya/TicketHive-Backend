@@ -11,6 +11,13 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 
+// Register DB Connection, Repositories and Services
+builder.Services.AddSingleton<DbConnectionFactory>();
+builder.Services.AddScoped<DbInitializer>();
+builder.Services.AddScoped<IEventRepository, EventRepository>();
+builder.Services.AddScoped<IEventService, EventService>();
+
+
 // Register CORS to allow React Frontend requests
 builder.Services.AddCors(options =>
 {
@@ -55,6 +62,20 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 builder.Services.AddAuthorization();
 
 var app = builder.Build();
+
+// Run Database Schema Initialization on Startup
+using (var scope = app.Services.CreateScope())
+{
+    var initializer = scope.ServiceProvider.GetRequiredService<DbInitializer>();
+    try
+    {
+        await initializer.InitializeAsync();
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(ex, "Failed to initialize the Catalog database schema on startup.");
+    }
+}
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())

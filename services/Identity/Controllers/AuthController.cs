@@ -12,11 +12,11 @@ namespace Identity.Service.Controllers;
 [Route("api/identity/accounts")]
 public class AuthController : ControllerBase
 {
-    private readonly AccountRepository _repository;
-    private readonly Wso2ScimClient _scimClient;
+    private readonly IAccountRepository _repository;
+    private readonly IWso2ScimClient _scimClient;
     private readonly ILogger<AuthController> _logger;
 
-    public AuthController(AccountRepository repository, Wso2ScimClient scimClient, ILogger<AuthController> logger)
+    public AuthController(IAccountRepository repository, IWso2ScimClient scimClient, ILogger<AuthController> logger)
     {
         _repository = repository;
         _scimClient = scimClient;
