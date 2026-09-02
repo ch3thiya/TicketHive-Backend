@@ -102,5 +102,10 @@ app.MapControllers();
 
 app.MapGet("/", () => Results.Ok(new { service = "Catalog Service", status = "Healthy" }));
 app.MapGet("/health", () => Results.Ok("Healthy")); // Health Check Endpoint
+app.MapGet("/api/catalog/init-db", async (DbInitializer initializer) =>
+{
+    await initializer.InitializeAsync();
+    return Results.Ok(new { message = "Catalog database schema initialized successfully." });
+});
 
 app.Run();
