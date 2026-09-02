@@ -88,8 +88,6 @@ public class AuthController : ControllerBase
         }
 
         return Ok(existingAccount);
-
-        return Ok(existingAccount);
     }
 
     /// <summary>
