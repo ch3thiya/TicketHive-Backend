@@ -2,7 +2,6 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Catalog.Service.Db;
 using Catalog.Service.Services;
-
 // Load root .env file if available
 DotNetEnv.Env.TraversePath().Load();
 
@@ -24,7 +23,7 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
     {
-        policy.WithOrigins("http://localhost:5173")
+        policy.WithOrigins("http://localhost:5173", "https://tickethive-frontend.victoriouscoast-e1f47869.southeastasia.azurecontainerapps.io")
               .AllowAnyMethod()
               .AllowAnyHeader()
               .AllowCredentials();

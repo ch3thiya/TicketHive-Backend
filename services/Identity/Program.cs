@@ -4,6 +4,8 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Identity.Service.Clients;
 using Identity.Service.Db;
+// Load root .env file if available
+DotNetEnv.Env.TraversePath().Load();
 
 // Load root .env file if available
 DotNetEnv.Env.TraversePath().Load();
@@ -19,7 +21,7 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
     {
-        policy.WithOrigins("http://localhost:5173")
+        policy.WithOrigins("http://localhost:5173", "https://tickethive-frontend.victoriouscoast-e1f47869.southeastasia.azurecontainerapps.io")
               .AllowAnyMethod()
               .AllowAnyHeader()
               .AllowCredentials();
@@ -71,6 +73,17 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
             RoleClaimType = "groups" // Map Asgardeo's groups claim to the standard .NET Role
+        };
+
+        options.IncludeErrorDetails = true;
+        options.Events = new JwtBearerEvents
+        {
+            OnAuthenticationFailed = context =>
+            {
+                var logger = context.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("JwtAuth");
+                logger.LogError(context.Exception, "JWT Authentication failed: {Message}", context.Exception.Message);
+                return Task.CompletedTask;
+            }
         };
 
         // Bypass SSL validation for JWKS key discovery during local development
