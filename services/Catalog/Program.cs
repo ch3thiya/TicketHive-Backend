@@ -19,14 +19,19 @@ builder.Services.AddScoped<IEventService, EventService>();
 
 
 // Register CORS to allow React Frontend requests
+var allowedFrontendOrigins = builder.Configuration["Cors:AllowedOrigins"]?
+    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+    ?? new[]
+    {
+        "http://localhost:5173",  // Local dev
+        "https://tickethive-frontend.victoriouscoast-e1f47869.southeastasia.azurecontainerapps.io"  // Azure production
+    };
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
     {
-        policy.WithOrigins(
-            "http://localhost:5173",
-            "https://tickethive-frontend.victoriouscoast-e1f47869.southeastasia.azurecontainerapps.io"
-        )
+        policy.WithOrigins(allowedFrontendOrigins)
               .AllowAnyMethod()
               .AllowAnyHeader()
               .AllowCredentials();
