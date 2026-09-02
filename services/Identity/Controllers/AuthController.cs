@@ -51,11 +51,11 @@ public class AuthController : ControllerBase
             .ToList();
 
         string tokenRole = "Customer";
-        if (roles.Any(r => r.Equals("Admin", StringComparison.OrdinalIgnoreCase)))
+        if (roles.Any(r => r.Equals("Admin", StringComparison.OrdinalIgnoreCase) || r.Equals("Admins", StringComparison.OrdinalIgnoreCase)))
         {
             tokenRole = "Admin";
         }
-        else if (roles.Any(r => r.Equals("Organizer", StringComparison.OrdinalIgnoreCase)))
+        else if (roles.Any(r => r.Equals("Organizer", StringComparison.OrdinalIgnoreCase) || r.Equals("Organizers", StringComparison.OrdinalIgnoreCase)))
         {
             tokenRole = "Organizer";
         }
