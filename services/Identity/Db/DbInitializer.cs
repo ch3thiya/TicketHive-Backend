@@ -1,6 +1,7 @@
-using Npgsql;
+using System;
+using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
-using System.IO;
+using Npgsql;
 
 namespace Identity.Service.Db;
 
@@ -17,50 +18,69 @@ public class DbInitializer
 
     public async Task InitializeAsync()
     {
-        _logger.LogInformation("Initializing database schema...");
+        _logger.LogInformation("Initializing Identity database schema...");
 
-        try
+        int maxRetries = 5;
+        for (int attempt = 1; attempt <= maxRetries; attempt++)
         {
-            using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
-            
-            // Define DDL SQL to create tables if they do not exist
-            string ddl = @"
-                CREATE EXTENSION IF NOT EXISTS ""uuid-ossp"";
+            try
+            {
+                using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
 
-                CREATE TABLE IF NOT EXISTS user_accounts (
-                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                    wso2_sub VARCHAR(255) UNIQUE NOT NULL,
-                    email VARCHAR(255) UNIQUE NOT NULL,
-                    full_name VARCHAR(255) NOT NULL,
-                    role VARCHAR(50) NOT NULL,
-                    approval_status VARCHAR(50) NOT NULL,
-                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
-                );
+                // 1. Try extension creation optionally (uuid-ossp / gen_random_uuid is built into Postgres 13+)
+                try
+                {
+                    using var extCmd = new NpgsqlCommand(@"CREATE EXTENSION IF NOT EXISTS ""uuid-ossp"";", connection);
+                    await extCmd.ExecuteNonQueryAsync();
+                }
+                catch (Exception extEx)
+                {
+                    _logger.LogWarning(extEx, "Extension creation skipped (uuid-ossp may already exist or require superuser).");
+                }
 
-                CREATE TABLE IF NOT EXISTS organizer_requests (
-                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                    user_account_id UUID REFERENCES user_accounts(id) ON DELETE CASCADE,
-                    organization_name VARCHAR(255) NOT NULL,
-                    business_email VARCHAR(255) NOT NULL,
-                    phone VARCHAR(50) NOT NULL,
-                    event_type VARCHAR(255) NOT NULL,
-                    about TEXT NOT NULL,
-                    status VARCHAR(50) NOT NULL DEFAULT 'pending',
-                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
-                    reviewed_at TIMESTAMP WITH TIME ZONE
-                );
+                // 2. Execute table and index creation DDL
+                string ddl = @"
+                    CREATE TABLE IF NOT EXISTS user_accounts (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        wso2_sub VARCHAR(255) UNIQUE NOT NULL,
+                        email VARCHAR(255) UNIQUE NOT NULL,
+                        full_name VARCHAR(255) NOT NULL,
+                        role VARCHAR(50) NOT NULL,
+                        approval_status VARCHAR(50) NOT NULL,
+                        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
+                    );
 
-                CREATE INDEX IF NOT EXISTS idx_user_accounts_wso2_sub ON user_accounts(wso2_sub);
-            ";
+                    CREATE TABLE IF NOT EXISTS organizer_requests (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        user_account_id UUID REFERENCES user_accounts(id) ON DELETE CASCADE,
+                        organization_name VARCHAR(255) NOT NULL,
+                        business_email VARCHAR(255) NOT NULL,
+                        phone VARCHAR(50) NOT NULL,
+                        event_type VARCHAR(255) NOT NULL,
+                        about TEXT NOT NULL,
+                        status VARCHAR(50) NOT NULL DEFAULT 'pending',
+                        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+                        reviewed_at TIMESTAMP WITH TIME ZONE
+                    );
 
-            using var command = new NpgsqlCommand(ddl, connection);
-            await command.ExecuteNonQueryAsync();
-            _logger.LogInformation("Database schema initialized successfully.");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "An error occurred while initializing the database.");
-            throw;
+                    CREATE INDEX IF NOT EXISTS idx_user_accounts_wso2_sub ON user_accounts(wso2_sub);
+                ";
+
+                using var command = new NpgsqlCommand(ddl, connection);
+                await command.ExecuteNonQueryAsync();
+                _logger.LogInformation("Identity database schema initialized successfully.");
+                return;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Attempt {Attempt}/{MaxRetries} failed to initialize Identity database schema.", attempt, maxRetries);
+                if (attempt == maxRetries)
+                {
+                    _logger.LogError(ex, "All attempts failed to initialize the Identity database.");
+                    throw;
+                }
+                await Task.Delay(2000);
+            }
         }
     }
 }
