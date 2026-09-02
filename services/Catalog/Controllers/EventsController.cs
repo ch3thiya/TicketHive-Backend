@@ -173,7 +173,7 @@ public class EventsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error getting published events");
-            return StatusCode(500, new { message = "An error occurred while retrieving published events." });
+            return StatusCode(500, new { message = "An error occurred while retrieving published events.", details = ex.Message });
         }
     }
 
