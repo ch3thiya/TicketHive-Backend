@@ -5,7 +5,7 @@ on:
   # Automatically trigger it when detected changes in repo
   push:
     branches: 
-      [ dev ]
+      [ dev, feature/azure-deployment ]
     paths:
     - '**'
     - '.github/workflows/tickethive-identity-AutoDeployTrigger-37b5ad47-cdaa-4ce6-be79-a4bfe83a1d3e.yml'
@@ -35,15 +35,12 @@ jobs:
         uses: azure/container-apps-deploy-action@v2
         with:
           appSourcePath: ${{ github.workspace }}
-          _dockerfilePathKey_: _dockerfilePath_
-          _targetLabelKey_: _targetLabel_
+          dockerfilePath: services/Identity/Dockerfile
           registryUrl: tickethiveacr.azurecr.io
           registryUsername: ${{ secrets.TICKETHIVEIDENTITY_REGISTRY_USERNAME }}
           registryPassword: ${{ secrets.TICKETHIVEIDENTITY_REGISTRY_PASSWORD }}
           containerAppName: tickethive-identity
           resourceGroup: TicketHive-RG
           imageToBuild: tickethiveacr.azurecr.io/tickethive-identity:${{ github.sha }}
-          _buildArgumentsKey_: |
-            _buildArgumentsValues_
 
 

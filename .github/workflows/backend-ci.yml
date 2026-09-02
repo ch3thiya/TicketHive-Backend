@@ -62,6 +62,32 @@ jobs:
           docker push tickethiveacr.azurecr.io/tickethive-catalog:${{ github.sha }}
           docker push tickethiveacr.azurecr.io/tickethive-catalog:latest
 
+      - name: Azure Login
+        if: secrets.AZURE_CREDENTIALS != '' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feature/azure-deployment')
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deploy Identity to Container Apps
+        if: secrets.AZURE_CREDENTIALS != '' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feature/azure-deployment')
+        uses: azure/CLI@v2
+        with:
+          inlineScript: |
+            az containerapp update \
+              --name tickethive-identity \
+              --resource-group TicketHive-RG \
+              --image tickethiveacr.azurecr.io/tickethive-identity:${{ github.sha }}
+
+      - name: Deploy Catalog to Container Apps
+        if: secrets.AZURE_CREDENTIALS != '' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feature/azure-deployment')
+        uses: azure/CLI@v2
+        with:
+          inlineScript: |
+            az containerapp update \
+              --name tickethive-catalog \
+              --resource-group TicketHive-RG \
+              --image tickethiveacr.azurecr.io/tickethive-catalog:${{ github.sha }}
+
       # Uncomment these as the remaining services are initialized:
       # - name: Build Inventory Docker Image
       #   run: docker build -t tickethive-inventory ./services/Inventory
