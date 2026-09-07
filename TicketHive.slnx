@@ -6,4 +6,8 @@
   <Folder Name="/services/Identity/">
     <Project Path="services/Identity/Identity.Service.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Catalog.Service.Tests/Catalog.Service.Tests.csproj" />
+    <Project Path="tests/Identity.Service.Tests/Identity.Service.Tests.csproj" />
+  </Folder>
 </Solution>
