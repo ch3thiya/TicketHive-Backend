@@ -7,13 +7,18 @@ namespace BuildingBlocks;
 
 public static class DatabaseMigrator
 {
-    public static void Migrate(string connectionString, Assembly assembly, ILogger logger)
+    public static void Migrate(string connectionString, Assembly assembly, ILogger logger, Func<string, bool>? scriptFilter = null)
     {
         var normalizedConnectionString = PostgresConnectionString.Normalize(connectionString);
 
-        var upgrader = DeployChanges.To
-            .PostgresqlDatabase(normalizedConnectionString)
-            .WithScriptsEmbeddedInAssembly(assembly)
+        var builder = DeployChanges.To
+            .PostgresqlDatabase(normalizedConnectionString);
+
+        var engineBuilder = scriptFilter is null
+            ? builder.WithScriptsEmbeddedInAssembly(assembly)
+            : builder.WithScriptsEmbeddedInAssembly(assembly, scriptFilter);
+
+        var upgrader = engineBuilder
             .WithTransaction()
             .LogTo(logger)
             .Build();
