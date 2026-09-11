@@ -1,11 +1,13 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
+using BuildingBlocks;
 using Catalog.Service.Db;
 using Catalog.Service.Services;
 // Load root .env file if available
 DotNetEnv.Env.TraversePath().Load();
 
 var builder = WebApplication.CreateBuilder(args);
+builder.AddServiceDefaults();
 
 // Add services to the container.
 builder.Services.AddControllers();
@@ -75,6 +77,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 builder.Services.AddAuthorization();
 
 var app = builder.Build();
+app.UseServiceDefaults();
 
 // Run Database Schema Initialization on Startup
 using (var scope = app.Services.CreateScope())
@@ -102,11 +105,11 @@ app.UseHttpsRedirection();
 
 app.UseAuthentication();
 app.UseAuthorization();
+app.MapDefaultEndpoints();
 
 app.MapControllers();
 
 app.MapGet("/", () => Results.Ok(new { service = "Catalog Service", status = "Healthy" }));
-app.MapGet("/health", () => Results.Ok("Healthy")); // Health Check Endpoint
 app.MapGet("/api/catalog/init-db", async (DbInitializer initializer) =>
 {
     await initializer.InitializeAsync();
@@ -114,3 +117,5 @@ app.MapGet("/api/catalog/init-db", async (DbInitializer initializer) =>
 });
 
 app.Run();
+
+public partial class Program { }
