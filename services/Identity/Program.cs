@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
+using BuildingBlocks;
 using Identity.Service.Clients;
 using Identity.Service.Db;
 // Load root .env file if available
@@ -11,6 +12,7 @@ DotNetEnv.Env.TraversePath().Load();
 DotNetEnv.Env.TraversePath().Load();
 
 var builder = WebApplication.CreateBuilder(args);
+builder.AddServiceDefaults();
 
 // Add services to the container.
 builder.Services.AddControllers();
@@ -112,6 +114,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 builder.Services.AddAuthorization();
 
 var app = builder.Build();
+app.UseServiceDefaults();
 
 // Run Database Schema Initialization on Startup
 using (var scope = app.Services.CreateScope())
@@ -139,11 +142,11 @@ app.UseHttpsRedirection();
 
 app.UseAuthentication();
 app.UseAuthorization();
+app.MapDefaultEndpoints();
 
 app.MapControllers();
 
 app.MapGet("/", () => Results.Ok(new { service = "Identity Service", status = "Healthy" }));
-app.MapGet("/health", () => Results.Ok("Healthy")); // Health Check Endpoint
 app.MapGet("/api/identity/init-db", async (DbInitializer initializer) =>
 {
     await initializer.InitializeAsync();
@@ -151,3 +154,5 @@ app.MapGet("/api/identity/init-db", async (DbInitializer initializer) =>
 });
 
 app.Run();
+
+public partial class Program { }
