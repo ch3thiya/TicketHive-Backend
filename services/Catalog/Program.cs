@@ -41,7 +41,6 @@ builder.WebHost.ConfigureKestrel(options =>
 
 // Register DB Connection, Repositories and Services
 builder.Services.AddSingleton<DbConnectionFactory>();
-builder.Services.AddScoped<DbInitializer>();
 builder.Services.AddScoped<IEventRepository, EventRepository>();
 builder.Services.AddScoped<IEventService, EventService>();
 
@@ -125,11 +124,6 @@ app.MapDefaultEndpoints();
 app.MapControllers();
 
 app.MapGet("/", () => Results.Ok(new { service = "Catalog Service", status = "Healthy" }));
-app.MapGet("/api/catalog/init-db", async (DbInitializer initializer) =>
-{
-    await initializer.InitializeAsync();
-    return Results.Ok(new { message = "Catalog database schema initialized successfully." });
-});
 
 app.Run();
 return 0;

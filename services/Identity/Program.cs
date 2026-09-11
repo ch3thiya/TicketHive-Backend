@@ -64,9 +64,8 @@ builder.Services.AddCors(options =>
     });
 });
 
-// Register DB Connection and Initializer
+// Register DB Connection
 builder.Services.AddSingleton<DbConnectionFactory>();
-builder.Services.AddScoped<DbInitializer>();
 builder.Services.AddScoped<IAccountRepository, AccountRepository>();
 
 // Register WSO2 SCIM 2.0 HttpClient with basic auth credentials
@@ -162,11 +161,6 @@ app.MapDefaultEndpoints();
 app.MapControllers();
 
 app.MapGet("/", () => Results.Ok(new { service = "Identity Service", status = "Healthy" }));
-app.MapGet("/api/identity/init-db", async (DbInitializer initializer) =>
-{
-    await initializer.InitializeAsync();
-    return Results.Ok(new { message = "Identity database schema initialized successfully." });
-});
 
 app.Run();
 return 0;
