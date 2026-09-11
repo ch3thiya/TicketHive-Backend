@@ -1,3 +1,4 @@
+using System.Reflection;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using BuildingBlocks;
@@ -5,6 +6,26 @@ using Catalog.Service.Db;
 using Catalog.Service.Services;
 // Load root .env file if available
 DotNetEnv.Env.TraversePath().Load();
+
+if (args.Contains("--migrate"))
+{
+    var migrationBuilder = WebApplication.CreateBuilder(args);
+    var migrationConnectionString = migrationBuilder.Configuration.GetConnectionString("DefaultConnection")
+        ?? throw new InvalidOperationException("Connection string 'DefaultConnection' is missing from configuration.");
+    using var loggerFactory = LoggerFactory.Create(logging => logging.AddConsole());
+    var migrationLogger = loggerFactory.CreateLogger("Catalog.Migrations");
+
+    try
+    {
+        DatabaseMigrator.Migrate(migrationConnectionString, Assembly.GetExecutingAssembly(), migrationLogger);
+        return 0;
+    }
+    catch (Exception ex)
+    {
+        migrationLogger.LogError(ex, "Catalog database migration failed");
+        return 1;
+    }
+}
 
 var builder = WebApplication.CreateBuilder(args);
 builder.AddServiceDefaults();
@@ -79,18 +100,12 @@ builder.Services.AddAuthorization();
 var app = builder.Build();
 app.UseServiceDefaults();
 
-// Run Database Schema Initialization on Startup
-using (var scope = app.Services.CreateScope())
+// Development only: migrate the database at startup before the host starts.
+if (app.Environment.IsDevelopment())
 {
-    var initializer = scope.ServiceProvider.GetRequiredService<DbInitializer>();
-    try
-    {
-        await initializer.InitializeAsync();
-    }
-    catch (Exception ex)
-    {
-        app.Logger.LogError(ex, "Failed to initialize the Catalog database schema on startup.");
-    }
+    var devMigrationConnectionString = app.Configuration.GetConnectionString("DefaultConnection")
+        ?? throw new InvalidOperationException("Connection string 'DefaultConnection' is missing from configuration.");
+    DatabaseMigrator.Migrate(devMigrationConnectionString, Assembly.GetExecutingAssembly(), app.Logger);
 }
 
 // Configure the HTTP request pipeline.
@@ -117,5 +132,6 @@ app.MapGet("/api/catalog/init-db", async (DbInitializer initializer) =>
 });
 
 app.Run();
+return 0;
 
 public partial class Program { }
