@@ -17,4 +17,11 @@ public static class ServiceDefaultsExtensions
 
         return builder;
     }
+
+    public static WebApplication UseServiceDefaults(this WebApplication app)
+    {
+        app.UseExceptionHandler();
+
+        return app;
+    }
 }
