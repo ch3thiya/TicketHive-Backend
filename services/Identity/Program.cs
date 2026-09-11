@@ -137,12 +137,8 @@ var app = builder.Build();
 app.UseServiceDefaults();
 
 // Development only: migrate the database at startup before the host starts.
-if (app.Environment.IsDevelopment())
-{
-    var devMigrationConnectionString = app.Configuration.GetConnectionString("DefaultConnection")
-        ?? throw new InvalidOperationException("Connection string 'DefaultConnection' is missing from configuration.");
-    DatabaseMigrator.Migrate(devMigrationConnectionString, Assembly.GetExecutingAssembly(), app.Logger);
-}
+DatabaseMigrator.MigrateIfDevelopment(app.Environment, app.Configuration, connectionString =>
+    DatabaseMigrator.Migrate(connectionString, Assembly.GetExecutingAssembly(), app.Logger));
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
