@@ -1,5 +1,8 @@
 <Solution>
   <Folder Name="/services/" />
+  <Folder Name="/services/BuildingBlocks/">
+    <Project Path="services/BuildingBlocks/BuildingBlocks.csproj" />
+  </Folder>
   <Folder Name="/services/Catalog/">
     <Project Path="services/Catalog/Catalog.Service.csproj" />
   </Folder>
