@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Npgsql;
 using Catalog.Service.Models;
@@ -463,38 +464,115 @@ public class EventRepository : IEventRepository
         await command.ExecuteNonQueryAsync();
     }
 
-    public async Task ReplaceTicketCategoriesAsync(Guid showId, List<TicketCategory> categories)
+    public async Task SaveTicketCategoriesAsync(Guid showId, List<TicketCategory> categories)
     {
         using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
         using var transaction = await connection.BeginTransactionAsync();
 
         try
         {
-            const string deleteSql = "DELETE FROM ticket_categories WHERE show_id = @ShowId;";
-            using (var deleteCmd = new NpgsqlCommand(deleteSql, connection, transaction))
+            // Lock every row (active or retired) this show currently owns, so a
+            // concurrent reconcile of the same show can't race this one.
+            var existing = new Dictionary<Guid, bool>();
+            const string lockSql = @"
+                SELECT id, is_active
+                FROM ticket_categories
+                WHERE show_id = @ShowId
+                FOR UPDATE;
+            ";
+            using (var lockCmd = new NpgsqlCommand(lockSql, connection, transaction))
             {
-                deleteCmd.Parameters.AddWithValue("ShowId", showId);
-                await deleteCmd.ExecuteNonQueryAsync();
+                lockCmd.Parameters.AddWithValue("ShowId", showId);
+                using var reader = await lockCmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    existing[reader.GetGuid(0)] = reader.GetBoolean(1);
+                }
             }
+
+            var toUpdate = new List<TicketCategory>();
+            var toInsert = new List<TicketCategory>();
 
             foreach (var category in categories)
             {
-                category.Id = Guid.NewGuid();
-                category.ShowId = showId;
-                category.CreatedAt = DateTime.UtcNow;
+                if (category.Id == Guid.Empty)
+                {
+                    category.Id = Guid.CreateVersion7();
+                    category.ShowId = showId;
+                    toInsert.Add(category);
+                    continue;
+                }
 
-                const string insertSql = @"
-                    INSERT INTO ticket_categories (id, show_id, name, price, capacity, created_at)
-                    VALUES (@Id, @ShowId, @Name, @Price, @Capacity, @CreatedAt);
+                if (!existing.TryGetValue(category.Id, out var isActive))
+                {
+                    throw new ArgumentException($"Ticket category '{category.Id}' does not belong to this show.");
+                }
+
+                if (!isActive)
+                {
+                    throw new ArgumentException($"Ticket category '{category.Id}' has been retired and cannot be reused.");
+                }
+
+                category.ShowId = showId;
+                toUpdate.Add(category);
+            }
+
+            if (toUpdate.Count > 0)
+            {
+                const string updateSql = @"
+                    UPDATE ticket_categories AS t
+                    SET name = v.name, price = v.price, capacity = v.capacity
+                    FROM unnest(@Ids, @Names, @Prices, @Capacities) AS v(id, name, price, capacity)
+                    WHERE t.id = v.id AND t.show_id = @ShowId;
                 ";
-                using var catCmd = new NpgsqlCommand(insertSql, connection, transaction);
-                catCmd.Parameters.AddWithValue("Id", category.Id);
-                catCmd.Parameters.AddWithValue("ShowId", category.ShowId);
-                catCmd.Parameters.AddWithValue("Name", category.Name);
-                catCmd.Parameters.AddWithValue("Price", category.Price);
-                catCmd.Parameters.AddWithValue("Capacity", category.Capacity);
-                catCmd.Parameters.AddWithValue("CreatedAt", category.CreatedAt);
-                await catCmd.ExecuteNonQueryAsync();
+                using var updateCmd = new NpgsqlCommand(updateSql, connection, transaction);
+                updateCmd.Parameters.AddWithValue("ShowId", showId);
+                updateCmd.Parameters.AddWithValue("Ids", toUpdate.Select(c => c.Id).ToArray());
+                updateCmd.Parameters.AddWithValue("Names", toUpdate.Select(c => c.Name).ToArray());
+                updateCmd.Parameters.AddWithValue("Prices", toUpdate.Select(c => c.Price).ToArray());
+                updateCmd.Parameters.AddWithValue("Capacities", toUpdate.Select(c => c.Capacity).ToArray());
+                await updateCmd.ExecuteNonQueryAsync();
+            }
+
+            if (toInsert.Count > 0)
+            {
+                const string insertSql = @"
+                    INSERT INTO ticket_categories (id, show_id, name, price, capacity)
+                    SELECT id, @ShowId, name, price, capacity
+                    FROM unnest(@Ids, @Names, @Prices, @Capacities) AS v(id, name, price, capacity)
+                    RETURNING id, created_at;
+                ";
+                using var insertCmd = new NpgsqlCommand(insertSql, connection, transaction);
+                insertCmd.Parameters.AddWithValue("ShowId", showId);
+                insertCmd.Parameters.AddWithValue("Ids", toInsert.Select(c => c.Id).ToArray());
+                insertCmd.Parameters.AddWithValue("Names", toInsert.Select(c => c.Name).ToArray());
+                insertCmd.Parameters.AddWithValue("Prices", toInsert.Select(c => c.Price).ToArray());
+                insertCmd.Parameters.AddWithValue("Capacities", toInsert.Select(c => c.Capacity).ToArray());
+
+                using var reader = await insertCmd.ExecuteReaderAsync();
+                var createdAtById = new Dictionary<Guid, DateTime>();
+                while (await reader.ReadAsync())
+                {
+                    createdAtById[reader.GetGuid(0)] = reader.GetDateTime(1);
+                }
+
+                foreach (var category in toInsert)
+                {
+                    category.CreatedAt = createdAtById[category.Id];
+                }
+            }
+
+            var keepIds = categories.Select(c => c.Id).ToArray();
+            const string retireSql = @"
+                UPDATE ticket_categories
+                SET is_active = false
+                WHERE show_id = @ShowId AND is_active = true AND id <> ALL(@KeepIds);
+            ";
+            using (var retireCmd = new NpgsqlCommand(retireSql, connection, transaction))
+            {
+                retireCmd.Parameters.AddWithValue("ShowId", showId);
+                retireCmd.Parameters.AddWithValue("KeepIds", keepIds);
+                await retireCmd.ExecuteNonQueryAsync();
             }
 
             await transaction.CommitAsync();
