@@ -283,6 +283,76 @@ public sealed class EventRepositoryTests
         Assert.Equal(existing.Capacity, afterFailure.Capacity);
     }
 
+    // Two organizers editing the same show's categories at the same moment must
+    // serialize on the FOR UPDATE lock, not interleave. Each call keeps Alpha
+    // plus one of Bravo/Charlie and implicitly drops the other, so under any
+    // correct serial ordering exactly one call loses (its kept id has just been
+    // retired by the other) and the survivor's category is the one left active.
+    // Without the lock, both calls can read the initial state before either
+    // commits, and each independently retires the row it wasn't told to keep —
+    // ending with BOTH Bravo and Charlie retired and neither call reporting an
+    // error, which is not a state either serial ordering can produce.
+    [Fact]
+    public async Task SaveTicketCategoriesAsync_ConcurrentUpdatesToSameShow_AreSerialized()
+    {
+        for (var iteration = 0; iteration < 20; iteration++)
+        {
+            // Arrange
+            var seedRepository = CreateRepository();
+            var show = await SeedShowAsync(seedRepository, ("Alpha", 10.00m, 100), ("Bravo", 20.00m, 50), ("Charlie", 30.00m, 25));
+            var categories = await seedRepository.GetTicketCategoriesByShowIdAsync(show.Id);
+            var alpha = categories.Single(c => c.Name == "Alpha");
+            var bravo = categories.Single(c => c.Name == "Bravo");
+            var charlie = categories.Single(c => c.Name == "Charlie");
+
+            var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            async Task<Exception?> KeepAlphaAndAsync(TicketCategory second)
+            {
+                await gate.Task;
+                var repository = CreateRepository();
+                try
+                {
+                    await repository.SaveTicketCategoriesAsync(show.Id, new List<TicketCategory>
+                    {
+                        new() { Id = alpha.Id, Name = alpha.Name, Price = alpha.Price, Capacity = alpha.Capacity },
+                        new() { Id = second.Id, Name = second.Name, Price = second.Price, Capacity = second.Capacity }
+                    });
+                    return null;
+                }
+                catch (Exception ex)
+                {
+                    return ex;
+                }
+            }
+
+            // Act — both start at the same moment: one intends to keep Bravo (drop
+            // Charlie), the other to keep Charlie (drop Bravo).
+            var keepBravoTask = KeepAlphaAndAsync(bravo);
+            var keepCharlieTask = KeepAlphaAndAsync(charlie);
+            gate.SetResult();
+            var results = await Task.WhenAll(keepBravoTask, keepCharlieTask);
+
+            var keepBravoRejected = results[0] is ArgumentException;
+            var keepCharlieRejected = results[1] is ArgumentException;
+
+            // Assert
+            Assert.True(keepBravoRejected ^ keepCharlieRejected,
+                $"Iteration {iteration}: expected exactly one call to be rejected as stale, got keepBravo={results[0]}, keepCharlie={results[1]}.");
+
+            var (_, alphaActive, _) = await ReadCategoryRawAsync(alpha.Id);
+            var (_, bravoActive, _) = await ReadCategoryRawAsync(bravo.Id);
+            var (_, charlieActive, _) = await ReadCategoryRawAsync(charlie.Id);
+
+            Assert.True(alphaActive, $"Iteration {iteration}: Alpha was named by both calls and must remain active.");
+            Assert.True(bravoActive ^ charlieActive,
+                $"Iteration {iteration}: expected exactly one of Bravo/Charlie active, got Bravo={bravoActive}, Charlie={charlieActive}.");
+            Assert.Equal(!keepBravoRejected, bravoActive);
+            Assert.Equal(!keepCharlieRejected, charlieActive);
+            Assert.Equal(3, await CountCategoryRowsAsync(show.Id));
+        }
+    }
+
     private static List<TicketCategory> CloneWithSameValues(List<TicketCategory> categories)
     {
         return categories.Select(c => new TicketCategory { Id = c.Id, Name = c.Name, Price = c.Price, Capacity = c.Capacity }).ToList();
@@ -304,6 +374,18 @@ public sealed class EventRepositoryTests
         }
 
         return (false, false, string.Empty);
+    }
+
+    private async Task<long> CountCategoryRowsAsync(Guid showId)
+    {
+        await using var connection = new NpgsqlConnection(_db.ConnectionString);
+        await connection.OpenAsync();
+
+        const string sql = "SELECT COUNT(*) FROM ticket_categories WHERE show_id = @ShowId;";
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("ShowId", showId);
+
+        return (long)(await command.ExecuteScalarAsync())!;
     }
 
     private async Task<Show> SeedShowAsync(EventRepository repository, params (string Name, decimal Price, int Capacity)[] categories)
