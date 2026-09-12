@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -94,7 +95,7 @@ public class AdminControllerTests
     }
 
     [Fact]
-    public async Task ApproveRequest_RequestAlreadyProcessed_ReturnsBadRequest()
+    public async Task ApproveRequest_RequestAlreadyDecided_ReturnsConflict()
     {
         // Arrange
         var requestId = Guid.NewGuid();
@@ -110,8 +111,8 @@ public class AdminControllerTests
         var result = await _controller.ApproveRequest(requestId);
 
         // Assert
-        var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
-        Assert.NotNull(badRequestResult.Value);
+        var objectResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status409Conflict, objectResult.StatusCode);
 
         _mockScimClient.Verify(s => s.UpdateApprovalStatusAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
         _mockRepo.Verify(r => r.UpdateOrganizerRequestStatusAsync(It.IsAny<Guid>(), It.IsAny<string>()), Times.Never);
@@ -143,12 +144,11 @@ public class AdminControllerTests
     }
 
     [Fact]
-    public async Task RejectRequest_ValidPendingRequest_DeletesWso2UserAndLocalAccountAndReturnsOk()
+    public async Task RejectRequest_ValidPendingRequest_UpdatesRequestStatusAndLeavesAccountUntouched()
     {
         // Arrange
         var requestId = Guid.NewGuid();
         var userAccountId = Guid.NewGuid();
-        var wso2Sub = "wso2-sub-rejected-456";
 
         var organizerRequest = new OrganizerRequest
         {
@@ -157,19 +157,8 @@ public class AdminControllerTests
             Status = "pending"
         };
 
-        var userAccount = new UserAccount
-        {
-            Id = userAccountId,
-            Wso2Sub = wso2Sub,
-            Email = "rejected@domain.com",
-            ApprovalStatus = "pending"
-        };
-
         _mockRepo.Setup(r => r.GetOrganizerRequestByIdAsync(requestId)).ReturnsAsync(organizerRequest);
-        _mockRepo.Setup(r => r.GetUserAccountByIdAsync(userAccountId)).ReturnsAsync(userAccount);
-
-        _mockScimClient.Setup(s => s.DeleteUserAsync(wso2Sub)).Returns(Task.CompletedTask);
-        _mockRepo.Setup(r => r.DeleteUserAccountAsync(userAccountId)).Returns(Task.CompletedTask);
+        _mockRepo.Setup(r => r.UpdateOrganizerRequestStatusAsync(requestId, "rejected")).Returns(Task.CompletedTask);
 
         // Act
         var result = await _controller.RejectRequest(requestId);
@@ -178,8 +167,13 @@ public class AdminControllerTests
         var okResult = Assert.IsType<OkObjectResult>(result);
         Assert.NotNull(okResult.Value);
 
-        _mockScimClient.Verify(s => s.DeleteUserAsync(wso2Sub), Times.Once);
-        _mockRepo.Verify(r => r.DeleteUserAccountAsync(userAccountId), Times.Once);
+        _mockRepo.Verify(r => r.UpdateOrganizerRequestStatusAsync(requestId, "rejected"), Times.Once);
+
+        // The applicant's account and Asgardeo identity must never be touched.
+        _mockRepo.Verify(r => r.GetUserAccountByIdAsync(It.IsAny<Guid>()), Times.Never);
+        _mockRepo.Verify(r => r.UpdateUserAccountRoleAndStatusAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        _mockScimClient.Verify(s => s.DeleteUserAsync(It.IsAny<string>()), Times.Never);
+        _mockScimClient.Verify(s => s.UpdateApprovalStatusAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
     }
 
     [Fact]
@@ -198,7 +192,7 @@ public class AdminControllerTests
     }
 
     [Fact]
-    public async Task RejectRequest_RequestAlreadyProcessed_ReturnsBadRequest()
+    public async Task RejectRequest_RequestAlreadyDecided_ReturnsConflict()
     {
         // Arrange
         var requestId = Guid.NewGuid();
@@ -214,36 +208,11 @@ public class AdminControllerTests
         var result = await _controller.RejectRequest(requestId);
 
         // Assert
-        var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
-        Assert.NotNull(badRequestResult.Value);
+        var objectResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status409Conflict, objectResult.StatusCode);
 
+        _mockRepo.Verify(r => r.UpdateOrganizerRequestStatusAsync(It.IsAny<Guid>(), It.IsAny<string>()), Times.Never);
         _mockScimClient.Verify(s => s.DeleteUserAsync(It.IsAny<string>()), Times.Never);
-        _mockRepo.Verify(r => r.DeleteUserAccountAsync(It.IsAny<Guid>()), Times.Never);
-    }
-
-    [Fact]
-    public async Task RejectRequest_AssociatedUserAccountNotFound_ReturnsNotFound()
-    {
-        // Arrange
-        var requestId = Guid.NewGuid();
-        var userAccountId = Guid.NewGuid();
-
-        var organizerRequest = new OrganizerRequest
-        {
-            Id = requestId,
-            UserAccountId = userAccountId,
-            Status = "pending"
-        };
-
-        _mockRepo.Setup(r => r.GetOrganizerRequestByIdAsync(requestId)).ReturnsAsync(organizerRequest);
-        _mockRepo.Setup(r => r.GetUserAccountByIdAsync(userAccountId)).ReturnsAsync((UserAccount?)null);
-
-        // Act
-        var result = await _controller.RejectRequest(requestId);
-
-        // Assert
-        var notFoundResult = Assert.IsType<NotFoundObjectResult>(result);
-        Assert.NotNull(notFoundResult.Value);
     }
 
     [Fact]

@@ -101,4 +101,19 @@ public class InternalOrganizersControllerTests
         // Assert
         Assert.IsType<NotFoundResult>(result);
     }
+
+    [Fact]
+    public async Task GetOrganizerBySub_RejectedOrganizerApplicant_ReturnsNotFound()
+    {
+        // Arrange: a rejected organizer request never moved the applicant's role
+        // off "Customer", so this is the exact account shape rejection leaves behind.
+        var account = Account("Customer", "pending");
+        _mockRepo.Setup(r => r.GetUserAccountBySubAsync("sub-1")).ReturnsAsync(account);
+
+        // Act
+        var result = await _controller.GetOrganizerBySub("sub-1");
+
+        // Assert
+        Assert.IsType<NotFoundResult>(result);
+    }
 }
