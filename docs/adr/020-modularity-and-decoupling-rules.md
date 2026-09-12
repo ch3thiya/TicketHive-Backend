@@ -1,4 +1,4 @@
-# ADR-015: Modularity and decoupling rules inside each codebase
+# ADR-020: Modularity and decoupling rules inside each codebase
 
 - **Status:** Accepted
 - **Date:** 2026-09-11
