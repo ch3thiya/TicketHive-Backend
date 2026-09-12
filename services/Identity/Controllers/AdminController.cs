@@ -91,8 +91,9 @@ public class AdminController : ControllerBase
     }
 
     /// <summary>
-    /// Rejects an organizer request. Sets their status to 'rejected',
-    /// and patches their WSO2 custom claim.
+    /// Rejects an organizer request. Sets the request's own status to 'rejected'
+    /// without touching the applicant's account or Asgardeo identity, so they
+    /// remain a normal customer.
     /// </summary>
     [HttpPost("{id}/reject")]
     public async Task<IActionResult> RejectRequest(Guid id)
@@ -109,22 +110,15 @@ public class AdminController : ControllerBase
 
             if (request.Status != "pending")
             {
-                return BadRequest(new { message = $"Cannot reject a request that is already '{request.Status}'." });
+                return Problem(
+                    detail: $"Cannot reject a request that is already '{request.Status}'.",
+                    statusCode: StatusCodes.Status409Conflict,
+                    title: "Request already decided");
             }
 
-            var account = await _repository.GetUserAccountByIdAsync(request.UserAccountId);
-            if (account == null)
-            {
-                return NotFound(new { message = "Associated user account not found." });
-            }
+            await _repository.UpdateOrganizerRequestStatusAsync(id, "rejected");
 
-            // 1. Delete user account from WSO2 Asgardeo via SCIM
-            await _scimClient.DeleteUserAsync(account.Wso2Sub);
-
-            // 2. Delete user account and organizer request from the local database
-            await _repository.DeleteUserAccountAsync(account.Id);
-
-            _logger.LogInformation("Successfully rejected organizer request: {Id} for account {AccountId}", id, account.Id);
+            _logger.LogInformation("Successfully rejected organizer request: {Id}", id);
             return Ok(new { message = "Organizer request rejected successfully." });
         }
         catch (Exception ex)
