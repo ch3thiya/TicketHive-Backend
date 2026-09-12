@@ -1,10 +1,8 @@
 using System;
-using System.Security.Claims;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Hosting;
+using Catalog.Service.Authorization;
 using Catalog.Service.Services;
 
 namespace Catalog.Service.Controllers;
@@ -15,40 +13,21 @@ public class EventsController : ControllerBase
 {
     private readonly IEventService _eventService;
     private readonly ILogger<EventsController> _logger;
-    private readonly IWebHostEnvironment _env;
 
-    public EventsController(IEventService eventService, ILogger<EventsController> logger, IWebHostEnvironment env)
+    public EventsController(IEventService eventService, ILogger<EventsController> logger)
     {
         _eventService = eventService;
         _logger = logger;
-        _env = env;
     }
 
+    // The active-organizer policy resolves and validates the caller's organizer id
+    // against Identity; this just reads back what it already stashed on the request.
     private Guid GetCurrentOrganizerId()
     {
-        // 1. Primary: Extract sub or NameIdentifier from authenticated JWT token claims
-        var subClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
-            ?? User.FindFirst("sub")?.Value;
-
-        if (!string.IsNullOrEmpty(subClaim))
+        if (HttpContext.Items.TryGetValue(ActiveOrganizerAuthorizationHandler.OrganizerIdItemKey, out var value) &&
+            value is Guid organizerId)
         {
-            if (Guid.TryParse(subClaim, out var parsedGuid))
-            {
-                return parsedGuid;
-            }
-
-            // Deterministic GUID based on subject claim string (e.g. Asgardeo/WSO2 user ID)
-            using var md5 = System.Security.Cryptography.MD5.Create();
-            var hash = md5.ComputeHash(System.Text.Encoding.UTF8.GetBytes(subClaim));
-            return new Guid(hash);
-        }
-
-        // 2. Development/Testing Fallback only: Allow X-Organizer-Id header if running locally in Development
-        if (_env.IsDevelopment() &&
-            Request.Headers.TryGetValue("X-Organizer-Id", out var headerVal) &&
-            Guid.TryParse(headerVal.ToString(), out var headerGuid))
-        {
-            return headerGuid;
+            return organizerId;
         }
 
         throw new UnauthorizedAccessException("Organizer identity could not be determined from access token.");
