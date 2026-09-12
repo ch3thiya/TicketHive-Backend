@@ -55,6 +55,7 @@ public class EventsController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Policy = "ActiveOrganizer")]
     public async Task<IActionResult> CreateEvent([FromBody] CreateEventDto dto)
     {
         try
@@ -79,6 +80,7 @@ public class EventsController : ControllerBase
     }
 
     [HttpPost("{eventId}/shows")]
+    [Authorize(Policy = "ActiveOrganizer")]
     public async Task<IActionResult> CreateShow(Guid eventId, [FromBody] CreateShowRequestDto dto)
     {
         try
@@ -107,6 +109,7 @@ public class EventsController : ControllerBase
     }
 
     [HttpGet("my-events")]
+    [Authorize(Policy = "ActiveOrganizer")]
     public async Task<IActionResult> GetMyEvents()
     {
         try
@@ -127,6 +130,7 @@ public class EventsController : ControllerBase
     }
 
     [HttpGet]
+    [AllowAnonymous]
     public async Task<IActionResult> GetAllPublishedEvents(
         [FromQuery] string? search = null,
         [FromQuery] string? category = null,
@@ -183,6 +187,7 @@ public class EventsController : ControllerBase
     /// Note: Organizer-specific event detail is served via GET /my-events which returns all statuses.
     /// </summary>
     [HttpGet("{eventId}")]
+    [AllowAnonymous]
     public async Task<IActionResult> GetEventById(Guid eventId)
     {
         try
@@ -203,6 +208,7 @@ public class EventsController : ControllerBase
     }
 
     [HttpPost("{eventId}/publish")]
+    [Authorize(Policy = "ActiveOrganizer")]
     public async Task<IActionResult> PublishEvent(Guid eventId)
     {
         try
@@ -231,6 +237,7 @@ public class EventsController : ControllerBase
     }
 
     [HttpPut("{eventId}")]
+    [Authorize(Policy = "ActiveOrganizer")]
     public async Task<IActionResult> UpdateEvent(Guid eventId, [FromBody] UpdateEventDto dto)
     {
         try
@@ -259,6 +266,7 @@ public class EventsController : ControllerBase
     }
 
     [HttpPost("{eventId}/cancel")]
+    [Authorize(Policy = "ActiveOrganizer")]
     public async Task<IActionResult> CancelEvent(Guid eventId)
     {
         try
@@ -283,6 +291,7 @@ public class EventsController : ControllerBase
     }
 
     [HttpPut("/api/catalog/shows/{showId}")]
+    [Authorize(Policy = "ActiveOrganizer")]
     public async Task<IActionResult> UpdateShow(Guid showId, [FromBody] UpdateShowDto dto)
     {
         try
@@ -307,6 +316,7 @@ public class EventsController : ControllerBase
     }
 
     [HttpPost("/api/catalog/shows/{showId}/cancel")]
+    [Authorize(Policy = "ActiveOrganizer")]
     public async Task<IActionResult> CancelShow(Guid showId)
     {
         try
