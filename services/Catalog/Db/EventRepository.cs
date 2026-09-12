@@ -391,9 +391,9 @@ public class EventRepository : IEventRepository
         using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
 
         const string sql = @"
-            SELECT id, show_id, name, price, capacity, created_at
+            SELECT id, show_id, name, price, capacity, is_active, created_at
             FROM ticket_categories
-            WHERE show_id = @ShowId
+            WHERE show_id = @ShowId AND is_active = true
             ORDER BY price ASC;
         ";
 
@@ -411,7 +411,8 @@ public class EventRepository : IEventRepository
                 Name = reader.GetString(2),
                 Price = reader.GetDecimal(3),
                 Capacity = reader.GetInt32(4),
-                CreatedAt = reader.GetDateTime(5)
+                IsActive = reader.GetBoolean(5),
+                CreatedAt = reader.GetDateTime(6)
             });
         }
 
