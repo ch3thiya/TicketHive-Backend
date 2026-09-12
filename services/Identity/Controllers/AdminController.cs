@@ -95,8 +95,8 @@ public class AdminController : ControllerBase
 
     /// <summary>
     /// Rejects an organizer request. Sets the request's own status to 'rejected'
-    /// without touching the applicant's account or Asgardeo identity, so they
-    /// remain a normal customer.
+    /// and resets the applicant's account to the plain-customer shape it had
+    /// before applying, without touching their Asgardeo identity.
     /// </summary>
     [HttpPost("{id}/reject")]
     public async Task<IActionResult> RejectRequest(Guid id)
@@ -119,6 +119,10 @@ public class AdminController : ControllerBase
                     title: "Request already decided");
             }
 
+            // Applying moved the account's approval status to 'pending'; reset it to
+            // the plain-customer value so the applicant is indistinguishable from a
+            // user who never applied. Role is already 'Customer' and stays that way.
+            await _repository.UpdateUserAccountRoleAndStatusAsync(request.UserAccountId, "Customer", "approved");
             await _repository.UpdateOrganizerRequestStatusAsync(id, "rejected");
 
             _logger.LogInformation("Successfully rejected organizer request: {Id}", id);
