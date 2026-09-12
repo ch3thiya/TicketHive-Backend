@@ -1,4 +1,4 @@
-# ADR-011: Code structure and shared libraries
+# ADR-015: Code structure and shared libraries
 
 - **Status:** Accepted
 - **Date:** 2026-09-11
