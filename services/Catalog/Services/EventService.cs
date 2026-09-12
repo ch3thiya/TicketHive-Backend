@@ -315,6 +315,11 @@ public class EventService : IEventService
             throw new UnauthorizedAccessException("You are not authorized to publish this event.");
         }
 
+        if (!EventStatusTransitions.CanTransition(evt.Status, "Published", out var transitionReason))
+        {
+            throw new InvalidOperationException(transitionReason);
+        }
+
         var shows = await _repository.GetShowsByEventIdAsync(eventId);
         if (shows == null || shows.Count == 0)
         {
@@ -383,6 +388,11 @@ public class EventService : IEventService
             throw new UnauthorizedAccessException("You are not authorized to cancel this event.");
         }
 
+        if (!EventStatusTransitions.CanTransition(evt.Status, "Cancelled", out var transitionReason))
+        {
+            throw new InvalidOperationException(transitionReason);
+        }
+
         _logger.LogInformation("Cancelling Event {EventId} for Organizer {OrganizerId}", eventId, organizerId);
         await _repository.UpdateEventStatusAsync(eventId, "Cancelled");
     }
@@ -438,6 +448,11 @@ public class EventService : IEventService
         if (evt == null || evt.OrganizerId != organizerId)
         {
             throw new UnauthorizedAccessException("You are not authorized to cancel this show.");
+        }
+
+        if (!ShowStatusTransitions.CanTransition(show.Status, "Cancelled", out var transitionReason))
+        {
+            throw new InvalidOperationException(transitionReason);
         }
 
         _logger.LogInformation("Cancelling Show {ShowId} for Organizer {OrganizerId}", showId, organizerId);
