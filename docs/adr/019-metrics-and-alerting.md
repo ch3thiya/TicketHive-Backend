@@ -1,4 +1,4 @@
-# ADR-014: Business metrics, dashboard and alerting
+# ADR-019: Business metrics, dashboard and alerting
 
 - **Status:** Accepted
 - **Date:** 2026-09-11
