@@ -59,7 +59,10 @@ public class AdminController : ControllerBase
 
             if (request.Status != "pending")
             {
-                return BadRequest(new { message = $"Cannot approve a request that is already '{request.Status}'." });
+                return Problem(
+                    detail: $"Cannot approve a request that is already '{request.Status}'.",
+                    statusCode: StatusCodes.Status409Conflict,
+                    title: "Request already decided");
             }
 
             var account = await _repository.GetUserAccountByIdAsync(request.UserAccountId);
