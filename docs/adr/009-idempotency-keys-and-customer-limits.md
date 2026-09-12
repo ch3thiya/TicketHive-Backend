@@ -9,7 +9,7 @@ Clients retry after timeouts, and one customer can send parallel requests. Both 
 
 ## Decision
 
-- `POST /api/inventory/holds` requires an `Idempotency-Key`, stored with a unique constraint; a retry returns the original hold.
+- `POST /api/inventory/holds` requires an `Idempotency-Key`, stored with a unique constraint scoped to the customer and operation plus a request fingerprint; a matching retry returns the original hold, while a different customer or payload is rejected.
 - The per-customer, per-show ticket limit (default about 6) is enforced with a conditional update on a small quota row inside the hold transaction.
 - The price is copied into the hold; admission tokens are required for high-demand shows.
 
