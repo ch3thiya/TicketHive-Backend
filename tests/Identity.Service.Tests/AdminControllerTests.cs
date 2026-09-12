@@ -170,6 +170,7 @@ public class AdminControllerTests
 
         // The account row is reset to the plain-customer shape (never deleted)...
         _mockRepo.Verify(r => r.UpdateUserAccountRoleAndStatusAsync(userAccountId, "Customer", "approved"), Times.Once);
+        _mockRepo.Verify(r => r.UpdateUserAccountRoleAndStatusAsync(It.IsAny<Guid>(), It.Is<string>(role => role != "Customer"), It.IsAny<string>()), Times.Never);
         _mockRepo.Verify(r => r.UpdateOrganizerRequestStatusAsync(requestId, "rejected"), Times.Once);
 
         // ...and the applicant's Asgardeo identity is never touched.
