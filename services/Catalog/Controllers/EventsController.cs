@@ -206,7 +206,10 @@ public class EventsController : ControllerBase
         }
         catch (InvalidOperationException ex)
         {
-            return BadRequest(new { message = ex.Message });
+            return Problem(
+                detail: ex.Message,
+                statusCode: StatusCodes.Status409Conflict,
+                title: "Invalid event status transition");
         }
         catch (Exception ex)
         {
@@ -237,6 +240,13 @@ public class EventsController : ControllerBase
         {
             return BadRequest(new { message = ex.Message });
         }
+        catch (InvalidOperationException ex)
+        {
+            return Problem(
+                detail: ex.Message,
+                statusCode: StatusCodes.Status409Conflict,
+                title: "Invalid event status transition");
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error updating event {EventId}", eventId);
@@ -261,6 +271,13 @@ public class EventsController : ControllerBase
         catch (UnauthorizedAccessException ex)
         {
             return StatusCode(403, new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Problem(
+                detail: ex.Message,
+                statusCode: StatusCodes.Status409Conflict,
+                title: "Invalid event status transition");
         }
         catch (Exception ex)
         {
@@ -287,6 +304,13 @@ public class EventsController : ControllerBase
         {
             return StatusCode(403, new { message = ex.Message });
         }
+        catch (InvalidOperationException ex)
+        {
+            return Problem(
+                detail: ex.Message,
+                statusCode: StatusCodes.Status409Conflict,
+                title: "Invalid show status transition");
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error updating show {ShowId}", showId);
@@ -311,6 +335,13 @@ public class EventsController : ControllerBase
         catch (UnauthorizedAccessException ex)
         {
             return StatusCode(403, new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Problem(
+                detail: ex.Message,
+                statusCode: StatusCodes.Status409Conflict,
+                title: "Invalid show status transition");
         }
         catch (Exception ex)
         {

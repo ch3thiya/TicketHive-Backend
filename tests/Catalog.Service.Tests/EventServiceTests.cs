@@ -788,4 +788,135 @@ public class EventServiceTests
         Assert.Null(result);
         _mockRepo.Verify(r => r.GetPublishedEventByIdAsync(eventId), Times.Once);
     }
+
+    [Fact]
+    public async Task PublishEvent_CancelledEvent_ThrowsInvalidOperationException()
+    {
+        // Arrange
+        var organizerId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+
+        _mockRepo.Setup(r => r.GetEventByIdAsync(eventId))
+                 .ReturnsAsync(new Event { Id = eventId, OrganizerId = organizerId, Status = "Cancelled" });
+
+        // Act & Assert
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _service.PublishEventAsync(organizerId, eventId));
+        _mockRepo.Verify(r => r.GetShowsByEventIdAsync(It.IsAny<Guid>()), Times.Never);
+        _mockRepo.Verify(r => r.UpdateEventStatusAsync(It.IsAny<Guid>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task PublishEvent_AlreadyPublishedEvent_ThrowsInvalidOperationException()
+    {
+        // Arrange
+        var organizerId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+
+        _mockRepo.Setup(r => r.GetEventByIdAsync(eventId))
+                 .ReturnsAsync(new Event { Id = eventId, OrganizerId = organizerId, Status = "Published" });
+
+        // Act & Assert
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _service.PublishEventAsync(organizerId, eventId));
+        _mockRepo.Verify(r => r.UpdateEventStatusAsync(It.IsAny<Guid>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CancelEvent_AlreadyCancelledEvent_ThrowsInvalidOperationException()
+    {
+        // Arrange
+        var organizerId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+
+        _mockRepo.Setup(r => r.GetEventByIdAsync(eventId))
+                 .ReturnsAsync(new Event { Id = eventId, OrganizerId = organizerId, Status = "Cancelled" });
+
+        // Act & Assert
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _service.CancelEventAsync(organizerId, eventId));
+        _mockRepo.Verify(r => r.UpdateEventStatusAsync(It.IsAny<Guid>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CancelEvent_DraftEvent_UpdatesStatusToCancelled()
+    {
+        // Arrange
+        var organizerId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+
+        _mockRepo.Setup(r => r.GetEventByIdAsync(eventId))
+                 .ReturnsAsync(new Event { Id = eventId, OrganizerId = organizerId, Status = "Draft" });
+
+        // Act
+        await _service.CancelEventAsync(organizerId, eventId);
+
+        // Assert
+        _mockRepo.Verify(r => r.UpdateEventStatusAsync(eventId, "Cancelled"), Times.Once);
+    }
+
+    [Fact]
+    public async Task CancelShow_AlreadyCancelledShow_ThrowsInvalidOperationException()
+    {
+        // Arrange
+        var organizerId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+        var showId = Guid.NewGuid();
+
+        _mockRepo.Setup(r => r.GetShowByIdAsync(showId))
+                 .ReturnsAsync(new Show { Id = showId, EventId = eventId, Status = "Cancelled" });
+
+        _mockRepo.Setup(r => r.GetEventByIdAsync(eventId))
+                 .ReturnsAsync(new Event { Id = eventId, OrganizerId = organizerId, Status = "Published" });
+
+        // Act & Assert
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _service.CancelShowAsync(organizerId, showId));
+        _mockRepo.Verify(r => r.UpdateShowStatusAsync(It.IsAny<Guid>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateEvent_CancelledEvent_ThrowsInvalidOperationException()
+    {
+        // Arrange
+        var organizerId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+
+        _mockRepo.Setup(r => r.GetEventByIdAsync(eventId))
+                 .ReturnsAsync(new Event { Id = eventId, OrganizerId = organizerId, Name = "Old Name", Status = "Cancelled" });
+
+        var updateDto = new UpdateEventDto(
+            Name: "Updated Name",
+            Description: "",
+            Category: "",
+            EventDate: null,
+            EventTime: null,
+            BannerUrl: "",
+            CancellationCutoffHours: null
+        );
+
+        // Act & Assert
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _service.UpdateEventAsync(organizerId, eventId, updateDto));
+        _mockRepo.Verify(r => r.UpdateEventAsync(It.IsAny<Event>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateShow_CancelledShow_ThrowsInvalidOperationException()
+    {
+        // Arrange
+        var organizerId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+        var showId = Guid.NewGuid();
+
+        _mockRepo.Setup(r => r.GetShowByIdAsync(showId))
+                 .ReturnsAsync(new Show { Id = showId, EventId = eventId, Status = "Cancelled" });
+
+        _mockRepo.Setup(r => r.GetEventByIdAsync(eventId))
+                 .ReturnsAsync(new Event { Id = eventId, OrganizerId = organizerId });
+
+        var updateDto = new UpdateShowDto(
+            ShowDate: new DateOnly(2026, 9, 2),
+            ShowTime: new TimeOnly(20, 0)
+        );
+
+        // Act & Assert
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _service.UpdateShowAsync(organizerId, showId, updateDto));
+        _mockRepo.Verify(r => r.UpdateShowAsync(It.IsAny<Show>()), Times.Never);
+    }
 }
