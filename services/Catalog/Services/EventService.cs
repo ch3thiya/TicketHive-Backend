@@ -359,6 +359,11 @@ public class EventService : IEventService
             throw new UnauthorizedAccessException("You are not authorized to update this event.");
         }
 
+        if (!EventStatusTransitions.CanEdit(evt.Status, out var editReason))
+        {
+            throw new InvalidOperationException(editReason);
+        }
+
         if (string.IsNullOrWhiteSpace(dto.Name))
         {
             throw new ArgumentException("Event Name is required.", nameof(dto.Name));
@@ -409,6 +414,11 @@ public class EventService : IEventService
         if (evt == null || evt.OrganizerId != organizerId)
         {
             throw new UnauthorizedAccessException("You are not authorized to update this show.");
+        }
+
+        if (!ShowStatusTransitions.CanEdit(show.Status, out var editReason))
+        {
+            throw new InvalidOperationException(editReason);
         }
 
         show.ShowDate = dto.ShowDate;
