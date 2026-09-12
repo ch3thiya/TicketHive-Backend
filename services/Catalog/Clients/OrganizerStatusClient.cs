@@ -12,17 +12,20 @@ public class OrganizerStatusClient : IOrganizerStatusClient
 
     private readonly HttpClient _httpClient;
     private readonly IMemoryCache _cache;
+    private readonly TimeProvider _timeProvider;
     private readonly ILogger<OrganizerStatusClient> _logger;
     private readonly TimeSpan _cacheDuration;
 
     public OrganizerStatusClient(
         HttpClient httpClient,
         IMemoryCache cache,
+        TimeProvider timeProvider,
         IOptions<OrganizerStatusClientOptions> options,
         ILogger<OrganizerStatusClient> logger)
     {
         _httpClient = httpClient;
         _cache = cache;
+        _timeProvider = timeProvider;
         _logger = logger;
         _cacheDuration = TimeSpan.FromSeconds(options.Value.CacheDurationSeconds);
     }
@@ -30,9 +33,10 @@ public class OrganizerStatusClient : IOrganizerStatusClient
     public async Task<OrganizerLookupResult> GetOrganizerStatusAsync(string sub, CancellationToken cancellationToken = default)
     {
         var cacheKey = CacheKeyPrefix + sub;
-        if (_cache.TryGetValue(cacheKey, out OrganizerLookupResult? cached) && cached is not null)
+        var now = _timeProvider.GetUtcNow();
+        if (_cache.TryGetValue(cacheKey, out CacheEntry? cached) && cached is not null && cached.ExpiresAt > now)
         {
-            return cached;
+            return cached.Result;
         }
 
         OrganizerLookupResult result;
@@ -72,9 +76,14 @@ public class OrganizerStatusClient : IOrganizerStatusClient
             return new OrganizerLookupResult(OrganizerLookupStatus.Unavailable, null);
         }
 
-        _cache.Set(cacheKey, result, _cacheDuration);
+        // A generous memory-only expiration bounds cache growth; the freshness
+        // window that matters for correctness is CacheEntry.ExpiresAt above,
+        // checked against the injected TimeProvider so it stays testable.
+        _cache.Set(cacheKey, new CacheEntry(result, now + _cacheDuration), _cacheDuration * 10);
         return result;
     }
 
     private record OrganizerLookupResponseDto(Guid OrganizerId);
+
+    private record CacheEntry(OrganizerLookupResult Result, DateTimeOffset ExpiresAt);
 }
