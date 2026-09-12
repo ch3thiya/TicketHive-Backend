@@ -1,4 +1,4 @@
-# ADR-013: Telemetry backends within budget
+# ADR-018: Telemetry backends within budget
 
 - **Status:** Accepted
 - **Date:** 2026-09-11
