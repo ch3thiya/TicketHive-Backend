@@ -455,6 +455,143 @@ public class EventServiceTests
     }
 
     [Fact]
+    public async Task UpdateShow_CategoryEmptyName_ThrowsArgumentException()
+    {
+        // Arrange
+        var organizerId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+        var showId = Guid.NewGuid();
+
+        _mockRepo.Setup(r => r.GetShowByIdAsync(showId))
+                 .ReturnsAsync(new Show { Id = showId, EventId = eventId, Status = "Active" });
+        _mockRepo.Setup(r => r.GetEventByIdAsync(eventId))
+                 .ReturnsAsync(new Event { Id = eventId, OrganizerId = organizerId });
+
+        var updateDto = new UpdateShowDto(
+            ShowDate: new DateOnly(2026, 9, 2),
+            ShowTime: new TimeOnly(20, 0),
+            Categories: new List<UpdateTicketCategoryDto> { new(null, "", 50m, 100) }
+        );
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ArgumentException>(() => _service.UpdateShowAsync(organizerId, showId, updateDto));
+        _mockRepo.Verify(r => r.SaveTicketCategoriesAsync(It.IsAny<Guid>(), It.IsAny<List<TicketCategory>>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateShow_CategoryNegativePrice_ThrowsArgumentException()
+    {
+        // Arrange
+        var organizerId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+        var showId = Guid.NewGuid();
+
+        _mockRepo.Setup(r => r.GetShowByIdAsync(showId))
+                 .ReturnsAsync(new Show { Id = showId, EventId = eventId, Status = "Active" });
+        _mockRepo.Setup(r => r.GetEventByIdAsync(eventId))
+                 .ReturnsAsync(new Event { Id = eventId, OrganizerId = organizerId });
+
+        var updateDto = new UpdateShowDto(
+            ShowDate: new DateOnly(2026, 9, 2),
+            ShowTime: new TimeOnly(20, 0),
+            Categories: new List<UpdateTicketCategoryDto> { new(null, "General", -10m, 100) }
+        );
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ArgumentException>(() => _service.UpdateShowAsync(organizerId, showId, updateDto));
+        _mockRepo.Verify(r => r.SaveTicketCategoriesAsync(It.IsAny<Guid>(), It.IsAny<List<TicketCategory>>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateShow_CategoryZeroCapacity_ThrowsArgumentException()
+    {
+        // Arrange
+        var organizerId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+        var showId = Guid.NewGuid();
+
+        _mockRepo.Setup(r => r.GetShowByIdAsync(showId))
+                 .ReturnsAsync(new Show { Id = showId, EventId = eventId, Status = "Active" });
+        _mockRepo.Setup(r => r.GetEventByIdAsync(eventId))
+                 .ReturnsAsync(new Event { Id = eventId, OrganizerId = organizerId });
+
+        var updateDto = new UpdateShowDto(
+            ShowDate: new DateOnly(2026, 9, 2),
+            ShowTime: new TimeOnly(20, 0),
+            Categories: new List<UpdateTicketCategoryDto> { new(null, "General", 50m, 0) }
+        );
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ArgumentException>(() => _service.UpdateShowAsync(organizerId, showId, updateDto));
+        _mockRepo.Verify(r => r.SaveTicketCategoriesAsync(It.IsAny<Guid>(), It.IsAny<List<TicketCategory>>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateShow_CategoriesWithAndWithoutIds_MapsIdsCorrectly()
+    {
+        // Arrange
+        var organizerId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+        var showId = Guid.NewGuid();
+        var existingCategoryId = Guid.NewGuid();
+
+        _mockRepo.Setup(r => r.GetShowByIdAsync(showId))
+                 .ReturnsAsync(new Show { Id = showId, EventId = eventId, Status = "Active" });
+        _mockRepo.Setup(r => r.GetEventByIdAsync(eventId))
+                 .ReturnsAsync(new Event { Id = eventId, OrganizerId = organizerId });
+
+        List<TicketCategory>? saved = null;
+        _mockRepo.Setup(r => r.SaveTicketCategoriesAsync(showId, It.IsAny<List<TicketCategory>>()))
+                 .Callback<Guid, List<TicketCategory>>((_, categories) => saved = categories)
+                 .Returns(Task.CompletedTask);
+
+        var updateDto = new UpdateShowDto(
+            ShowDate: new DateOnly(2026, 9, 2),
+            ShowTime: new TimeOnly(20, 0),
+            Categories: new List<UpdateTicketCategoryDto>
+            {
+                new(existingCategoryId, "VIP", 100m, 20),
+                new(null, "GA", 50m, 100)
+            }
+        );
+
+        // Act
+        await _service.UpdateShowAsync(organizerId, showId, updateDto);
+
+        // Assert
+        Assert.NotNull(saved);
+        Assert.Equal(2, saved!.Count);
+        Assert.Equal(existingCategoryId, saved[0].Id);
+        Assert.Equal(Guid.Empty, saved[1].Id);
+    }
+
+    [Fact]
+    public async Task UpdateShow_RepositoryRejectsCategoryId_PropagatesArgumentException()
+    {
+        // Arrange
+        var organizerId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+        var showId = Guid.NewGuid();
+        var foreignCategoryId = Guid.NewGuid();
+
+        _mockRepo.Setup(r => r.GetShowByIdAsync(showId))
+                 .ReturnsAsync(new Show { Id = showId, EventId = eventId, Status = "Active" });
+        _mockRepo.Setup(r => r.GetEventByIdAsync(eventId))
+                 .ReturnsAsync(new Event { Id = eventId, OrganizerId = organizerId });
+        _mockRepo.Setup(r => r.SaveTicketCategoriesAsync(showId, It.IsAny<List<TicketCategory>>()))
+                 .ThrowsAsync(new ArgumentException($"Ticket category '{foreignCategoryId}' does not belong to this show."));
+
+        var updateDto = new UpdateShowDto(
+            ShowDate: new DateOnly(2026, 9, 2),
+            ShowTime: new TimeOnly(20, 0),
+            Categories: new List<UpdateTicketCategoryDto> { new(foreignCategoryId, "VIP", 100m, 20) }
+        );
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ArgumentException>(() => _service.UpdateShowAsync(organizerId, showId, updateDto));
+    }
+
+    [Fact]
     public async Task CancelShow_UnauthorizedOrganizer_ThrowsUnauthorizedAccessException()
     {
         // Arrange

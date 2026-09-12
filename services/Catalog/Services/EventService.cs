@@ -432,17 +432,35 @@ public class EventService : IEventService
 
         if (dto.Categories != null && dto.Categories.Count > 0)
         {
-            var categories = dto.Categories.Select(c => new TicketCategory
+            var categories = new List<TicketCategory>();
+            foreach (var catDto in dto.Categories)
             {
-                Id = Guid.NewGuid(),
-                ShowId = showId,
-                Name = c.Name,
-                Price = c.Price,
-                Capacity = c.Capacity,
-                CreatedAt = DateTime.UtcNow
-            }).ToList();
+                if (string.IsNullOrWhiteSpace(catDto.Name))
+                {
+                    throw new ArgumentException("Ticket category name cannot be empty.");
+                }
 
-            await _repository.ReplaceTicketCategoriesAsync(showId, categories);
+                if (catDto.Price < 0)
+                {
+                    throw new ArgumentException($"Ticket category price must be non-negative. Invalid price: {catDto.Price}");
+                }
+
+                if (catDto.Capacity <= 0)
+                {
+                    throw new ArgumentException($"Ticket category capacity must be positive. Invalid capacity: {catDto.Capacity}");
+                }
+
+                categories.Add(new TicketCategory
+                {
+                    Id = catDto.Id ?? Guid.Empty,
+                    ShowId = showId,
+                    Name = catDto.Name.Trim(),
+                    Price = catDto.Price,
+                    Capacity = catDto.Capacity
+                });
+            }
+
+            await _repository.SaveTicketCategoriesAsync(showId, categories);
         }
     }
 

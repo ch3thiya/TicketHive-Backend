@@ -31,6 +31,15 @@ public record CreateTicketCategoryDto(
     int Capacity
 );
 
+// A null Id means "add this as a new category". A non-null Id must already
+// belong to the show being updated (checked by SaveTicketCategoriesAsync).
+public record UpdateTicketCategoryDto(
+    Guid? Id,
+    string Name,
+    decimal Price,
+    int Capacity
+);
+
 public record UpdateEventDto(
     string Name,
     string Description,
@@ -48,7 +57,7 @@ public record UpdateShowDto(
     DateTime? OnSaleAt = null,
     int? HighDemandThreshold = null,
     int? ReminderMinutesBefore = null,
-    List<CreateTicketCategoryDto>? Categories = null
+    List<UpdateTicketCategoryDto>? Categories = null
 );
 
 public record ShowDetailsDto(

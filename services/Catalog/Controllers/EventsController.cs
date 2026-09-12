@@ -304,6 +304,10 @@ public class EventsController : ControllerBase
         {
             return StatusCode(403, new { message = ex.Message });
         }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
         catch (InvalidOperationException ex)
         {
             return Problem(
