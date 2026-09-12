@@ -16,6 +16,5 @@ public interface IAccountRepository
     Task<List<Dictionary<string, object>>> GetPendingOrganizerRequestsAsync();
     Task<OrganizerRequest?> GetOrganizerRequestByIdAsync(Guid id);
     Task UpdateOrganizerRequestStatusAsync(Guid id, string status);
-    Task DeleteUserAccountAsync(Guid accountId);
     Task<List<Dictionary<string, object>>> GetApprovedOrganizersAsync();
 }

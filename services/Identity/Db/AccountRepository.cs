@@ -226,33 +226,6 @@ public class AccountRepository : IAccountRepository
         await command.ExecuteNonQueryAsync();
     }
 
-    public async Task DeleteUserAccountAsync(Guid accountId)
-    {
-        using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
-        
-        // 1. Delete associated organizer requests
-        const string deleteRequestsSql = @"
-            DELETE FROM organizer_requests
-            WHERE user_account_id = @UserAccountId;
-        ";
-        using (var commandReq = new NpgsqlCommand(deleteRequestsSql, connection))
-        {
-            commandReq.Parameters.AddWithValue("UserAccountId", accountId);
-            await commandReq.ExecuteNonQueryAsync();
-        }
-
-        // 2. Delete the user account record
-        const string deleteAccountSql = @"
-            DELETE FROM user_accounts
-            WHERE id = @Id;
-        ";
-        using (var commandAcc = new NpgsqlCommand(deleteAccountSql, connection))
-        {
-            commandAcc.Parameters.AddWithValue("Id", accountId);
-            await commandAcc.ExecuteNonQueryAsync();
-        }
-    }
-
     public async Task<List<Dictionary<string, object>>> GetApprovedOrganizersAsync()
     {
         using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
