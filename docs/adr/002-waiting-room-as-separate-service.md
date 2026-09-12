@@ -9,7 +9,7 @@ During an on-sale, thousands of customers poll their queue position while only a
 
 ## Decision
 
-The waiting room is a separate service. It never calls Inventory; Inventory only verifies the admission token signature (bulkhead pattern).
+The waiting room is a separate service. It never calls Inventory; Inventory validates the admission token locally (signature, issuer, audience, expiry, and user/show claims) without a runtime call to the waiting room.
 
 ## Consequences
 
