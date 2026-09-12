@@ -14,4 +14,12 @@
     <PackageReference Include="DotNetEnv" Version="3.2.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\BuildingBlocks\BuildingBlocks.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Db\Migrations\*.sql" />
+  </ItemGroup>
+
 </Project>

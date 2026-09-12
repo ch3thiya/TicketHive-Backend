@@ -1,11 +1,34 @@
+using System.Reflection;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
+using BuildingBlocks;
 using Catalog.Service.Db;
 using Catalog.Service.Services;
 // Load root .env file if available
 DotNetEnv.Env.TraversePath().Load();
 
+if (args.Contains("--migrate"))
+{
+    var migrationBuilder = WebApplication.CreateBuilder(args);
+    var migrationConnectionString = migrationBuilder.Configuration.GetConnectionString("DefaultConnection")
+        ?? throw new InvalidOperationException("Connection string 'DefaultConnection' is missing from configuration.");
+    using var loggerFactory = LoggerFactory.Create(logging => logging.AddConsole());
+    var migrationLogger = loggerFactory.CreateLogger("Catalog.Migrations");
+
+    try
+    {
+        DatabaseMigrator.Migrate(migrationConnectionString, Assembly.GetExecutingAssembly(), migrationLogger);
+        return 0;
+    }
+    catch (Exception ex)
+    {
+        migrationLogger.LogError(ex, "Catalog database migration failed");
+        return 1;
+    }
+}
+
 var builder = WebApplication.CreateBuilder(args);
+builder.AddServiceDefaults();
 
 // Add services to the container.
 builder.Services.AddControllers();
@@ -18,7 +41,6 @@ builder.WebHost.ConfigureKestrel(options =>
 
 // Register DB Connection, Repositories and Services
 builder.Services.AddSingleton<DbConnectionFactory>();
-builder.Services.AddScoped<DbInitializer>();
 builder.Services.AddScoped<IEventRepository, EventRepository>();
 builder.Services.AddScoped<IEventService, EventService>();
 
@@ -75,20 +97,11 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 builder.Services.AddAuthorization();
 
 var app = builder.Build();
+app.UseServiceDefaults();
 
-// Run Database Schema Initialization on Startup
-using (var scope = app.Services.CreateScope())
-{
-    var initializer = scope.ServiceProvider.GetRequiredService<DbInitializer>();
-    try
-    {
-        await initializer.InitializeAsync();
-    }
-    catch (Exception ex)
-    {
-        app.Logger.LogError(ex, "Failed to initialize the Catalog database schema on startup.");
-    }
-}
+// Development only: migrate the database at startup before the host starts.
+DatabaseMigrator.MigrateIfDevelopment(app.Environment, app.Configuration, connectionString =>
+    DatabaseMigrator.Migrate(connectionString, Assembly.GetExecutingAssembly(), app.Logger));
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
@@ -102,15 +115,13 @@ app.UseHttpsRedirection();
 
 app.UseAuthentication();
 app.UseAuthorization();
+app.MapDefaultEndpoints();
 
 app.MapControllers();
 
 app.MapGet("/", () => Results.Ok(new { service = "Catalog Service", status = "Healthy" }));
-app.MapGet("/health", () => Results.Ok("Healthy")); // Health Check Endpoint
-app.MapGet("/api/catalog/init-db", async (DbInitializer initializer) =>
-{
-    await initializer.InitializeAsync();
-    return Results.Ok(new { message = "Catalog database schema initialized successfully." });
-});
 
 app.Run();
+return 0;
+
+public partial class Program { }

@@ -1,7 +1,9 @@
 using System.Net.Http.Headers;
+using System.Reflection;
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
+using BuildingBlocks;
 using Identity.Service.Clients;
 using Identity.Service.Db;
 // Load root .env file if available
@@ -10,7 +12,28 @@ DotNetEnv.Env.TraversePath().Load();
 // Load root .env file if available
 DotNetEnv.Env.TraversePath().Load();
 
+if (args.Contains("--migrate"))
+{
+    var migrationBuilder = WebApplication.CreateBuilder(args);
+    var migrationConnectionString = migrationBuilder.Configuration.GetConnectionString("DefaultConnection")
+        ?? throw new InvalidOperationException("Connection string 'DefaultConnection' is missing from configuration.");
+    using var loggerFactory = LoggerFactory.Create(logging => logging.AddConsole());
+    var migrationLogger = loggerFactory.CreateLogger("Identity.Migrations");
+
+    try
+    {
+        DatabaseMigrator.Migrate(migrationConnectionString, Assembly.GetExecutingAssembly(), migrationLogger);
+        return 0;
+    }
+    catch (Exception ex)
+    {
+        migrationLogger.LogError(ex, "Identity database migration failed");
+        return 1;
+    }
+}
+
 var builder = WebApplication.CreateBuilder(args);
+builder.AddServiceDefaults();
 
 // Add services to the container.
 builder.Services.AddControllers();
@@ -41,9 +64,8 @@ builder.Services.AddCors(options =>
     });
 });
 
-// Register DB Connection and Initializer
+// Register DB Connection
 builder.Services.AddSingleton<DbConnectionFactory>();
-builder.Services.AddScoped<DbInitializer>();
 builder.Services.AddScoped<IAccountRepository, AccountRepository>();
 
 // Register WSO2 SCIM 2.0 HttpClient with basic auth credentials
@@ -112,20 +134,11 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 builder.Services.AddAuthorization();
 
 var app = builder.Build();
+app.UseServiceDefaults();
 
-// Run Database Schema Initialization on Startup
-using (var scope = app.Services.CreateScope())
-{
-    var initializer = scope.ServiceProvider.GetRequiredService<DbInitializer>();
-    try
-    {
-        await initializer.InitializeAsync();
-    }
-    catch (Exception ex)
-    {
-        app.Logger.LogError(ex, "Failed to initialize the database schema on startup.");
-    }
-}
+// Development only: migrate the database at startup before the host starts.
+DatabaseMigrator.MigrateIfDevelopment(app.Environment, app.Configuration, connectionString =>
+    DatabaseMigrator.Migrate(connectionString, Assembly.GetExecutingAssembly(), app.Logger));
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
@@ -139,15 +152,13 @@ app.UseHttpsRedirection();
 
 app.UseAuthentication();
 app.UseAuthorization();
+app.MapDefaultEndpoints();
 
 app.MapControllers();
 
 app.MapGet("/", () => Results.Ok(new { service = "Identity Service", status = "Healthy" }));
-app.MapGet("/health", () => Results.Ok("Healthy")); // Health Check Endpoint
-app.MapGet("/api/identity/init-db", async (DbInitializer initializer) =>
-{
-    await initializer.InitializeAsync();
-    return Results.Ok(new { message = "Identity database schema initialized successfully." });
-});
 
 app.Run();
+return 0;
+
+public partial class Program { }

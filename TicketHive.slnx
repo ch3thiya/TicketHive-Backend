@@ -1,5 +1,8 @@
 <Solution>
   <Folder Name="/services/" />
+  <Folder Name="/services/BuildingBlocks/">
+    <Project Path="services/BuildingBlocks/BuildingBlocks.csproj" />
+  </Folder>
   <Folder Name="/services/Catalog/">
     <Project Path="services/Catalog/Catalog.Service.csproj" />
   </Folder>
@@ -7,6 +10,7 @@
     <Project Path="services/Identity/Identity.Service.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/BuildingBlocks.Tests/BuildingBlocks.Tests.csproj" />
     <Project Path="tests/Catalog.Service.Tests/Catalog.Service.Tests.csproj" />
     <Project Path="tests/Identity.Service.Tests/Identity.Service.Tests.csproj" />
   </Folder>

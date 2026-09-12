@@ -49,4 +49,12 @@ CREATE INDEX IF NOT EXISTS idx_shows_event_id ON shows(event_id);
 CREATE INDEX IF NOT EXISTS idx_shows_status ON shows(status);
 CREATE INDEX IF NOT EXISTS idx_ticket_categories_show_id ON ticket_categories(show_id);
 
-
+-- Columns added after the original CREATE TABLE statements were written.
+-- CREATE TABLE IF NOT EXISTS above is a no-op on a database that already has
+-- these tables, so they are restated here as no-op ALTERs on a fresh database
+-- and as the actual column additions on an existing one.
+ALTER TABLE events ADD COLUMN IF NOT EXISTS cancellation_cutoff_hours INT;
+ALTER TABLE shows ADD COLUMN IF NOT EXISTS venue_id UUID;
+ALTER TABLE shows ADD COLUMN IF NOT EXISTS on_sale_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE shows ADD COLUMN IF NOT EXISTS high_demand_threshold INT;
+ALTER TABLE shows ADD COLUMN IF NOT EXISTS reminder_minutes_before INT;
