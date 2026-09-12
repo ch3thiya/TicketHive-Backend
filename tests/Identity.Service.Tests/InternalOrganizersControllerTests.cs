@@ -105,9 +105,10 @@ public class InternalOrganizersControllerTests
     [Fact]
     public async Task GetOrganizerBySub_RejectedOrganizerApplicant_ReturnsNotFound()
     {
-        // Arrange: a rejected organizer request never moved the applicant's role
-        // off "Customer", so this is the exact account shape rejection leaves behind.
-        var account = Account("Customer", "pending");
+        // Arrange: rejection resets the applicant to the plain-customer shape
+        // (Role stays "Customer", ApprovalStatus reset from "pending" back to
+        // "approved"), so this is the exact account shape rejection leaves behind.
+        var account = Account("Customer", "approved");
         _mockRepo.Setup(r => r.GetUserAccountBySubAsync("sub-1")).ReturnsAsync(account);
 
         // Act

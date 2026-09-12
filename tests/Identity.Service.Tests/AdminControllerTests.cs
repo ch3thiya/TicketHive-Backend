@@ -144,7 +144,7 @@ public class AdminControllerTests
     }
 
     [Fact]
-    public async Task RejectRequest_ValidPendingRequest_UpdatesRequestStatusAndLeavesAccountUntouched()
+    public async Task RejectRequest_ValidPendingRequest_ResetsAccountToPlainCustomerAndLeavesIdentityUntouched()
     {
         // Arrange
         var requestId = Guid.NewGuid();
@@ -158,6 +158,7 @@ public class AdminControllerTests
         };
 
         _mockRepo.Setup(r => r.GetOrganizerRequestByIdAsync(requestId)).ReturnsAsync(organizerRequest);
+        _mockRepo.Setup(r => r.UpdateUserAccountRoleAndStatusAsync(userAccountId, "Customer", "approved")).Returns(Task.CompletedTask);
         _mockRepo.Setup(r => r.UpdateOrganizerRequestStatusAsync(requestId, "rejected")).Returns(Task.CompletedTask);
 
         // Act
@@ -167,11 +168,12 @@ public class AdminControllerTests
         var okResult = Assert.IsType<OkObjectResult>(result);
         Assert.NotNull(okResult.Value);
 
+        // The account row is reset to the plain-customer shape (never deleted)...
+        _mockRepo.Verify(r => r.UpdateUserAccountRoleAndStatusAsync(userAccountId, "Customer", "approved"), Times.Once);
         _mockRepo.Verify(r => r.UpdateOrganizerRequestStatusAsync(requestId, "rejected"), Times.Once);
 
-        // The applicant's account and Asgardeo identity must never be touched.
+        // ...and the applicant's Asgardeo identity is never touched.
         _mockRepo.Verify(r => r.GetUserAccountByIdAsync(It.IsAny<Guid>()), Times.Never);
-        _mockRepo.Verify(r => r.UpdateUserAccountRoleAndStatusAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
         _mockScimClient.Verify(s => s.DeleteUserAsync(It.IsAny<string>()), Times.Never);
         _mockScimClient.Verify(s => s.UpdateApprovalStatusAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
     }
@@ -212,6 +214,7 @@ public class AdminControllerTests
         Assert.Equal(StatusCodes.Status409Conflict, objectResult.StatusCode);
 
         _mockRepo.Verify(r => r.UpdateOrganizerRequestStatusAsync(It.IsAny<Guid>(), It.IsAny<string>()), Times.Never);
+        _mockRepo.Verify(r => r.UpdateUserAccountRoleAndStatusAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
         _mockScimClient.Verify(s => s.DeleteUserAsync(It.IsAny<string>()), Times.Never);
     }
 
