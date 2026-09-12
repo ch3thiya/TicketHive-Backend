@@ -1,4 +1,4 @@
-# ADR-012: OpenTelemetry as the observability standard
+# ADR-017: OpenTelemetry as the observability standard
 
 - **Status:** Accepted
 - **Date:** 2026-09-11
