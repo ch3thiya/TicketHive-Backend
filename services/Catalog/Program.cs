@@ -1,7 +1,9 @@
 using System.Reflection;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using BuildingBlocks;
+using Catalog.Service.Clients;
 using Catalog.Service.Db;
 using Catalog.Service.Services;
 // Load root .env file if available
@@ -43,6 +45,19 @@ builder.WebHost.ConfigureKestrel(options =>
 builder.Services.AddSingleton<DbConnectionFactory>();
 builder.Services.AddScoped<IEventRepository, EventRepository>();
 builder.Services.AddScoped<IEventService, EventService>();
+
+// Register the Identity organizer-status client, cached briefly so suspension
+// takes effect quickly without a call on every request.
+builder.Services.AddMemoryCache();
+builder.Services.Configure<OrganizerStatusClientOptions>(builder.Configuration.GetSection(OrganizerStatusClientOptions.SectionName));
+builder.Services.AddHttpClient<IOrganizerStatusClient, OrganizerStatusClient>((sp, client) =>
+{
+    var options = sp.GetRequiredService<IOptions<OrganizerStatusClientOptions>>().Value;
+    if (!string.IsNullOrWhiteSpace(options.BaseUrl))
+    {
+        client.BaseAddress = new Uri(options.BaseUrl);
+    }
+});
 
 
 // Register CORS to allow React Frontend requests
