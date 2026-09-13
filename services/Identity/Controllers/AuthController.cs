@@ -15,12 +15,14 @@ public class AuthController : ControllerBase
     private readonly IAccountRepository _repository;
     private readonly IWso2ScimClient _scimClient;
     private readonly ILogger<AuthController> _logger;
+    private readonly TimeProvider _timeProvider;
 
-    public AuthController(IAccountRepository repository, IWso2ScimClient scimClient, ILogger<AuthController> logger)
+    public AuthController(IAccountRepository repository, IWso2ScimClient scimClient, ILogger<AuthController> logger, TimeProvider timeProvider)
     {
         _repository = repository;
         _scimClient = scimClient;
         _logger = logger;
+        _timeProvider = timeProvider;
     }
 
     /// <summary>
@@ -72,7 +74,7 @@ public class AuthController : ControllerBase
                 FullName = nameClaim ?? "Unknown User",
                 Role = tokenRole,
                 ApprovalStatus = "approved",
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = _timeProvider.GetUtcNow().UtcDateTime
             };
 
             await _repository.CreateUserAccountAsync(newAccount);
@@ -132,7 +134,7 @@ public class AuthController : ControllerBase
                 FullName = request.FullName,
                 Role = "Customer", // They start as a regular customer until approved
                 ApprovalStatus = "pending",
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = _timeProvider.GetUtcNow().UtcDateTime
             };
 
             await _repository.CreateUserAccountAsync(localAccount);
@@ -148,7 +150,7 @@ public class AuthController : ControllerBase
                 EventType = request.EventType,
                 About = request.About,
                 Status = "pending",
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = _timeProvider.GetUtcNow().UtcDateTime
             };
 
             await _repository.CreateOrganizerRequestAsync(organizerRequest);
@@ -235,7 +237,7 @@ public class AuthController : ControllerBase
                 FullName = request.FullName,
                 Role = "Customer",
                 ApprovalStatus = "approved",
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = _timeProvider.GetUtcNow().UtcDateTime
             };
 
             await _repository.CreateUserAccountAsync(localAccount);

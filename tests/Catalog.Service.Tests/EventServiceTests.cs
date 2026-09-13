@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Time.Testing;
 using Moq;
 using Xunit;
 using Catalog.Service.Db;
@@ -20,7 +21,7 @@ public class EventServiceTests
     {
         _mockRepo = new Mock<IEventRepository>();
         _mockLogger = new Mock<ILogger<EventService>>();
-        _service = new EventService(_mockRepo.Object, _mockLogger.Object);
+        _service = new EventService(_mockRepo.Object, _mockLogger.Object, new FakeTimeProvider());
     }
 
     [Fact]

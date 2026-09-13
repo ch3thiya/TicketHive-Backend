@@ -12,11 +12,13 @@ public class EventService : IEventService
 {
     private readonly IEventRepository _repository;
     private readonly ILogger<EventService> _logger;
+    private readonly TimeProvider _timeProvider;
 
-    public EventService(IEventRepository repository, ILogger<EventService> logger)
+    public EventService(IEventRepository repository, ILogger<EventService> logger, TimeProvider timeProvider)
     {
         _repository = repository;
         _logger = logger;
+        _timeProvider = timeProvider;
     }
 
     public async Task<Event> CreateEventAsync(Guid organizerId, CreateEventDto dto)
@@ -43,7 +45,7 @@ public class EventService : IEventService
             BannerUrl = dto.BannerUrl?.Trim() ?? string.Empty,
             Status = "Draft", // Always starts as Draft
             CancellationCutoffHours = dto.CancellationCutoffHours,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = _timeProvider.GetUtcNow().UtcDateTime
         };
 
         _logger.LogInformation("Creating new Draft Event '{Name}' for Organizer {OrganizerId}", evt.Name, organizerId);

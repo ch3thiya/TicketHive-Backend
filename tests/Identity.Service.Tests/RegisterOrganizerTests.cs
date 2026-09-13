@@ -2,6 +2,7 @@ using System;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Time.Testing;
 using Moq;
 using Xunit;
 using Identity.Service.Clients;
@@ -24,7 +25,7 @@ public class RegisterOrganizerTests
         _mockScimClient = new Mock<IWso2ScimClient>();
         _mockLogger = new Mock<ILogger<AuthController>>();
 
-        _controller = new AuthController(_mockRepo.Object, _mockScimClient.Object, _mockLogger.Object);
+        _controller = new AuthController(_mockRepo.Object, _mockScimClient.Object, _mockLogger.Object, new FakeTimeProvider());
     }
 
     [Fact]
