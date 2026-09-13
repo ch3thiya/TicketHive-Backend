@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Identity.Service.Clients;
 
@@ -14,18 +15,20 @@ public class Wso2ScimClient : IWso2ScimClient
     private readonly string _clientId;
     private readonly string _clientSecret;
 
-    public Wso2ScimClient(HttpClient httpClient, IConfiguration configuration, ILogger<Wso2ScimClient> logger)
+    public Wso2ScimClient(HttpClient httpClient, IConfiguration configuration, IOptions<Wso2AdminOptions> adminOptions, ILogger<Wso2ScimClient> logger)
     {
         _httpClient = httpClient;
         _logger = logger;
-        
+
         // Custom schema URN defined in WSO2/Asgardeo claim mapping
-        _customSchemaUrn = configuration["Wso2:CustomSchemaUrn"] 
+        _customSchemaUrn = configuration["Wso2:CustomSchemaUrn"]
             ?? "urn:scim:schemas:extension:tickethive:2.0:User";
-            
-        // M2M client credentials for SCIM authorization in Asgardeo
-        _clientId = configuration["Wso2:M2mClientId"] ?? string.Empty;
-        _clientSecret = configuration["Wso2:M2mClientSecret"] ?? string.Empty;
+
+        // M2M client credentials for SCIM authorization in Asgardeo. Required
+        // and validated at startup (Wso2AdminOptionsValidator), so these are
+        // never empty here.
+        _clientId = adminOptions.Value.M2mClientId!;
+        _clientSecret = adminOptions.Value.M2mClientSecret!;
     }
 
     /// <summary>

@@ -1,6 +1,8 @@
+using System.Collections.Generic;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Moq;
@@ -26,6 +28,20 @@ public class AdminApiFactory : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
+
+        // Program.cs requires the WSO2 admin and M2M credentials to start
+        // (Wso2AdminOptionsValidator); these tests don't call WSO2, so any
+        // non-empty values satisfy the check.
+        builder.ConfigureAppConfiguration((_, configBuilder) =>
+        {
+            configBuilder.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Wso2:AdminUsername"] = "test-admin",
+                ["Wso2:AdminPassword"] = "test-password",
+                ["Wso2:M2mClientId"] = "test-m2m-client-id",
+                ["Wso2:M2mClientSecret"] = "test-m2m-client-secret",
+            });
+        });
 
         builder.ConfigureServices(services =>
         {
