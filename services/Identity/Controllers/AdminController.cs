@@ -71,17 +71,42 @@ public class AdminController : ControllerBase
                 return NotFound(new { message = "Associated user account not found." });
             }
 
-            // 1. Update WSO2 IS status attribute to 'approved'
-            await _scimClient.UpdateApprovalStatusAsync(account.Wso2Sub, "approved");
+            // Grant access in Asgardeo first. Both calls are safe to repeat on
+            // retry (the attribute patch is a replace; group assignment checks
+            // membership first), and nothing local is written until both
+            // succeed, so a failure here leaves the request exactly "pending".
+            try
+            {
+                await _scimClient.UpdateApprovalStatusAsync(account.Wso2Sub, "approved");
+                await _scimClient.AssignUserToGroupAsync(account.Wso2Sub, account.Email, "Organizer");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to grant organizer access in Asgardeo for request {Id}", id);
+                return Problem(
+                    detail: "Approving the organizer did not complete because the identity provider could not be updated. Nothing was changed locally; retry the approval.",
+                    statusCode: StatusCodes.Status503ServiceUnavailable,
+                    title: "Organizer approval incomplete");
+            }
 
-            // 2. Assign user to the 'Organizer' group/role in WSO2 IS
-            await _scimClient.AssignUserToGroupAsync(account.Wso2Sub, account.Email, "Organizer");
-
-            // 3. Update local database account role to 'Organizer' and approval status to 'approved'
-            await _repository.UpdateUserAccountRoleAndStatusAsync(account.Id, "Organizer", "approved");
-
-            // 4. Update the organizer request workflow state to 'approved'
-            await _repository.UpdateOrganizerRequestStatusAsync(id, "approved");
+            // Record the grant locally. The request status is written last, so
+            // it alone marks the whole approval as finished; both writes are
+            // plain idempotent updates, safe for a retry to redo. A failure
+            // here means Asgardeo already granted access with no local record
+            // of it yet, so it is logged distinctly for follow-up.
+            try
+            {
+                await _repository.UpdateUserAccountRoleAndStatusAsync(account.Id, "Organizer", "approved");
+                await _repository.UpdateOrganizerRequestStatusAsync(id, "approved");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Organizer request {Id} account {AccountId} was granted access in Asgardeo but the local record was not updated", id, account.Id);
+                return Problem(
+                    detail: "The organizer was granted access in the identity provider, but the local record was not updated. Retrying will complete the approval.",
+                    statusCode: StatusCodes.Status503ServiceUnavailable,
+                    title: "Organizer approval incomplete");
+            }
 
             _logger.LogInformation("Successfully approved organizer request: {Id} for account {AccountId}", id, account.Id);
             return Ok(new { message = "Organizer request approved successfully." });
