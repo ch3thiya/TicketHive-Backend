@@ -5,7 +5,7 @@ on:
   # Automatically trigger it when detected changes in repo
   push:
     branches: 
-      [ dev, feature/azure-deployment ]
+      [ dev, main, feature/azure-deployment ]
     paths:
     - '**'
     - '.github/workflows/tickethive-identity-AutoDeployTrigger-37b5ad47-cdaa-4ce6-be79-a4bfe83a1d3e.yml'
@@ -21,8 +21,22 @@ jobs:
       contents: read #Required when GH token is used to authenticate with private repo
 
     steps:
-      - name: Checkout to the branch
-        uses: actions/checkout@v2
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Restore Solution Dependencies
+        run: dotnet restore
+
+      - name: Build Solution
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Run Tests
+        run: dotnet test --no-build --configuration Release --verbosity normal
 
       - name: Azure Login
         uses: azure/login@v2
@@ -42,5 +56,6 @@ jobs:
           containerAppName: tickethive-identity
           resourceGroup: TicketHive-RG
           imageToBuild: tickethiveacr.azurecr.io/tickethive-identity:${{ github.sha }}
+
 
 
