@@ -187,7 +187,10 @@ public class AuthController : ControllerBase
                 }
             }
 
-            return StatusCode(500, new { message = "An error occurred during registration. Please try again.", details = ex.Message });
+            return Problem(
+                detail: "An error occurred during registration. Please try again.",
+                statusCode: StatusCodes.Status500InternalServerError,
+                title: "Registration failed");
         }
     }
 
@@ -270,7 +273,10 @@ public class AuthController : ControllerBase
                 }
             }
 
-            return StatusCode(500, new { message = "An error occurred during registration. Please try again.", details = ex.Message });
+            return Problem(
+                detail: "An error occurred during registration. Please try again.",
+                statusCode: StatusCodes.Status500InternalServerError,
+                title: "Registration failed");
         }
     }
 }

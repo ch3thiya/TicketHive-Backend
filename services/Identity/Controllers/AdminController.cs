@@ -36,7 +36,10 @@ public class AdminController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to get pending organizer requests.");
-            return StatusCode(500, new { message = "Failed to retrieve requests.", details = ex.Message });
+            return Problem(
+                detail: "Failed to retrieve requests.",
+                statusCode: StatusCodes.Status500InternalServerError,
+                title: "Unexpected error");
         }
     }
 
@@ -114,7 +117,10 @@ public class AdminController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to approve request {Id}", id);
-            return StatusCode(500, new { message = "Failed to approve request.", details = ex.Message });
+            return Problem(
+                detail: "Failed to approve request.",
+                statusCode: StatusCodes.Status500InternalServerError,
+                title: "Unexpected error");
         }
     }
 
@@ -156,7 +162,10 @@ public class AdminController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to reject request {Id}", id);
-            return StatusCode(500, new { message = "Failed to reject request.", details = ex.Message });
+            return Problem(
+                detail: "Failed to reject request.",
+                statusCode: StatusCodes.Status500InternalServerError,
+                title: "Unexpected error");
         }
     }
 
@@ -175,7 +184,10 @@ public class AdminController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to get approved organizers.");
-            return StatusCode(500, new { message = "Failed to retrieve organizers.", details = ex.Message });
+            return Problem(
+                detail: "Failed to retrieve organizers.",
+                statusCode: StatusCodes.Status500InternalServerError,
+                title: "Unexpected error");
         }
     }
 }
