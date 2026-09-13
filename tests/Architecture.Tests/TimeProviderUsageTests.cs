@@ -8,7 +8,7 @@ public class TimeProviderUsageTests
 {
     private static readonly Regex DirectDateTimeUsage = new(@"\bDateTime\.(UtcNow|Now)\b");
 
-    [Fact(Skip = "Pre-existing direct DateTime.UtcNow in Catalog (EventRepository, EventService) and Identity (AuthController); fixed in fix/security-hygiene.")]
+    [Fact]
     public void No_direct_DateTime_usage_outside_BuildingBlocks()
     {
         var servicesRoot = FindServicesRoot();
