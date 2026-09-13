@@ -386,6 +386,42 @@ public class EventRepository : IEventRepository
         return list;
     }
 
+    public async Task<Dictionary<Guid, List<Show>>> GetShowsByEventIdsAsync(IReadOnlyCollection<Guid> eventIds)
+    {
+        var result = new Dictionary<Guid, List<Show>>();
+        if (eventIds.Count == 0)
+        {
+            return result;
+        }
+
+        using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
+
+        const string sql = @"
+            SELECT id, event_id, show_date, show_time, venue_id, on_sale_at, high_demand_threshold, reminder_minutes_before, status, created_at
+            FROM shows
+            WHERE event_id = ANY(@EventIds) AND status != 'Cancelled'
+            ORDER BY show_date ASC, show_time ASC;
+        ";
+
+        using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("EventIds", eventIds.ToArray());
+
+        using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var show = MapShow(reader);
+            if (!result.TryGetValue(show.EventId, out var shows))
+            {
+                shows = new List<Show>();
+                result[show.EventId] = shows;
+            }
+
+            shows.Add(show);
+        }
+
+        return result;
+    }
+
     public async Task<List<TicketCategory>> GetTicketCategoriesByShowIdAsync(Guid showId)
     {
         using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
@@ -417,6 +453,52 @@ public class EventRepository : IEventRepository
         }
 
         return list;
+    }
+
+    public async Task<Dictionary<Guid, List<TicketCategory>>> GetTicketCategoriesByShowIdsAsync(IReadOnlyCollection<Guid> showIds)
+    {
+        var result = new Dictionary<Guid, List<TicketCategory>>();
+        if (showIds.Count == 0)
+        {
+            return result;
+        }
+
+        using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
+
+        const string sql = @"
+            SELECT id, show_id, name, price, capacity, is_active, created_at
+            FROM ticket_categories
+            WHERE show_id = ANY(@ShowIds) AND is_active = true
+            ORDER BY price ASC;
+        ";
+
+        using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("ShowIds", showIds.ToArray());
+
+        using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var category = new TicketCategory
+            {
+                Id = reader.GetGuid(0),
+                ShowId = reader.GetGuid(1),
+                Name = reader.GetString(2),
+                Price = reader.GetDecimal(3),
+                Capacity = reader.GetInt32(4),
+                IsActive = reader.GetBoolean(5),
+                CreatedAt = reader.GetDateTime(6)
+            };
+
+            if (!result.TryGetValue(category.ShowId, out var categories))
+            {
+                categories = new List<TicketCategory>();
+                result[category.ShowId] = categories;
+            }
+
+            categories.Add(category);
+        }
+
+        return result;
     }
 
     public async Task UpdateShowAsync(Show show)

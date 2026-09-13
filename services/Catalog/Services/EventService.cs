@@ -131,71 +131,13 @@ public class EventService : IEventService
     public async Task<List<EventWithShowsDto>> GetEventsByOrganizerIdAsync(Guid organizerId)
     {
         var events = await _repository.GetEventsByOrganizerIdAsync(organizerId);
-        var result = new List<EventWithShowsDto>();
-
-        foreach (var evt in events)
-        {
-            var shows = await _repository.GetShowsByEventIdAsync(evt.Id);
-            var showDtos = new List<ShowDetailsDto>();
-
-            foreach (var s in shows)
-            {
-                var categories = await _repository.GetTicketCategoriesByShowIdAsync(s.Id);
-                showDtos.Add(new ShowDetailsDto(s.Id, s.EventId, s.ShowDate, s.ShowTime, s.VenueId, s.OnSaleAt, s.HighDemandThreshold, s.ReminderMinutesBefore, s.Status, s.CreatedAt, categories));
-            }
-
-            result.Add(new EventWithShowsDto(
-                evt.Id,
-                evt.OrganizerId,
-                evt.Name,
-                evt.Description,
-                evt.Category,
-                evt.EventDate,
-                evt.EventTime,
-                evt.BannerUrl,
-                evt.CancellationCutoffHours,
-                evt.Status,
-                evt.CreatedAt,
-                showDtos
-            ));
-        }
-
-        return result;
+        return await AssembleEventsWithShowsAsync(events);
     }
 
     public async Task<List<EventWithShowsDto>> GetAllPublishedEventsAsync()
     {
         var events = await _repository.GetAllPublishedEventsAsync();
-        var result = new List<EventWithShowsDto>();
-
-        foreach (var evt in events)
-        {
-            var shows = await _repository.GetShowsByEventIdAsync(evt.Id);
-            var showDtos = new List<ShowDetailsDto>();
-
-            foreach (var s in shows)
-            {
-                var categories = await _repository.GetTicketCategoriesByShowIdAsync(s.Id);
-                showDtos.Add(new ShowDetailsDto(s.Id, s.EventId, s.ShowDate, s.ShowTime, s.VenueId, s.OnSaleAt, s.HighDemandThreshold, s.ReminderMinutesBefore, s.Status, s.CreatedAt, categories));
-            }
-
-            result.Add(new EventWithShowsDto(
-                evt.Id,
-                evt.OrganizerId,
-                evt.Name,
-                evt.Description,
-                evt.Category,
-                evt.EventDate,
-                evt.EventTime,
-                evt.BannerUrl,
-                evt.CancellationCutoffHours,
-                evt.Status,
-                evt.CreatedAt,
-                showDtos
-            ));
-        }
-
-        return result;
+        return await AssembleEventsWithShowsAsync(events);
     }
 
     public async Task<List<EventWithShowsDto>> GetPublishedEventsAsync(string? search, string? category, DateOnly? fromDate, DateOnly? toDate, Guid? venueId)
@@ -206,18 +148,44 @@ public class EventService : IEventService
         }
 
         var events = await _repository.GetPublishedEventsAsync(search, category, fromDate, toDate, venueId);
-        var result = new List<EventWithShowsDto>();
+        return await AssembleEventsWithShowsAsync(events);
+    }
 
+    // Assembles a list of events with their shows and ticket categories using
+    // two batched queries (all shows for these events, then all categories
+    // for those shows) instead of one query per event and per show, so a
+    // listing costs a constant number of round trips regardless of size.
+    private async Task<List<EventWithShowsDto>> AssembleEventsWithShowsAsync(List<Event> events)
+    {
+        if (events.Count == 0)
+        {
+            return new List<EventWithShowsDto>();
+        }
+
+        var eventIds = events.Select(e => e.Id).ToArray();
+        var showsByEventId = await _repository.GetShowsByEventIdsAsync(eventIds);
+
+        var showIds = showsByEventId.Values.SelectMany(shows => shows).Select(s => s.Id).ToArray();
+        var categoriesByShowId = await _repository.GetTicketCategoriesByShowIdsAsync(showIds);
+
+        var result = new List<EventWithShowsDto>(events.Count);
         foreach (var evt in events)
         {
-            var shows = await _repository.GetShowsByEventIdAsync(evt.Id);
-            var showDtos = new List<ShowDetailsDto>();
-
-            foreach (var s in shows)
-            {
-                var categories = await _repository.GetTicketCategoriesByShowIdAsync(s.Id);
-                showDtos.Add(new ShowDetailsDto(s.Id, s.EventId, s.ShowDate, s.ShowTime, s.VenueId, s.OnSaleAt, s.HighDemandThreshold, s.ReminderMinutesBefore, s.Status, s.CreatedAt, categories));
-            }
+            var shows = showsByEventId.GetValueOrDefault(evt.Id, new List<Show>());
+            var showDtos = shows
+                .Select(s => new ShowDetailsDto(
+                    s.Id,
+                    s.EventId,
+                    s.ShowDate,
+                    s.ShowTime,
+                    s.VenueId,
+                    s.OnSaleAt,
+                    s.HighDemandThreshold,
+                    s.ReminderMinutesBefore,
+                    s.Status,
+                    s.CreatedAt,
+                    categoriesByShowId.GetValueOrDefault(s.Id, new List<TicketCategory>())))
+                .ToList();
 
             result.Add(new EventWithShowsDto(
                 evt.Id,

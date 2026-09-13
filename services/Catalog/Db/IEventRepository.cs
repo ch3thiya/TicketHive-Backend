@@ -19,7 +19,18 @@ public interface IEventRepository
     Task<Show> CreateShowWithCategoriesAsync(Show show, List<TicketCategory> categories);
     Task<Show?> GetShowByIdAsync(Guid showId);
     Task<List<Show>> GetShowsByEventIdAsync(Guid eventId);
+
+    // Fetches shows for every given event in one query, grouped by event id.
+    // Used by listing endpoints to avoid one shows query per event.
+    Task<Dictionary<Guid, List<Show>>> GetShowsByEventIdsAsync(IReadOnlyCollection<Guid> eventIds);
+
     Task<List<TicketCategory>> GetTicketCategoriesByShowIdAsync(Guid showId);
+
+    // Fetches active ticket categories for every given show in one query,
+    // grouped by show id. Used by listing endpoints to avoid one categories
+    // query per show.
+    Task<Dictionary<Guid, List<TicketCategory>>> GetTicketCategoriesByShowIdsAsync(IReadOnlyCollection<Guid> showIds);
+
     Task UpdateShowAsync(Show show);
 
     // Reconciles ticket_categories for a show against the given list, inside one
