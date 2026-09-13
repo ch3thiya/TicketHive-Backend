@@ -226,6 +226,12 @@ public class Wso2ScimClient : IWso2ScimClient
             return;
         }
 
+        if (await IsUserMemberOfGroupAsync(groupId, wso2UserId))
+        {
+            _logger.LogInformation("User {Username} is already a member of group {GroupName}; skipping assignment.", username, groupName);
+            return;
+        }
+
         var groupPatch = new
         {
             schemas = new[] { "urn:ietf:params:scim:api:messages:2.0:PatchOp" },
@@ -257,6 +263,40 @@ public class Wso2ScimClient : IWso2ScimClient
             _logger.LogError("Failed to add user to group {GroupName}. Status: {Status}, Error: {Error}", groupName, response.StatusCode, errorContent);
             throw new Exception($"Failed to assign group in identity provider: {errorContent}");
         }
+    }
+
+    /// <summary>
+    /// Checks whether a user is already a member of a group, so assignment can
+    /// be skipped instead of relying on how Asgardeo responds to a duplicate add.
+    /// </summary>
+    private async Task<bool> IsUserMemberOfGroupAsync(string groupId, string wso2UserId)
+    {
+        var response = await _httpClient.GetAsync($"scim2/Groups/{groupId}");
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogError("Failed to fetch group {GroupId} to check membership. Status: {Status}", groupId, response.StatusCode);
+            return false;
+        }
+
+        var responseBody = await response.Content.ReadAsStringAsync();
+        using var responseDoc = JsonDocument.Parse(responseBody);
+
+        if (!responseDoc.RootElement.TryGetProperty("members", out var membersElement) ||
+            membersElement.ValueKind != JsonValueKind.Array)
+        {
+            return false;
+        }
+
+        foreach (var member in membersElement.EnumerateArray())
+        {
+            if (member.TryGetProperty("value", out var valueElement) &&
+                string.Equals(valueElement.GetString(), wso2UserId, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private async Task<string?> GetGroupIdByNameAsync(string groupName)
