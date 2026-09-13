@@ -9,9 +9,6 @@ using Identity.Service.Db;
 // Load root .env file if available
 DotNetEnv.Env.TraversePath().Load();
 
-// Load root .env file if available
-DotNetEnv.Env.TraversePath().Load();
-
 if (args.Contains("--migrate"))
 {
     var migrationBuilder = WebApplication.CreateBuilder(args);
