@@ -36,26 +36,28 @@ public class Wso2ScimClient : IWso2ScimClient
     /// </summary>
     private async Task<string> GetM2mAccessTokenAsync()
     {
-        using var client = new HttpClient();
-        
-        // Asgardeo token endpoint is baseAddress + oauth2/token
+        // Asgardeo token endpoint is baseAddress + oauth2/token. Sent through
+        // the injected _httpClient (resilience-wrapped, pooled) instead of a
+        // throwaway HttpClient; the Basic auth header set on the request
+        // itself takes precedence over the client's own default Authorization
+        // header, so this does not disturb the Bearer token set after login.
         var tokenUrl = new Uri(_httpClient.BaseAddress!, "oauth2/token");
-        
+
         var requestData = new List<KeyValuePair<string, string>>
         {
             new("grant_type", "client_credentials"),
             new("scope", "internal_user_mgt_create internal_user_mgt_update internal_user_mgt_delete internal_user_mgt_view")
         };
-        
+
         using var request = new HttpRequestMessage(HttpMethod.Post, tokenUrl)
         {
             Content = new FormUrlEncodedContent(requestData)
         };
-        
+
         var credentials = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{_clientId}:{_clientSecret}"));
         request.Headers.Authorization = new AuthenticationHeaderValue("Basic", credentials);
-        
-        var response = await client.SendAsync(request);
+
+        var response = await _httpClient.SendAsync(request);
         if (!response.IsSuccessStatusCode)
         {
             var err = await response.Content.ReadAsStringAsync();
