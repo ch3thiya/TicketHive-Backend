@@ -333,6 +333,14 @@ public class EventRepository : IEventRepository
             await transaction.CommitAsync();
             return show;
         }
+        catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.ForeignKeyViolation)
+        {
+            // Backstop for the service-layer venue check above: closes the
+            // race where the venue was deleted between that check and this
+            // write, instead of surfacing a raw database error as a 500.
+            await transaction.RollbackAsync();
+            throw new ArgumentException($"Venue '{show.VenueId}' does not exist.", nameof(show.VenueId));
+        }
         catch
         {
             await transaction.RollbackAsync();
@@ -445,7 +453,17 @@ public class EventRepository : IEventRepository
         command.Parameters.AddWithValue("ReminderMinutesBefore", (object?)show.ReminderMinutesBefore ?? DBNull.Value);
         command.Parameters.AddWithValue("Status", show.Status);
 
-        await command.ExecuteNonQueryAsync();
+        try
+        {
+            await command.ExecuteNonQueryAsync();
+        }
+        catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.ForeignKeyViolation)
+        {
+            // Backstop for the service-layer venue check above: closes the
+            // race where the venue was deleted between that check and this
+            // write, instead of surfacing a raw database error as a 500.
+            throw new ArgumentException($"Venue '{show.VenueId}' does not exist.", nameof(show.VenueId));
+        }
     }
 
     public async Task UpdateShowStatusAsync(Guid showId, string status)

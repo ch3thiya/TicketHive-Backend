@@ -13,14 +13,17 @@ namespace Catalog.Service.Tests;
 public class EventServiceTests
 {
     private readonly Mock<IEventRepository> _mockRepo;
+    private readonly Mock<IVenueService> _mockVenueService;
     private readonly Mock<ILogger<EventService>> _mockLogger;
     private readonly EventService _service;
 
     public EventServiceTests()
     {
         _mockRepo = new Mock<IEventRepository>();
+        _mockVenueService = new Mock<IVenueService>();
+        _mockVenueService.Setup(v => v.VenueExistsAsync(It.IsAny<Guid>())).ReturnsAsync(true);
         _mockLogger = new Mock<ILogger<EventService>>();
-        _service = new EventService(_mockRepo.Object, _mockLogger.Object);
+        _service = new EventService(_mockRepo.Object, _mockVenueService.Object, _mockLogger.Object);
     }
 
     [Fact]
