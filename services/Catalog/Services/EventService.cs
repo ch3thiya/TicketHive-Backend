@@ -11,11 +11,13 @@ namespace Catalog.Service.Services;
 public class EventService : IEventService
 {
     private readonly IEventRepository _repository;
+    private readonly IVenueService _venueService;
     private readonly ILogger<EventService> _logger;
 
-    public EventService(IEventRepository repository, ILogger<EventService> logger)
+    public EventService(IEventRepository repository, IVenueService venueService, ILogger<EventService> logger)
     {
         _repository = repository;
+        _venueService = venueService;
         _logger = logger;
     }
 
@@ -66,6 +68,11 @@ public class EventService : IEventService
         if (dto.Categories == null || dto.Categories.Count == 0)
         {
             throw new ArgumentException("At least one ticket category is required to create a show.");
+        }
+
+        if (dto.VenueId.HasValue && !await _venueService.VenueExistsAsync(dto.VenueId.Value))
+        {
+            throw new ArgumentException($"Venue '{dto.VenueId}' does not exist.", nameof(dto.VenueId));
         }
 
         var domainCategories = new List<TicketCategory>();
@@ -419,6 +426,11 @@ public class EventService : IEventService
         if (!ShowStatusTransitions.CanEdit(show.Status, out var editReason))
         {
             throw new InvalidOperationException(editReason);
+        }
+
+        if (dto.VenueId.HasValue && !await _venueService.VenueExistsAsync(dto.VenueId.Value))
+        {
+            throw new ArgumentException($"Venue '{dto.VenueId}' does not exist.", nameof(dto.VenueId));
         }
 
         show.ShowDate = dto.ShowDate;

@@ -13,14 +13,17 @@ namespace Catalog.Service.Tests;
 public class EventServiceTests
 {
     private readonly Mock<IEventRepository> _mockRepo;
+    private readonly Mock<IVenueService> _mockVenueService;
     private readonly Mock<ILogger<EventService>> _mockLogger;
     private readonly EventService _service;
 
     public EventServiceTests()
     {
         _mockRepo = new Mock<IEventRepository>();
+        _mockVenueService = new Mock<IVenueService>();
+        _mockVenueService.Setup(v => v.VenueExistsAsync(It.IsAny<Guid>())).ReturnsAsync(true);
         _mockLogger = new Mock<ILogger<EventService>>();
-        _service = new EventService(_mockRepo.Object, _mockLogger.Object);
+        _service = new EventService(_mockRepo.Object, _mockVenueService.Object, _mockLogger.Object);
     }
 
     [Fact]
@@ -1054,6 +1057,83 @@ public class EventServiceTests
 
         // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(() => _service.UpdateShowAsync(organizerId, showId, updateDto));
+        _mockRepo.Verify(r => r.UpdateShowAsync(It.IsAny<Show>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateShow_UnknownVenueId_ThrowsArgumentExceptionAndWritesNothing()
+    {
+        // Arrange
+        var organizerId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+        var venueId = Guid.NewGuid();
+
+        _mockRepo.Setup(r => r.GetEventByIdAsync(eventId))
+                 .ReturnsAsync(new Event { Id = eventId, OrganizerId = organizerId, Status = "Draft" });
+        _mockVenueService.Setup(v => v.VenueExistsAsync(venueId)).ReturnsAsync(false);
+
+        var dto = new CreateShowRequestDto(
+            ShowDate: new DateOnly(2026, 10, 1),
+            ShowTime: new TimeOnly(20, 0),
+            Categories: new List<CreateTicketCategoryDto> { new CreateTicketCategoryDto("General", 50.00m, 100) },
+            VenueId: venueId
+        );
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ArgumentException>(() => _service.CreateShowAsync(organizerId, eventId, dto));
+        _mockRepo.Verify(r => r.CreateShowWithCategoriesAsync(It.IsAny<Show>(), It.IsAny<List<TicketCategory>>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateShow_NullVenueId_SkipsVenueCheckAndSucceeds()
+    {
+        // Arrange
+        var organizerId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+
+        _mockRepo.Setup(r => r.GetEventByIdAsync(eventId))
+                 .ReturnsAsync(new Event { Id = eventId, OrganizerId = organizerId, Status = "Draft" });
+        _mockRepo.Setup(r => r.CreateShowWithCategoriesAsync(It.IsAny<Show>(), It.IsAny<List<TicketCategory>>()))
+                 .ReturnsAsync((Show s, List<TicketCategory> c) => s);
+
+        var dto = new CreateShowRequestDto(
+            ShowDate: new DateOnly(2026, 10, 1),
+            ShowTime: new TimeOnly(20, 0),
+            Categories: new List<CreateTicketCategoryDto> { new CreateTicketCategoryDto("General", 50.00m, 100) },
+            VenueId: null
+        );
+
+        // Act
+        var result = await _service.CreateShowAsync(organizerId, eventId, dto);
+
+        // Assert
+        Assert.Null(result.VenueId);
+        _mockVenueService.Verify(v => v.VenueExistsAsync(It.IsAny<Guid>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateShow_UnknownVenueId_ThrowsArgumentExceptionAndWritesNothing()
+    {
+        // Arrange
+        var organizerId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+        var showId = Guid.NewGuid();
+        var venueId = Guid.NewGuid();
+
+        _mockRepo.Setup(r => r.GetShowByIdAsync(showId))
+                 .ReturnsAsync(new Show { Id = showId, EventId = eventId, Status = "Active" });
+        _mockRepo.Setup(r => r.GetEventByIdAsync(eventId))
+                 .ReturnsAsync(new Event { Id = eventId, OrganizerId = organizerId });
+        _mockVenueService.Setup(v => v.VenueExistsAsync(venueId)).ReturnsAsync(false);
+
+        var updateDto = new UpdateShowDto(
+            ShowDate: new DateOnly(2026, 9, 2),
+            ShowTime: new TimeOnly(20, 0),
+            VenueId: venueId
+        );
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ArgumentException>(() => _service.UpdateShowAsync(organizerId, showId, updateDto));
         _mockRepo.Verify(r => r.UpdateShowAsync(It.IsAny<Show>()), Times.Never);
     }
 }

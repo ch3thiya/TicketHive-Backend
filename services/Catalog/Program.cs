@@ -48,6 +48,8 @@ builder.WebHost.ConfigureKestrel(options =>
 builder.Services.AddSingleton<DbConnectionFactory>();
 builder.Services.AddScoped<IEventRepository, EventRepository>();
 builder.Services.AddScoped<IEventService, EventService>();
+builder.Services.AddScoped<IVenueRepository, VenueRepository>();
+builder.Services.AddScoped<IVenueService, VenueService>();
 
 // Register the Identity organizer-status client, cached briefly so suspension
 // takes effect quickly without a call on every request.
