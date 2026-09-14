@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.Authentication;
@@ -8,14 +9,16 @@ namespace Catalog.Service.Tests.Api;
 
 /// <summary>
 /// Stands in for real JWT validation in API tests. Authenticates the caller
-/// using the subject carried in the <see cref="SubHeaderName"/> header, so
-/// tests can drive 401 (header absent) and 403/200 (header present) without
-/// needing a real Asgardeo token.
+/// using the subject carried in the <see cref="SubHeaderName"/> header, and
+/// grants whatever role is carried in <see cref="RoleHeaderName"/>, so tests
+/// can drive 401 (header absent), 403 (wrong/missing role) and 200 (matching
+/// role) without needing a real Asgardeo token.
 /// </summary>
 public class TestAuthHandler : AuthenticationHandler<AuthenticationSchemeOptions>
 {
     public const string SchemeName = "TestScheme";
     public const string SubHeaderName = "Test-Sub";
+    public const string RoleHeaderName = "Test-Role";
 
     public TestAuthHandler(IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder)
         : base(options, logger, encoder)
@@ -29,7 +32,12 @@ public class TestAuthHandler : AuthenticationHandler<AuthenticationSchemeOptions
             return Task.FromResult(AuthenticateResult.NoResult());
         }
 
-        var claims = new[] { new Claim(ClaimTypes.NameIdentifier, subValues.ToString()) };
+        var claims = new List<Claim> { new(ClaimTypes.NameIdentifier, subValues.ToString()) };
+        if (Request.Headers.TryGetValue(RoleHeaderName, out var roleValues) && !string.IsNullOrEmpty(roleValues))
+        {
+            claims.Add(new Claim(ClaimTypes.Role, roleValues.ToString()));
+        }
+
         var identity = new ClaimsIdentity(claims, SchemeName);
         var principal = new ClaimsPrincipal(identity);
         var ticket = new AuthenticationTicket(principal, SchemeName);

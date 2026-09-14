@@ -25,6 +25,7 @@ public class CatalogApiFactory : WebApplicationFactory<Program>
 {
     public Mock<IOrganizerStatusClient> OrganizerStatusClientMock { get; } = new();
     public Mock<IEventRepository> EventRepositoryMock { get; } = new();
+    public Mock<IVenueRepository> VenueRepositoryMock { get; } = new();
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -37,6 +38,9 @@ public class CatalogApiFactory : WebApplicationFactory<Program>
 
             services.RemoveAll<IEventRepository>();
             services.TryAddSingleton(EventRepositoryMock.Object);
+
+            services.RemoveAll<IVenueRepository>();
+            services.TryAddSingleton(VenueRepositoryMock.Object);
 
             services.AddAuthentication(TestAuthHandler.SchemeName)
                 .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.SchemeName, options => { });
@@ -56,5 +60,8 @@ public class CatalogApiFactory : WebApplicationFactory<Program>
         EventRepositoryMock.Setup(r => r.CreateEventAsync(It.IsAny<Event>())).ReturnsAsync((Event e) => e);
         EventRepositoryMock.Setup(r => r.GetAllPublishedEventsAsync()).ReturnsAsync(new List<Event>());
         EventRepositoryMock.Setup(r => r.GetEventsByOrganizerIdAsync(It.IsAny<Guid>())).ReturnsAsync(new List<Event>());
+
+        VenueRepositoryMock.Reset();
+        VenueRepositoryMock.Setup(r => r.GetAllVenuesAsync()).ReturnsAsync(new List<Venue>());
     }
 }
