@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
@@ -260,6 +261,38 @@ public class RegisterOrganizerTests
         // Assert
         var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
         Assert.NotNull(badRequestResult.Value);
+        _mockRepo.Verify(r => r.CreateUserAccountAsync(It.IsAny<UserAccount>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task RegisterOrganizer_UnexpectedException_ReturnsProblemDetailsWithoutExceptionText()
+    {
+        // Arrange
+        var request = new RegisterOrganizerRequest(
+            FullName: "Jordan Lee",
+            Email: "jordan@events.com",
+            Password: "Password123!",
+            OrganizationName: "Lee Events",
+            BusinessEmail: "biz@leeevents.com",
+            Phone: "555-0100",
+            EventType: "Conference",
+            About: "Conference organizer"
+        );
+        const string secretExceptionText = "connection string password=super-secret";
+
+        _mockRepo.Setup(r => r.GetUserAccountByEmailAsync(request.Email)).ReturnsAsync((UserAccount?)null);
+        _mockScimClient.Setup(s => s.CreateUserAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
+                       .ThrowsAsync(new Exception(secretExceptionText));
+
+        // Act
+        var result = await _controller.RegisterOrganizer(request);
+
+        // Assert
+        var objectResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status500InternalServerError, objectResult.StatusCode);
+        var problemDetails = Assert.IsType<ProblemDetails>(objectResult.Value);
+        Assert.DoesNotContain(secretExceptionText, problemDetails.Detail);
+        Assert.DoesNotContain(secretExceptionText, problemDetails.Title);
         _mockRepo.Verify(r => r.CreateUserAccountAsync(It.IsAny<UserAccount>()), Times.Never);
     }
 }
