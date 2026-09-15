@@ -15,12 +15,14 @@ public class AuthController : ControllerBase
     private readonly IAccountRepository _repository;
     private readonly IWso2ScimClient _scimClient;
     private readonly ILogger<AuthController> _logger;
+    private readonly TimeProvider _timeProvider;
 
-    public AuthController(IAccountRepository repository, IWso2ScimClient scimClient, ILogger<AuthController> logger)
+    public AuthController(IAccountRepository repository, IWso2ScimClient scimClient, ILogger<AuthController> logger, TimeProvider timeProvider)
     {
         _repository = repository;
         _scimClient = scimClient;
         _logger = logger;
+        _timeProvider = timeProvider;
     }
 
     /// <summary>
@@ -30,11 +32,11 @@ public class AuthController : ControllerBase
     [Authorize]
     public async Task<IActionResult> SyncAccount()
     {
-        var subClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value 
+        var subClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
             ?? User.FindFirst("sub")?.Value;
-        var emailClaim = User.FindFirst(ClaimTypes.Email)?.Value 
+        var emailClaim = User.FindFirst(ClaimTypes.Email)?.Value
             ?? User.FindFirst("email")?.Value;
-        var nameClaim = User.FindFirst(ClaimTypes.Name)?.Value 
+        var nameClaim = User.FindFirst(ClaimTypes.Name)?.Value
             ?? User.FindFirst("name")?.Value;
 
         if (string.IsNullOrEmpty(subClaim))
@@ -72,7 +74,7 @@ public class AuthController : ControllerBase
                 FullName = nameClaim ?? "Unknown User",
                 Role = tokenRole,
                 ApprovalStatus = "approved",
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = _timeProvider.GetUtcNow().UtcDateTime
             };
 
             await _repository.CreateUserAccountAsync(newAccount);
@@ -132,7 +134,7 @@ public class AuthController : ControllerBase
                 FullName = request.FullName,
                 Role = "Customer", // They start as a regular customer until approved
                 ApprovalStatus = "pending",
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = _timeProvider.GetUtcNow().UtcDateTime
             };
 
             await _repository.CreateUserAccountAsync(localAccount);
@@ -148,7 +150,7 @@ public class AuthController : ControllerBase
                 EventType = request.EventType,
                 About = request.About,
                 Status = "pending",
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = _timeProvider.GetUtcNow().UtcDateTime
             };
 
             await _repository.CreateOrganizerRequestAsync(organizerRequest);
@@ -158,7 +160,7 @@ public class AuthController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to register organizer.");
-            
+
             // Extract clean SCIM error message details if returned by Asgardeo
             var message = ex.Message;
             if (message.Contains("Failed to create user in identity provider:"))
@@ -187,7 +189,10 @@ public class AuthController : ControllerBase
                 }
             }
 
-            return StatusCode(500, new { message = "An error occurred during registration. Please try again.", details = ex.Message });
+            return Problem(
+                detail: "An error occurred during registration. Please try again.",
+                statusCode: StatusCodes.Status500InternalServerError,
+                title: "Registration failed");
         }
     }
 
@@ -232,7 +237,7 @@ public class AuthController : ControllerBase
                 FullName = request.FullName,
                 Role = "Customer",
                 ApprovalStatus = "approved",
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = _timeProvider.GetUtcNow().UtcDateTime
             };
 
             await _repository.CreateUserAccountAsync(localAccount);
@@ -242,7 +247,7 @@ public class AuthController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to register customer.");
-            
+
             // Extract clean SCIM error message details if returned by Asgardeo
             var message = ex.Message;
             if (message.Contains("Failed to create user in identity provider:"))
@@ -270,7 +275,10 @@ public class AuthController : ControllerBase
                 }
             }
 
-            return StatusCode(500, new { message = "An error occurred during registration. Please try again.", details = ex.Message });
+            return Problem(
+                detail: "An error occurred during registration. Please try again.",
+                statusCode: StatusCodes.Status500InternalServerError,
+                title: "Registration failed");
         }
     }
 }

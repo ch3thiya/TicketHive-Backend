@@ -1,11 +1,40 @@
+using System.Reflection;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization.Policy;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
+using BuildingBlocks;
+using Catalog.Service.Authorization;
+using Catalog.Service.Clients;
 using Catalog.Service.Db;
 using Catalog.Service.Services;
-// Load root .env file if available
-DotNetEnv.Env.TraversePath().Load();
+// Load root .env file if available; a real environment variable already set
+// (docker-compose, Container Apps) always wins over the .env file.
+DotNetEnv.Env.TraversePath().NoClobber().Load();
+
+if (args.Contains("--migrate"))
+{
+    var migrationBuilder = WebApplication.CreateBuilder(args);
+    var migrationConnectionString = migrationBuilder.Configuration.GetConnectionString("DefaultConnection")
+        ?? throw new InvalidOperationException("Connection string 'DefaultConnection' is missing from configuration.");
+    using var loggerFactory = LoggerFactory.Create(logging => logging.AddConsole());
+    var migrationLogger = loggerFactory.CreateLogger("Catalog.Migrations");
+
+    try
+    {
+        DatabaseMigrator.Migrate(migrationConnectionString, Assembly.GetExecutingAssembly(), migrationLogger);
+        return 0;
+    }
+    catch (Exception ex)
+    {
+        migrationLogger.LogError(ex, "Catalog database migration failed");
+        return 1;
+    }
+}
 
 var builder = WebApplication.CreateBuilder(args);
+builder.AddServiceDefaults();
 
 // Add services to the container.
 builder.Services.AddControllers();
@@ -18,9 +47,41 @@ builder.WebHost.ConfigureKestrel(options =>
 
 // Register DB Connection, Repositories and Services
 builder.Services.AddSingleton<DbConnectionFactory>();
-builder.Services.AddScoped<DbInitializer>();
 builder.Services.AddScoped<IEventRepository, EventRepository>();
 builder.Services.AddScoped<IEventService, EventService>();
+builder.Services.AddScoped<IVenueRepository, VenueRepository>();
+builder.Services.AddScoped<IVenueService, VenueService>();
+
+// Register the Identity organizer-status client, cached briefly so suspension
+// takes effect quickly without a call on every request.
+builder.Services.AddMemoryCache();
+builder.Services.Configure<OrganizerStatusClientOptions>(builder.Configuration.GetSection(OrganizerStatusClientOptions.SectionName));
+builder.Services.AddHttpClient<IOrganizerStatusClient, OrganizerStatusClient>((sp, client) =>
+{
+    var options = sp.GetRequiredService<IOptions<OrganizerStatusClientOptions>>().Value;
+    if (!string.IsNullOrWhiteSpace(options.BaseUrl))
+    {
+        client.BaseAddress = new Uri(options.BaseUrl);
+    }
+});
+
+// Register the internal-token client (client-credentials M2M token, cached)
+// and the Inventory client that attaches it to outgoing calls. The standard
+// resilience handler already applies to every typed client via
+// AddServiceDefaults()'s ConfigureHttpClientDefaults.
+builder.Services.AddInternalServiceTokenClient(builder.Configuration);
+builder.Services.Configure<InventoryClientOptions>(builder.Configuration.GetSection(InventoryClientOptions.SectionName));
+builder.Services.AddHttpClient<IInventoryClient, InventoryClient>((sp, client) =>
+{
+    var options = sp.GetRequiredService<IOptions<InventoryClientOptions>>().Value;
+    if (!string.IsNullOrWhiteSpace(options.BaseUrl))
+    {
+        client.BaseAddress = new Uri(options.BaseUrl);
+    }
+})
+.AddHttpMessageHandler<InternalServiceAuthenticationHandler>();
+
+builder.Services.Configure<PublishDefaultsOptions>(builder.Configuration.GetSection(PublishDefaultsOptions.SectionName));
 
 
 // Register CORS to allow React Frontend requests
@@ -50,7 +111,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         options.Authority = builder.Configuration["Jwt:Authority"];
         options.Audience = builder.Configuration["Jwt:Audience"];
         options.RequireHttpsMetadata = !builder.Environment.IsDevelopment();
-        
+
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
@@ -72,23 +133,21 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         }
     });
 
-builder.Services.AddAuthorization();
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<IAuthorizationHandler, ActiveOrganizerAuthorizationHandler>();
+builder.Services.AddSingleton<IAuthorizationMiddlewareResultHandler, OrganizerAuthorizationResultHandler>();
+
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("ActiveOrganizer", policy => policy.Requirements.Add(new ActiveOrganizerRequirement()));
+});
 
 var app = builder.Build();
+app.UseServiceDefaults();
 
-// Run Database Schema Initialization on Startup
-using (var scope = app.Services.CreateScope())
-{
-    var initializer = scope.ServiceProvider.GetRequiredService<DbInitializer>();
-    try
-    {
-        await initializer.InitializeAsync();
-    }
-    catch (Exception ex)
-    {
-        app.Logger.LogError(ex, "Failed to initialize the Catalog database schema on startup.");
-    }
-}
+// Development only: migrate the database at startup before the host starts.
+DatabaseMigrator.MigrateIfDevelopment(app.Environment, app.Configuration, connectionString =>
+    DatabaseMigrator.Migrate(connectionString, Assembly.GetExecutingAssembly(), app.Logger));
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
@@ -102,15 +161,13 @@ app.UseHttpsRedirection();
 
 app.UseAuthentication();
 app.UseAuthorization();
+app.MapDefaultEndpoints();
 
 app.MapControllers();
 
 app.MapGet("/", () => Results.Ok(new { service = "Catalog Service", status = "Healthy" }));
-app.MapGet("/health", () => Results.Ok("Healthy")); // Health Check Endpoint
-app.MapGet("/api/catalog/init-db", async (DbInitializer initializer) =>
-{
-    await initializer.InitializeAsync();
-    return Results.Ok(new { message = "Catalog database schema initialized successfully." });
-});
 
 app.Run();
+return 0;
+
+public partial class Program { }

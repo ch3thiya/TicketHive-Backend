@@ -3,6 +3,7 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
 # Copy project file and restore dependencies
+COPY ["services/BuildingBlocks/BuildingBlocks.csproj", "services/BuildingBlocks/"]
 COPY ["services/Catalog/Catalog.Service.csproj", "services/Catalog/"]
 RUN dotnet restore "services/Catalog/Catalog.Service.csproj"
 

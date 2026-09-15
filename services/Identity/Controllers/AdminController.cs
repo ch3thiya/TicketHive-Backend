@@ -36,7 +36,10 @@ public class AdminController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to get pending organizer requests.");
-            return StatusCode(500, new { message = "Failed to retrieve requests.", details = ex.Message });
+            return Problem(
+                detail: "Failed to retrieve requests.",
+                statusCode: StatusCodes.Status500InternalServerError,
+                title: "Unexpected error");
         }
     }
 
@@ -59,7 +62,10 @@ public class AdminController : ControllerBase
 
             if (request.Status != "pending")
             {
-                return BadRequest(new { message = $"Cannot approve a request that is already '{request.Status}'." });
+                return Problem(
+                    detail: $"Cannot approve a request that is already '{request.Status}'.",
+                    statusCode: StatusCodes.Status409Conflict,
+                    title: "Request already decided");
             }
 
             var account = await _repository.GetUserAccountByIdAsync(request.UserAccountId);
@@ -68,17 +74,42 @@ public class AdminController : ControllerBase
                 return NotFound(new { message = "Associated user account not found." });
             }
 
-            // 1. Update WSO2 IS status attribute to 'approved'
-            await _scimClient.UpdateApprovalStatusAsync(account.Wso2Sub, "approved");
+            // Grant access in Asgardeo first. Both calls are safe to repeat on
+            // retry (the attribute patch is a replace; group assignment checks
+            // membership first), and nothing local is written until both
+            // succeed, so a failure here leaves the request exactly "pending".
+            try
+            {
+                await _scimClient.UpdateApprovalStatusAsync(account.Wso2Sub, "approved");
+                await _scimClient.AssignUserToGroupAsync(account.Wso2Sub, account.Email, "Organizer");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to grant organizer access in Asgardeo for request {Id}", id);
+                return Problem(
+                    detail: "Approving the organizer did not complete because the identity provider could not be updated. Nothing was changed locally; retry the approval.",
+                    statusCode: StatusCodes.Status503ServiceUnavailable,
+                    title: "Organizer approval incomplete");
+            }
 
-            // 2. Assign user to the 'Organizer' group/role in WSO2 IS
-            await _scimClient.AssignUserToGroupAsync(account.Wso2Sub, account.Email, "Organizer");
-
-            // 3. Update local database account role to 'Organizer' and approval status to 'approved'
-            await _repository.UpdateUserAccountRoleAndStatusAsync(account.Id, "Organizer", "approved");
-
-            // 4. Update the organizer request workflow state to 'approved'
-            await _repository.UpdateOrganizerRequestStatusAsync(id, "approved");
+            // Record the grant locally. The request status is written last, so
+            // it alone marks the whole approval as finished; both writes are
+            // plain idempotent updates, safe for a retry to redo. A failure
+            // here means Asgardeo already granted access with no local record
+            // of it yet, so it is logged distinctly for follow-up.
+            try
+            {
+                await _repository.UpdateUserAccountRoleAndStatusAsync(account.Id, "Organizer", "approved");
+                await _repository.UpdateOrganizerRequestStatusAsync(id, "approved");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Organizer request {Id} account {AccountId} was granted access in Asgardeo but the local record was not updated", id, account.Id);
+                return Problem(
+                    detail: "The organizer was granted access in the identity provider, but the local record was not updated. Retrying will complete the approval.",
+                    statusCode: StatusCodes.Status503ServiceUnavailable,
+                    title: "Organizer approval incomplete");
+            }
 
             _logger.LogInformation("Successfully approved organizer request: {Id} for account {AccountId}", id, account.Id);
             return Ok(new { message = "Organizer request approved successfully." });
@@ -86,13 +117,17 @@ public class AdminController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to approve request {Id}", id);
-            return StatusCode(500, new { message = "Failed to approve request.", details = ex.Message });
+            return Problem(
+                detail: "Failed to approve request.",
+                statusCode: StatusCodes.Status500InternalServerError,
+                title: "Unexpected error");
         }
     }
 
     /// <summary>
-    /// Rejects an organizer request. Sets their status to 'rejected',
-    /// and patches their WSO2 custom claim.
+    /// Rejects an organizer request. Sets the request's own status to 'rejected'
+    /// and resets the applicant's account to the plain-customer shape it had
+    /// before applying, without touching their Asgardeo identity.
     /// </summary>
     [HttpPost("{id}/reject")]
     public async Task<IActionResult> RejectRequest(Guid id)
@@ -109,28 +144,28 @@ public class AdminController : ControllerBase
 
             if (request.Status != "pending")
             {
-                return BadRequest(new { message = $"Cannot reject a request that is already '{request.Status}'." });
+                return Problem(
+                    detail: $"Cannot reject a request that is already '{request.Status}'.",
+                    statusCode: StatusCodes.Status409Conflict,
+                    title: "Request already decided");
             }
 
-            var account = await _repository.GetUserAccountByIdAsync(request.UserAccountId);
-            if (account == null)
-            {
-                return NotFound(new { message = "Associated user account not found." });
-            }
+            // Applying moved the account's approval status to 'pending'; reset it to
+            // the plain-customer value so the applicant is indistinguishable from a
+            // user who never applied. Role is already 'Customer' and stays that way.
+            await _repository.UpdateUserAccountRoleAndStatusAsync(request.UserAccountId, "Customer", "approved");
+            await _repository.UpdateOrganizerRequestStatusAsync(id, "rejected");
 
-            // 1. Delete user account from WSO2 Asgardeo via SCIM
-            await _scimClient.DeleteUserAsync(account.Wso2Sub);
-
-            // 2. Delete user account and organizer request from the local database
-            await _repository.DeleteUserAccountAsync(account.Id);
-
-            _logger.LogInformation("Successfully rejected organizer request: {Id} for account {AccountId}", id, account.Id);
+            _logger.LogInformation("Successfully rejected organizer request: {Id}", id);
             return Ok(new { message = "Organizer request rejected successfully." });
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to reject request {Id}", id);
-            return StatusCode(500, new { message = "Failed to reject request.", details = ex.Message });
+            return Problem(
+                detail: "Failed to reject request.",
+                statusCode: StatusCodes.Status500InternalServerError,
+                title: "Unexpected error");
         }
     }
 
@@ -149,7 +184,10 @@ public class AdminController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to get approved organizers.");
-            return StatusCode(500, new { message = "Failed to retrieve organizers.", details = ex.Message });
+            return Problem(
+                detail: "Failed to retrieve organizers.",
+                statusCode: StatusCodes.Status500InternalServerError,
+                title: "Unexpected error");
         }
     }
 }

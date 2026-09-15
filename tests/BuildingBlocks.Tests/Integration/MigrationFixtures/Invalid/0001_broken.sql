@@ -1,0 +1,5 @@
+CREATE TABLE broken_widgets (
+    id UUID PRIMARY KEY
+);
+
+THIS IS NOT VALID SQL;
