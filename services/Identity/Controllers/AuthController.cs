@@ -32,11 +32,11 @@ public class AuthController : ControllerBase
     [Authorize]
     public async Task<IActionResult> SyncAccount()
     {
-        var subClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value 
+        var subClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
             ?? User.FindFirst("sub")?.Value;
-        var emailClaim = User.FindFirst(ClaimTypes.Email)?.Value 
+        var emailClaim = User.FindFirst(ClaimTypes.Email)?.Value
             ?? User.FindFirst("email")?.Value;
-        var nameClaim = User.FindFirst(ClaimTypes.Name)?.Value 
+        var nameClaim = User.FindFirst(ClaimTypes.Name)?.Value
             ?? User.FindFirst("name")?.Value;
 
         if (string.IsNullOrEmpty(subClaim))
@@ -160,7 +160,7 @@ public class AuthController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to register organizer.");
-            
+
             // Extract clean SCIM error message details if returned by Asgardeo
             var message = ex.Message;
             if (message.Contains("Failed to create user in identity provider:"))
@@ -247,7 +247,7 @@ public class AuthController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to register customer.");
-            
+
             // Extract clean SCIM error message details if returned by Asgardeo
             var message = ex.Message;
             if (message.Contains("Failed to create user in identity provider:"))

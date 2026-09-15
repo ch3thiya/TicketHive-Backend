@@ -19,7 +19,7 @@ public class AccountRepository : IAccountRepository
     public async Task CreateUserAccountAsync(UserAccount account)
     {
         using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
-        
+
         const string sql = @"
             INSERT INTO user_accounts (id, wso2_sub, email, full_name, role, approval_status)
             VALUES (@Id, @Wso2Sub, @Email, @FullName, @Role, @ApprovalStatus);
@@ -39,7 +39,7 @@ public class AccountRepository : IAccountRepository
     public async Task<UserAccount?> GetUserAccountBySubAsync(string wso2Sub)
     {
         using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
-        
+
         const string sql = @"
             SELECT id, wso2_sub, email, full_name, role, approval_status, created_at
             FROM user_accounts
@@ -70,7 +70,7 @@ public class AccountRepository : IAccountRepository
     public async Task<UserAccount?> GetUserAccountByIdAsync(Guid id)
     {
         using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
-        
+
         const string sql = @"
             SELECT id, wso2_sub, email, full_name, role, approval_status, created_at
             FROM user_accounts
@@ -101,7 +101,7 @@ public class AccountRepository : IAccountRepository
     public async Task UpdateUserAccountRoleAndStatusAsync(Guid id, string role, string status)
     {
         using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
-        
+
         const string sql = @"
             UPDATE user_accounts
             SET role = @Role, approval_status = @ApprovalStatus
@@ -119,7 +119,7 @@ public class AccountRepository : IAccountRepository
     public async Task CreateOrganizerRequestAsync(OrganizerRequest request)
     {
         using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
-        
+
         const string sql = @"
             INSERT INTO organizer_requests (id, user_account_id, organization_name, business_email, phone, event_type, about, status)
             VALUES (@Id, @UserAccountId, @OrgName, @BusinessEmail, @Phone, @EventType, @About, @Status);
@@ -141,7 +141,7 @@ public class AccountRepository : IAccountRepository
     public async Task<List<Dictionary<string, object>>> GetPendingOrganizerRequestsAsync()
     {
         using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
-        
+
         const string sql = @"
             SELECT r.id, r.user_account_id, r.organization_name, r.business_email, r.phone, r.event_type, r.about, r.status, r.created_at, u.full_name, u.email
             FROM organizer_requests r
@@ -151,7 +151,7 @@ public class AccountRepository : IAccountRepository
 
         using var command = new NpgsqlCommand(sql, connection);
         using var reader = await command.ExecuteReaderAsync();
-        
+
         var list = new List<Dictionary<string, object>>();
         while (await reader.ReadAsync())
         {
@@ -178,7 +178,7 @@ public class AccountRepository : IAccountRepository
     public async Task<OrganizerRequest?> GetOrganizerRequestByIdAsync(Guid id)
     {
         using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
-        
+
         const string sql = @"
             SELECT id, user_account_id, organization_name, business_email, phone, event_type, about, status, created_at, reviewed_at
             FROM organizer_requests
@@ -212,7 +212,7 @@ public class AccountRepository : IAccountRepository
     public async Task UpdateOrganizerRequestStatusAsync(Guid id, string status)
     {
         using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
-        
+
         const string sql = @"
             UPDATE organizer_requests
             SET status = @Status, reviewed_at = CURRENT_TIMESTAMP
@@ -229,7 +229,7 @@ public class AccountRepository : IAccountRepository
     public async Task<List<Dictionary<string, object>>> GetApprovedOrganizersAsync()
     {
         using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
-        
+
         const string sql = @"
             SELECT ua.id, ua.email, ua.full_name, ua.created_at, oreq.organization_name, oreq.business_email, oreq.event_type
             FROM user_accounts ua
@@ -239,7 +239,7 @@ public class AccountRepository : IAccountRepository
 
         using var command = new NpgsqlCommand(sql, connection);
         using var reader = await command.ExecuteReaderAsync();
-        
+
         var list = new List<Dictionary<string, object>>();
         while (await reader.ReadAsync())
         {
@@ -254,14 +254,14 @@ public class AccountRepository : IAccountRepository
                 { "eventType", reader.IsDBNull(6) ? "" : reader.GetString(6) }
             });
         }
-        
+
         return list;
     }
 
     public async Task<UserAccount?> GetUserAccountByEmailAsync(string email)
     {
         using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
-        
+
         const string sql = @"
             SELECT id, wso2_sub, email, full_name, role, approval_status, created_at
             FROM user_accounts

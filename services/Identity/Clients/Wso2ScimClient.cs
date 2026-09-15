@@ -64,7 +64,7 @@ public class Wso2ScimClient : IWso2ScimClient
             _logger.LogError("Failed to retrieve M2M token from Asgardeo. Status: {Status}, Error: {Error}", response.StatusCode, err);
             throw new Exception($"Failed to obtain M2M access token: {err}");
         }
-        
+
         var body = await response.Content.ReadAsStringAsync();
         using var doc = JsonDocument.Parse(body);
         return doc.RootElement.GetProperty("access_token").GetString()!;
@@ -110,7 +110,7 @@ public class Wso2ScimClient : IWso2ScimClient
         var jsonString = JsonSerializer.Serialize(requestPayload);
         using var document = JsonDocument.Parse(jsonString);
         var root = document.RootElement;
-        
+
         var requestDict = new Dictionary<string, object>();
         foreach (var prop in root.EnumerateObject())
         {
@@ -140,7 +140,7 @@ public class Wso2ScimClient : IWso2ScimClient
         var responseBody = await response.Content.ReadAsStringAsync();
         using var responseDoc = JsonDocument.Parse(responseBody);
         var wso2Id = responseDoc.RootElement.GetProperty("id").GetString();
-        
+
         if (string.IsNullOrEmpty(wso2Id))
         {
             throw new Exception("Asgardeo user creation returned empty ID.");
@@ -210,7 +210,7 @@ public class Wso2ScimClient : IWso2ScimClient
             _logger.LogError("Failed to delete user {Wso2UserId} from Asgardeo. Status: {Status}, Error: {Error}", wso2UserId, response.StatusCode, errorContent);
             throw new Exception($"Failed to delete user from identity provider: {errorContent}");
         }
-        
+
         _logger.LogInformation("Successfully deleted user {Wso2UserId} from Asgardeo via SCIM", wso2UserId);
     }
 
@@ -315,11 +315,11 @@ public class Wso2ScimClient : IWso2ScimClient
 
         var responseBody = await response.Content.ReadAsStringAsync();
         using var responseDoc = JsonDocument.Parse(responseBody);
-        
-        if (responseDoc.RootElement.TryGetProperty("totalResults", out var totalResultsElement) && 
-            totalResultsElement.GetInt32() > 0 && 
-            responseDoc.RootElement.TryGetProperty("Resources", out var resourcesElement) && 
-            resourcesElement.ValueKind == JsonValueKind.Array && 
+
+        if (responseDoc.RootElement.TryGetProperty("totalResults", out var totalResultsElement) &&
+            totalResultsElement.GetInt32() > 0 &&
+            responseDoc.RootElement.TryGetProperty("Resources", out var resourcesElement) &&
+            resourcesElement.ValueKind == JsonValueKind.Array &&
             resourcesElement.GetArrayLength() > 0)
         {
             return resourcesElement[0].GetProperty("id").GetString();

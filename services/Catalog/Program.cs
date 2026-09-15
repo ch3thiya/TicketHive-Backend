@@ -93,7 +93,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         options.Authority = builder.Configuration["Jwt:Authority"];
         options.Audience = builder.Configuration["Jwt:Audience"];
         options.RequireHttpsMetadata = !builder.Environment.IsDevelopment();
-        
+
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
