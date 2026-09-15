@@ -37,4 +37,9 @@ public interface IHoldRepository
     // Returns the hold with its items (currency joined from stock), or null
     // if it does not exist.
     Task<Hold?> GetByIdAsync(Guid holdId);
+
+    // Scans for active holds whose expires_at timestamp has passed, releases
+    // held ticket quantities back to stock, decrements customer quotas, and
+    // updates status to 'Expired'. Returns count of released holds.
+    Task<int> ReleaseExpiredHoldsAsync(DateTimeOffset now);
 }
