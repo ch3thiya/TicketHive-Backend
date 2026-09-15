@@ -62,7 +62,7 @@ public sealed class EventRepositoryTests
             Status = "Draft"
         });
 
-        var venueId = Guid.NewGuid();
+        var venueId = await SeedVenueAsync();
         var onSaleAt = new DateTime(2026, 10, 1, 9, 0, 0, DateTimeKind.Utc);
         var show = new Show
         {
@@ -411,6 +411,7 @@ public sealed class EventRepositoryTests
         return await repository.CreateShowWithCategoriesAsync(show, domainCategories);
     }
 
+<<<<<<< HEAD
     [Fact]
     public async Task GetShowsAndCategoriesByIds_ManyEventsShowsAndCategories_ReturnsSameDataWithConstantQueryCount()
     {
@@ -557,6 +558,25 @@ public sealed class EventRepositoryTests
         await action();
 
         return queryCount;
+=======
+    // shows.venue_id now has a foreign key to venues, so any test exercising
+    // it needs a real venue row rather than a fabricated GUID.
+    private async Task<Guid> SeedVenueAsync()
+    {
+        await using var connection = new NpgsqlConnection(_db.ConnectionString);
+        await connection.OpenAsync();
+
+        var venueId = Guid.CreateVersion7();
+        const string sql = @"
+            INSERT INTO venues (id, name, address, capacity, created_at, updated_at)
+            VALUES (@Id, 'Seed Venue', '1 Seed Street', 100, now(), now());
+        ";
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("Id", venueId);
+        await command.ExecuteNonQueryAsync();
+
+        return venueId;
+>>>>>>> origin/dev
     }
 
     private EventRepository CreateRepository()
