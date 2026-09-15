@@ -17,5 +17,6 @@
     <Project Path="tests/BuildingBlocks.Tests/BuildingBlocks.Tests.csproj" />
     <Project Path="tests/Catalog.Service.Tests/Catalog.Service.Tests.csproj" />
     <Project Path="tests/Identity.Service.Tests/Identity.Service.Tests.csproj" />
+    <Project Path="tests/Inventory.Service.Tests/Inventory.Service.Tests.csproj" />
   </Folder>
 </Solution>

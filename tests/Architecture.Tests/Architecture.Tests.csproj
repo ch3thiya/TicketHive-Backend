@@ -21,6 +21,7 @@
     <ProjectReference Include="..\..\services\BuildingBlocks\BuildingBlocks.csproj" />
     <ProjectReference Include="..\..\services\Identity\Identity.Service.csproj" />
     <ProjectReference Include="..\..\services\Catalog\Catalog.Service.csproj" />
+    <ProjectReference Include="..\..\services\Inventory\Inventory.Service.csproj" />
   </ItemGroup>
 
 </Project>
