@@ -1,0 +1,49 @@
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using Inventory.Service.Models;
+
+namespace Inventory.Service.Services;
+
+public record CreateHoldItemRequest(Guid CategoryId, int Quantity);
+
+public record CreateHoldRequest(Guid ShowId, List<CreateHoldItemRequest> Items);
+
+public record HoldItemResponse(Guid CategoryId, int Quantity, decimal UnitPrice, string Currency);
+
+public record HoldResponse(Guid HoldId, Guid ShowId, string Status, DateTimeOffset ExpiresAt, List<HoldItemResponse> Items);
+
+public enum CreateHoldStatus
+{
+    Created,
+    Duplicate,
+    ShowNotFound,
+    CategoryNotFound,
+    StockUnavailable,
+    QuotaExceeded,
+    HighDemandBlocked
+}
+
+public class CreateHoldResult
+{
+    public required CreateHoldStatus Status { get; init; }
+    public HoldResponse? Hold { get; init; }
+    public Guid? CategoryId { get; init; }
+    public int? Limit { get; init; }
+}
+
+public interface IHoldService
+{
+    // Throws ArgumentException for 400s (empty items, non-positive
+    // quantity) — the Idempotency-Key header itself is an HTTP concern the
+    // controller checks before calling this. Every other outcome (quota,
+    // stock, the idempotent replay, the high-demand gate) comes back as
+    // CreateHoldResult so the controller maps status codes without any
+    // business logic of its own.
+    Task<CreateHoldResult> CreateHoldAsync(string customerSub, string idempotencyKey, bool hasAdmissionToken, CreateHoldRequest request);
+
+    // Null if the hold does not exist. Ownership (comparing the caller's
+    // sub against CustomerSub) is left to the controller, which is the one
+    // that decides between 404 and leaking existence with a 403.
+    Task<Hold?> GetHoldAsync(Guid holdId);
+}
