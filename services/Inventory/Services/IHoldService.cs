@@ -40,7 +40,7 @@ public interface IHoldService
     // stock, the idempotent replay, the high-demand gate) comes back as
     // CreateHoldResult so the controller maps status codes without any
     // business logic of its own.
-    Task<CreateHoldResult> CreateHoldAsync(string customerSub, string idempotencyKey, bool hasAdmissionToken, CreateHoldRequest request);
+    Task<CreateHoldResult> CreateHoldAsync(string customerSub, string idempotencyKey, bool hasAdmissionToken, CreateHoldRequest request, string? admissionToken = null);
 
     // Null if the hold does not exist. Ownership (comparing the caller's
     // sub against CustomerSub) is left to the controller, which is the one
