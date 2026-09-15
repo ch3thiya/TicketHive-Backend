@@ -20,7 +20,7 @@ public class VenuesController : ControllerBase
     }
 
     [HttpGet]
-    [AllowAnonymous]
+    [Authorize]
     public async Task<IActionResult> GetVenues()
     {
         try
