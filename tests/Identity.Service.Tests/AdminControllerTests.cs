@@ -257,6 +257,83 @@ public class AdminControllerTests
         Assert.Equal(organizersList, okResult.Value);
     }
 
+    // --- No exception detail in unexpected-failure responses ---
+
+    [Fact]
+    public async Task GetPendingRequests_UnexpectedException_ReturnsProblemDetailsWithoutExceptionText()
+    {
+        // Arrange
+        const string secretExceptionText = "connection string password=super-secret";
+        _mockRepo.Setup(r => r.GetPendingOrganizerRequestsAsync()).ThrowsAsync(new Exception(secretExceptionText));
+
+        // Act
+        var result = await _controller.GetPendingRequests();
+
+        // Assert
+        var objectResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status500InternalServerError, objectResult.StatusCode);
+        var problemDetails = Assert.IsType<ProblemDetails>(objectResult.Value);
+        Assert.DoesNotContain(secretExceptionText, problemDetails.Detail);
+        Assert.DoesNotContain(secretExceptionText, problemDetails.Title);
+    }
+
+    [Fact]
+    public async Task GetApprovedOrganizers_UnexpectedException_ReturnsProblemDetailsWithoutExceptionText()
+    {
+        // Arrange
+        const string secretExceptionText = "connection string password=super-secret";
+        _mockRepo.Setup(r => r.GetApprovedOrganizersAsync()).ThrowsAsync(new Exception(secretExceptionText));
+
+        // Act
+        var result = await _controller.GetApprovedOrganizers();
+
+        // Assert
+        var objectResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status500InternalServerError, objectResult.StatusCode);
+        var problemDetails = Assert.IsType<ProblemDetails>(objectResult.Value);
+        Assert.DoesNotContain(secretExceptionText, problemDetails.Detail);
+        Assert.DoesNotContain(secretExceptionText, problemDetails.Title);
+    }
+
+    [Fact]
+    public async Task ApproveRequest_LookupThrowsBeforeReachingSafeApprovalSteps_ReturnsProblemDetailsWithoutExceptionText()
+    {
+        // Arrange - an exception outside the two guarded try blocks (e.g. the
+        // initial request lookup) is caught by the outer catch-all.
+        const string secretExceptionText = "connection string password=super-secret";
+        var requestId = Guid.NewGuid();
+        _mockRepo.Setup(r => r.GetOrganizerRequestByIdAsync(requestId)).ThrowsAsync(new Exception(secretExceptionText));
+
+        // Act
+        var result = await _controller.ApproveRequest(requestId);
+
+        // Assert
+        var objectResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status500InternalServerError, objectResult.StatusCode);
+        var problemDetails = Assert.IsType<ProblemDetails>(objectResult.Value);
+        Assert.DoesNotContain(secretExceptionText, problemDetails.Detail);
+        Assert.DoesNotContain(secretExceptionText, problemDetails.Title);
+    }
+
+    [Fact]
+    public async Task RejectRequest_LookupThrows_ReturnsProblemDetailsWithoutExceptionText()
+    {
+        // Arrange
+        const string secretExceptionText = "connection string password=super-secret";
+        var requestId = Guid.NewGuid();
+        _mockRepo.Setup(r => r.GetOrganizerRequestByIdAsync(requestId)).ThrowsAsync(new Exception(secretExceptionText));
+
+        // Act
+        var result = await _controller.RejectRequest(requestId);
+
+        // Assert
+        var objectResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status500InternalServerError, objectResult.StatusCode);
+        var problemDetails = Assert.IsType<ProblemDetails>(objectResult.Value);
+        Assert.DoesNotContain(secretExceptionText, problemDetails.Detail);
+        Assert.DoesNotContain(secretExceptionText, problemDetails.Title);
+    }
+
     // --- Safe approval: failure and retry behaviour ---
 
     private static (OrganizerRequest request, UserAccount account) MakePendingRequestAndAccount(

@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Identity.Service.Clients;
 
@@ -14,18 +15,20 @@ public class Wso2ScimClient : IWso2ScimClient
     private readonly string _clientId;
     private readonly string _clientSecret;
 
-    public Wso2ScimClient(HttpClient httpClient, IConfiguration configuration, ILogger<Wso2ScimClient> logger)
+    public Wso2ScimClient(HttpClient httpClient, IConfiguration configuration, IOptions<Wso2AdminOptions> adminOptions, ILogger<Wso2ScimClient> logger)
     {
         _httpClient = httpClient;
         _logger = logger;
-        
+
         // Custom schema URN defined in WSO2/Asgardeo claim mapping
-        _customSchemaUrn = configuration["Wso2:CustomSchemaUrn"] 
+        _customSchemaUrn = configuration["Wso2:CustomSchemaUrn"]
             ?? "urn:scim:schemas:extension:tickethive:2.0:User";
-            
-        // M2M client credentials for SCIM authorization in Asgardeo
-        _clientId = configuration["Wso2:M2mClientId"] ?? string.Empty;
-        _clientSecret = configuration["Wso2:M2mClientSecret"] ?? string.Empty;
+
+        // M2M client credentials for SCIM authorization in Asgardeo. Required
+        // and validated at startup (Wso2AdminOptionsValidator), so these are
+        // never empty here.
+        _clientId = adminOptions.Value.M2mClientId!;
+        _clientSecret = adminOptions.Value.M2mClientSecret!;
     }
 
     /// <summary>
@@ -33,33 +36,35 @@ public class Wso2ScimClient : IWso2ScimClient
     /// </summary>
     private async Task<string> GetM2mAccessTokenAsync()
     {
-        using var client = new HttpClient();
-        
-        // Asgardeo token endpoint is baseAddress + oauth2/token
+        // Asgardeo token endpoint is baseAddress + oauth2/token. Sent through
+        // the injected _httpClient (resilience-wrapped, pooled) instead of a
+        // throwaway HttpClient; the Basic auth header set on the request
+        // itself takes precedence over the client's own default Authorization
+        // header, so this does not disturb the Bearer token set after login.
         var tokenUrl = new Uri(_httpClient.BaseAddress!, "oauth2/token");
-        
+
         var requestData = new List<KeyValuePair<string, string>>
         {
             new("grant_type", "client_credentials"),
             new("scope", "internal_user_mgt_create internal_user_mgt_update internal_user_mgt_delete internal_user_mgt_view")
         };
-        
+
         using var request = new HttpRequestMessage(HttpMethod.Post, tokenUrl)
         {
             Content = new FormUrlEncodedContent(requestData)
         };
-        
+
         var credentials = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{_clientId}:{_clientSecret}"));
         request.Headers.Authorization = new AuthenticationHeaderValue("Basic", credentials);
-        
-        var response = await client.SendAsync(request);
+
+        var response = await _httpClient.SendAsync(request);
         if (!response.IsSuccessStatusCode)
         {
             var err = await response.Content.ReadAsStringAsync();
             _logger.LogError("Failed to retrieve M2M token from Asgardeo. Status: {Status}, Error: {Error}", response.StatusCode, err);
             throw new Exception($"Failed to obtain M2M access token: {err}");
         }
-        
+
         var body = await response.Content.ReadAsStringAsync();
         using var doc = JsonDocument.Parse(body);
         return doc.RootElement.GetProperty("access_token").GetString()!;
@@ -105,7 +110,7 @@ public class Wso2ScimClient : IWso2ScimClient
         var jsonString = JsonSerializer.Serialize(requestPayload);
         using var document = JsonDocument.Parse(jsonString);
         var root = document.RootElement;
-        
+
         var requestDict = new Dictionary<string, object>();
         foreach (var prop in root.EnumerateObject())
         {
@@ -135,7 +140,7 @@ public class Wso2ScimClient : IWso2ScimClient
         var responseBody = await response.Content.ReadAsStringAsync();
         using var responseDoc = JsonDocument.Parse(responseBody);
         var wso2Id = responseDoc.RootElement.GetProperty("id").GetString();
-        
+
         if (string.IsNullOrEmpty(wso2Id))
         {
             throw new Exception("Asgardeo user creation returned empty ID.");
@@ -205,7 +210,7 @@ public class Wso2ScimClient : IWso2ScimClient
             _logger.LogError("Failed to delete user {Wso2UserId} from Asgardeo. Status: {Status}, Error: {Error}", wso2UserId, response.StatusCode, errorContent);
             throw new Exception($"Failed to delete user from identity provider: {errorContent}");
         }
-        
+
         _logger.LogInformation("Successfully deleted user {Wso2UserId} from Asgardeo via SCIM", wso2UserId);
     }
 
@@ -310,11 +315,11 @@ public class Wso2ScimClient : IWso2ScimClient
 
         var responseBody = await response.Content.ReadAsStringAsync();
         using var responseDoc = JsonDocument.Parse(responseBody);
-        
-        if (responseDoc.RootElement.TryGetProperty("totalResults", out var totalResultsElement) && 
-            totalResultsElement.GetInt32() > 0 && 
-            responseDoc.RootElement.TryGetProperty("Resources", out var resourcesElement) && 
-            resourcesElement.ValueKind == JsonValueKind.Array && 
+
+        if (responseDoc.RootElement.TryGetProperty("totalResults", out var totalResultsElement) &&
+            totalResultsElement.GetInt32() > 0 &&
+            responseDoc.RootElement.TryGetProperty("Resources", out var resourcesElement) &&
+            resourcesElement.ValueKind == JsonValueKind.Array &&
             resourcesElement.GetArrayLength() > 0)
         {
             return resourcesElement[0].GetProperty("id").GetString();

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Time.Testing;
 using Moq;
 using Xunit;
 using Catalog.Service.Db;
@@ -23,7 +24,7 @@ public class EventServiceTests
         _mockVenueService = new Mock<IVenueService>();
         _mockVenueService.Setup(v => v.VenueExistsAsync(It.IsAny<Guid>())).ReturnsAsync(true);
         _mockLogger = new Mock<ILogger<EventService>>();
-        _service = new EventService(_mockRepo.Object, _mockVenueService.Object, _mockLogger.Object);
+        _service = new EventService(_mockRepo.Object, _mockVenueService.Object, _mockLogger.Object, new FakeTimeProvider());
     }
 
     [Fact]
@@ -698,16 +699,22 @@ public class EventServiceTests
         _mockRepo.Setup(r => r.GetPublishedEventsAsync(null, null, null, null, null))
                  .ReturnsAsync(new List<Event> { publishedEvent });
 
-        _mockRepo.Setup(r => r.GetShowsByEventIdAsync(eventId))
-                 .ReturnsAsync(new List<Show>
+        _mockRepo.Setup(r => r.GetShowsByEventIdsAsync(It.Is<IReadOnlyCollection<Guid>>(ids => ids.Single() == eventId)))
+                 .ReturnsAsync(new Dictionary<Guid, List<Show>>
                  {
-                     new Show { Id = showId, EventId = eventId, ShowDate = new DateOnly(2026, 10, 1), ShowTime = new TimeOnly(19, 30), Status = "Active" }
+                     [eventId] = new List<Show>
+                     {
+                         new Show { Id = showId, EventId = eventId, ShowDate = new DateOnly(2026, 10, 1), ShowTime = new TimeOnly(19, 30), Status = "Active" }
+                     }
                  });
 
-        _mockRepo.Setup(r => r.GetTicketCategoriesByShowIdAsync(showId))
-                 .ReturnsAsync(new List<TicketCategory>
+        _mockRepo.Setup(r => r.GetTicketCategoriesByShowIdsAsync(It.Is<IReadOnlyCollection<Guid>>(ids => ids.Single() == showId)))
+                 .ReturnsAsync(new Dictionary<Guid, List<TicketCategory>>
                  {
-                     new TicketCategory { Id = Guid.NewGuid(), ShowId = showId, Name = "VIP", Price = 100m, Capacity = 50 }
+                     [showId] = new List<TicketCategory>
+                     {
+                         new TicketCategory { Id = Guid.NewGuid(), ShowId = showId, Name = "VIP", Price = 100m, Capacity = 50 }
+                     }
                  });
 
         // Act
@@ -721,6 +728,8 @@ public class EventServiceTests
         Assert.Single(result[0].Shows);
         Assert.Single(result[0].Shows[0].TicketCategories);
         _mockRepo.Verify(r => r.GetPublishedEventsAsync(null, null, null, null, null), Times.Once);
+        _mockRepo.Verify(r => r.GetShowsByEventIdsAsync(It.IsAny<IReadOnlyCollection<Guid>>()), Times.Once);
+        _mockRepo.Verify(r => r.GetTicketCategoriesByShowIdsAsync(It.IsAny<IReadOnlyCollection<Guid>>()), Times.Once);
     }
 
     [Fact]

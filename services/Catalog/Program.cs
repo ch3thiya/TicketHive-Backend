@@ -9,8 +9,9 @@ using Catalog.Service.Authorization;
 using Catalog.Service.Clients;
 using Catalog.Service.Db;
 using Catalog.Service.Services;
-// Load root .env file if available
-DotNetEnv.Env.TraversePath().Load();
+// Load root .env file if available; a real environment variable already set
+// (docker-compose, Container Apps) always wins over the .env file.
+DotNetEnv.Env.TraversePath().NoClobber().Load();
 
 if (args.Contains("--migrate"))
 {
@@ -92,7 +93,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         options.Authority = builder.Configuration["Jwt:Authority"];
         options.Audience = builder.Configuration["Jwt:Audience"];
         options.RequireHttpsMetadata = !builder.Environment.IsDevelopment();
-        
+
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,

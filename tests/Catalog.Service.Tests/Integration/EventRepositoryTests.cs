@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Catalog.Service.Db;
 using Catalog.Service.Models;
@@ -407,6 +409,154 @@ public sealed class EventRepositoryTests
 
         var domainCategories = categories.Select(c => new TicketCategory { Name = c.Name, Price = c.Price, Capacity = c.Capacity }).ToList();
         return await repository.CreateShowWithCategoriesAsync(show, domainCategories);
+    }
+
+    [Fact]
+    public async Task GetShowsAndCategoriesByIds_ManyEventsShowsAndCategories_ReturnsSameDataWithConstantQueryCount()
+    {
+        // Arrange - seed a small batch first, then a larger batch, and prove
+        // the batched calls issue the same fixed number of queries either
+        // way (AC6). Query count is measured via an ActivityListener on
+        // Npgsql's own "Npgsql" ActivitySource: Npgsql emits one Activity
+        // per executed command whenever a listener is attached, so this
+        // counts real round trips without any production-code change or
+        // custom counting wrapper.
+        var repository = CreateRepository();
+        var organizerId = Guid.NewGuid();
+
+        var smallBatch = await SeedEventsWithShowsAndCategoriesAsync(repository, organizerId, eventCount: 3, showsPerEvent: 2, categoriesPerShow: 2);
+        var smallBatchQueryCount = await CountNpgsqlQueriesAsync(async () =>
+        {
+            var (showsByEventId, categoriesByShowId) = await FetchShowsAndCategoriesAsync(repository, smallBatch.Events);
+            AssertMatchesSeededShape(smallBatch, showsByEventId, categoriesByShowId);
+        });
+
+        var largeBatch = await SeedEventsWithShowsAndCategoriesAsync(repository, organizerId, eventCount: 10, showsPerEvent: 3, categoriesPerShow: 2);
+        var largeBatchQueryCount = await CountNpgsqlQueriesAsync(async () =>
+        {
+            var (showsByEventId, categoriesByShowId) = await FetchShowsAndCategoriesAsync(repository, largeBatch.Events);
+            AssertMatchesSeededShape(largeBatch, showsByEventId, categoriesByShowId);
+        });
+
+        // Assert - two queries (one for shows, one for categories) no matter
+        // how many events/shows/categories were fetched.
+        Assert.Equal(2, smallBatchQueryCount);
+        Assert.Equal(2, largeBatchQueryCount);
+    }
+
+    private sealed record SeededBatch(List<Event> Events, Dictionary<Guid, List<Show>> ShowsByEventId, Dictionary<Guid, TicketCategory> ActiveCategoryByShowId, Guid RetiredCategoryId, Guid RetiredCategoryShowId);
+
+    private static async Task<SeededBatch> SeedEventsWithShowsAndCategoriesAsync(
+        EventRepository repository, Guid organizerId, int eventCount, int showsPerEvent, int categoriesPerShow)
+    {
+        var events = new List<Event>();
+        var showsByEventId = new Dictionary<Guid, List<Show>>();
+        var activeCategoryByShowId = new Dictionary<Guid, TicketCategory>();
+        var retiredCategoryId = Guid.Empty;
+        var retiredCategoryShowId = Guid.Empty;
+
+        for (var e = 0; e < eventCount; e++)
+        {
+            var evt = await repository.CreateEventAsync(new Event
+            {
+                OrganizerId = organizerId,
+                Name = $"Batch Event {Guid.NewGuid()}",
+                Status = "Published"
+            });
+            events.Add(evt);
+            showsByEventId[evt.Id] = new List<Show>();
+
+            for (var s = 0; s < showsPerEvent; s++)
+            {
+                var show = new Show
+                {
+                    EventId = evt.Id,
+                    ShowDate = new DateOnly(2026, 11, 1 + s),
+                    ShowTime = new TimeOnly(19, 0),
+                    Status = "Active"
+                };
+                var categories = new List<TicketCategory>();
+                for (var c = 0; c < categoriesPerShow; c++)
+                {
+                    categories.Add(new TicketCategory { Name = $"Category {c}", Price = 10m + c, Capacity = 50 });
+                }
+
+                await repository.CreateShowWithCategoriesAsync(show, categories);
+                showsByEventId[evt.Id].Add(show);
+                activeCategoryByShowId[show.Id] = categories[0];
+
+                if (retiredCategoryId == Guid.Empty && categories.Count > 1)
+                {
+                    // Retire the second category of the very first show seeded, so the
+                    // batched fetch is proven to exclude it exactly like the
+                    // single-show path does.
+                    var keepOnly = new List<TicketCategory>
+                    {
+                        new() { Id = categories[0].Id, Name = categories[0].Name, Price = categories[0].Price, Capacity = categories[0].Capacity }
+                    };
+                    await repository.SaveTicketCategoriesAsync(show.Id, keepOnly);
+                    retiredCategoryId = categories[1].Id;
+                    retiredCategoryShowId = show.Id;
+                }
+            }
+        }
+
+        return new SeededBatch(events, showsByEventId, activeCategoryByShowId, retiredCategoryId, retiredCategoryShowId);
+    }
+
+    private static async Task<(Dictionary<Guid, List<Show>> ShowsByEventId, Dictionary<Guid, List<TicketCategory>> CategoriesByShowId)> FetchShowsAndCategoriesAsync(
+        EventRepository repository, List<Event> events)
+    {
+        var eventIds = events.Select(e => e.Id).ToArray();
+        var showsByEventId = await repository.GetShowsByEventIdsAsync(eventIds);
+
+        var showIds = showsByEventId.Values.SelectMany(shows => shows).Select(s => s.Id).ToArray();
+        var categoriesByShowId = await repository.GetTicketCategoriesByShowIdsAsync(showIds);
+
+        return (showsByEventId, categoriesByShowId);
+    }
+
+    private static void AssertMatchesSeededShape(
+        SeededBatch batch,
+        Dictionary<Guid, List<Show>> showsByEventId,
+        Dictionary<Guid, List<TicketCategory>> categoriesByShowId)
+    {
+        Assert.Equal(batch.Events.Count, showsByEventId.Count);
+        foreach (var evt in batch.Events)
+        {
+            var expectedShows = batch.ShowsByEventId[evt.Id];
+            var actualShows = showsByEventId[evt.Id];
+            Assert.Equal(expectedShows.Select(s => s.Id).OrderBy(id => id), actualShows.Select(s => s.Id).OrderBy(id => id));
+
+            foreach (var show in expectedShows)
+            {
+                var categories = categoriesByShowId.GetValueOrDefault(show.Id, new List<TicketCategory>());
+                Assert.Contains(categories, c => c.Id == batch.ActiveCategoryByShowId[show.Id].Id);
+                Assert.All(categories, c => Assert.True(c.IsActive));
+            }
+        }
+
+        if (batch.RetiredCategoryId != Guid.Empty)
+        {
+            var categoriesOnRetiredShow = categoriesByShowId.GetValueOrDefault(batch.RetiredCategoryShowId, new List<TicketCategory>());
+            Assert.DoesNotContain(categoriesOnRetiredShow, c => c.Id == batch.RetiredCategoryId);
+        }
+    }
+
+    private static async Task<int> CountNpgsqlQueriesAsync(Func<Task> action)
+    {
+        var queryCount = 0;
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = source => source.Name == "Npgsql",
+            Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllData,
+            ActivityStarted = _ => Interlocked.Increment(ref queryCount)
+        };
+        ActivitySource.AddActivityListener(listener);
+
+        await action();
+
+        return queryCount;
     }
 
     // shows.venue_id now has a foreign key to venues, so any test exercising

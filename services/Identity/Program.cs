@@ -2,15 +2,14 @@ using System.Net.Http.Headers;
 using System.Reflection;
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using BuildingBlocks;
 using Identity.Service.Clients;
 using Identity.Service.Db;
-// Load root .env file if available
-DotNetEnv.Env.TraversePath().Load();
-
-// Load root .env file if available
-DotNetEnv.Env.TraversePath().Load();
+// Load root .env file if available; a real environment variable already set
+// (docker-compose, Container Apps) always wins over the .env file.
+DotNetEnv.Env.TraversePath().NoClobber().Load();
 
 if (args.Contains("--migrate"))
 {
@@ -68,15 +67,22 @@ builder.Services.AddCors(options =>
 builder.Services.AddSingleton<DbConnectionFactory>();
 builder.Services.AddScoped<IAccountRepository, AccountRepository>();
 
+// The WSO2 admin credentials and M2M client credentials are required: a
+// service that silently starts without them fails later with a confusing
+// SCIM auth error instead of a clear startup message.
+builder.Services.AddSingleton<IValidateOptions<Wso2AdminOptions>, Wso2AdminOptionsValidator>();
+builder.Services.AddOptions<Wso2AdminOptions>()
+    .Bind(builder.Configuration.GetSection(Wso2AdminOptions.SectionName))
+    .ValidateOnStart();
+
 // Register WSO2 SCIM 2.0 HttpClient with basic auth credentials
-builder.Services.AddHttpClient<IWso2ScimClient, Wso2ScimClient>(client =>
+builder.Services.AddHttpClient<IWso2ScimClient, Wso2ScimClient>((sp, client) =>
 {
     var wso2BaseUrl = builder.Configuration["Wso2:BaseUrl"] ?? "https://localhost:9443/";
     client.BaseAddress = new Uri(wso2BaseUrl);
-    
-    var username = builder.Configuration["Wso2:AdminUsername"] ?? "admin";
-    var password = builder.Configuration["Wso2:AdminPassword"] ?? "admin";
-    var credentials = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{username}:{password}"));
+
+    var adminOptions = sp.GetRequiredService<IOptions<Wso2AdminOptions>>().Value;
+    var credentials = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{adminOptions.AdminUsername}:{adminOptions.AdminPassword}"));
     client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", credentials);
     client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 })
@@ -98,7 +104,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         options.Authority = builder.Configuration["Jwt:Authority"];
         options.Audience = builder.Configuration["Jwt:Audience"];
         options.RequireHttpsMetadata = !builder.Environment.IsDevelopment();
-        
+
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,

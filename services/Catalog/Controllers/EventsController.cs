@@ -54,7 +54,10 @@ public class EventsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error creating event");
-            return StatusCode(500, new { message = "An error occurred while creating the event.", details = ex.Message });
+            return Problem(
+                detail: "An error occurred while creating the event.",
+                statusCode: StatusCodes.Status500InternalServerError,
+                title: "Unexpected error");
         }
     }
 
@@ -83,7 +86,10 @@ public class EventsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error creating show for event {EventId}", eventId);
-            return StatusCode(500, new { message = "An error occurred while creating the show.", details = ex.Message });
+            return Problem(
+                detail: "An error occurred while creating the show.",
+                statusCode: StatusCodes.Status500InternalServerError,
+                title: "Unexpected error");
         }
     }
 
@@ -156,7 +162,10 @@ public class EventsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error getting published events");
-            return StatusCode(500, new { message = "An error occurred while retrieving published events.", details = ex.Message });
+            return Problem(
+                detail: "An error occurred while retrieving published events.",
+                statusCode: StatusCodes.Status500InternalServerError,
+                title: "Unexpected error");
         }
     }
 
