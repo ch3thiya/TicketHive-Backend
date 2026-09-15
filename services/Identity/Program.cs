@@ -7,8 +7,9 @@ using Microsoft.IdentityModel.Tokens;
 using BuildingBlocks;
 using Identity.Service.Clients;
 using Identity.Service.Db;
-// Load root .env file if available
-DotNetEnv.Env.TraversePath().Load();
+// Load root .env file if available; a real environment variable already set
+// (docker-compose, Container Apps) always wins over the .env file.
+DotNetEnv.Env.TraversePath().NoClobber().Load();
 
 if (args.Contains("--migrate"))
 {
