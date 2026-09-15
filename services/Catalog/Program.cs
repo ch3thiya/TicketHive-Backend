@@ -81,6 +81,8 @@ builder.Services.AddHttpClient<IInventoryClient, InventoryClient>((sp, client) =
 })
 .AddHttpMessageHandler<InternalServiceAuthenticationHandler>();
 
+builder.Services.Configure<PublishDefaultsOptions>(builder.Configuration.GetSection(PublishDefaultsOptions.SectionName));
+
 
 // Register CORS to allow React Frontend requests
 var allowedFrontendOrigins = builder.Configuration["Cors:AllowedOrigins"]?

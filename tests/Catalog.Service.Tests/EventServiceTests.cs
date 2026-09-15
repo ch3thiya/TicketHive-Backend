@@ -1,10 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 using Moq;
 using Xunit;
+using Catalog.Service.Clients;
 using Catalog.Service.Db;
 using Catalog.Service.Models;
 using Catalog.Service.Services;
@@ -15,6 +18,7 @@ public class EventServiceTests
 {
     private readonly Mock<IEventRepository> _mockRepo;
     private readonly Mock<IVenueService> _mockVenueService;
+    private readonly Mock<IInventoryClient> _mockInventoryClient;
     private readonly Mock<ILogger<EventService>> _mockLogger;
     private readonly EventService _service;
 
@@ -23,8 +27,13 @@ public class EventServiceTests
         _mockRepo = new Mock<IEventRepository>();
         _mockVenueService = new Mock<IVenueService>();
         _mockVenueService.Setup(v => v.VenueExistsAsync(It.IsAny<Guid>())).ReturnsAsync(true);
+        _mockInventoryClient = new Mock<IInventoryClient>();
+        _mockInventoryClient
+            .Setup(c => c.InitializeShowStockAsync(It.IsAny<Guid>(), It.IsAny<InitializeShowStockRequest>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
         _mockLogger = new Mock<ILogger<EventService>>();
-        _service = new EventService(_mockRepo.Object, _mockVenueService.Object, _mockLogger.Object, new FakeTimeProvider());
+        var publishDefaults = Options.Create(new PublishDefaultsOptions());
+        _service = new EventService(_mockRepo.Object, _mockVenueService.Object, _mockInventoryClient.Object, publishDefaults, _mockLogger.Object, new FakeTimeProvider());
     }
 
     [Fact]
