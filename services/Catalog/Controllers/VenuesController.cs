@@ -20,7 +20,7 @@ public class VenuesController : ControllerBase
     }
 
     [HttpGet]
-    [Authorize]
+    [AllowAnonymous]
     public async Task<IActionResult> GetVenues()
     {
         try
@@ -83,7 +83,8 @@ public class VenuesController : ControllerBase
         try
         {
             await _venueService.UpdateVenueAsync(id, dto);
-            return Ok(new { message = "Venue updated successfully.", id });
+            var updatedVenue = await _venueService.GetVenueByIdAsync(id);
+            return Ok(updatedVenue);
         }
         catch (KeyNotFoundException ex)
         {
