@@ -20,13 +20,11 @@ namespace Inventory.Service.Tests.Integration;
 [Collection("HoldsApi")]
 public sealed class HoldsConcurrencyTests
 {
-    private const string SkipReason = "Unskipped in 'feat: add hold endpoints' once HoldsController exists (ADR-014 test-first).";
-
     private readonly HoldsApiFixture _fixture;
 
     public HoldsConcurrencyTests(HoldsApiFixture fixture) => _fixture = fixture;
 
-    [Fact(Skip = SkipReason)]
+    [Fact]
     public async Task CreateHold_500ParallelRequestsFor100Tickets_ExactlyOneHundredHeldAndRestConflict()
     {
         // Arrange — 500 different customers, one ticket each, 100 available.
@@ -45,7 +43,7 @@ public sealed class HoldsConcurrencyTests
         Assert.Equal(100, await GetHeldQuantityAsync(showId, categoryId));
     }
 
-    [Fact(Skip = SkipReason)]
+    [Fact]
     public async Task CreateHold_TenParallelRequestsFromOneCustomer_NeverExceedsLimit()
     {
         // Arrange — one customer, ten simultaneous requests for 2 tickets
@@ -67,7 +65,7 @@ public sealed class HoldsConcurrencyTests
         Assert.True(responses.Count(r => r.StatusCode == HttpStatusCode.UnprocessableEntity) > 0);
     }
 
-    [Fact(Skip = SkipReason)]
+    [Fact]
     public async Task CreateHold_SameIdempotencyKeySentTwiceInParallel_ReturnsOneHold()
     {
         // Arrange
@@ -94,7 +92,7 @@ public sealed class HoldsConcurrencyTests
         Assert.Equal(98, await GetAvailableAsync(showId, categoryId));
     }
 
-    [Fact(Skip = SkipReason)]
+    [Fact]
     public async Task CreateHold_HighDemandShowWithoutAdmissionToken_ReturnsForbiddenAndStockUntouched()
     {
         // Arrange
