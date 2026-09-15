@@ -15,11 +15,7 @@ public class EventService : IEventService
     private readonly ILogger<EventService> _logger;
     private readonly TimeProvider _timeProvider;
 
-<<<<<<< HEAD
-    public EventService(IEventRepository repository, ILogger<EventService> logger, TimeProvider timeProvider)
-=======
-    public EventService(IEventRepository repository, IVenueService venueService, ILogger<EventService> logger)
->>>>>>> origin/dev
+    public EventService(IEventRepository repository, IVenueService venueService, ILogger<EventService> logger, TimeProvider timeProvider)
     {
         _repository = repository;
         _venueService = venueService;
