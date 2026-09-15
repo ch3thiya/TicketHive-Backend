@@ -34,7 +34,8 @@ public static class DatabaseMigrator
             : builder.WithScriptsEmbeddedInAssembly(assembly, scriptFilter);
 
         var upgrader = engineBuilder
-            .WithTransaction()
+            .JournalToPostgresqlTable("public", "schemaversions")
+            .WithTransactionPerScript()
             .LogTo(logger)
             .Build();
 
