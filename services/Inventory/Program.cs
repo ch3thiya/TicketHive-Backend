@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using BuildingBlocks;
 using Inventory.Service.Db;
+using Inventory.Service.Services;
 
 if (args.Contains("--migrate"))
 {
@@ -34,6 +35,8 @@ builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 
 builder.Services.AddSingleton<DbConnectionFactory>();
+builder.Services.AddScoped<IStockRepository, StockRepository>();
+builder.Services.AddScoped<IStockService, StockService>();
 
 var requiredInternalScope = builder.Configuration["Wso2:InternalApi:RequiredScope"]
     ?? throw new InvalidOperationException("Configuration 'Wso2:InternalApi:RequiredScope' is missing.");

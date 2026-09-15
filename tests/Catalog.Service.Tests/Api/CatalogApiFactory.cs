@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -26,6 +28,7 @@ public class CatalogApiFactory : WebApplicationFactory<Program>
     public Mock<IOrganizerStatusClient> OrganizerStatusClientMock { get; } = new();
     public Mock<IEventRepository> EventRepositoryMock { get; } = new();
     public Mock<IVenueRepository> VenueRepositoryMock { get; } = new();
+    public Mock<IInventoryClient> InventoryClientMock { get; } = new();
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -41,6 +44,9 @@ public class CatalogApiFactory : WebApplicationFactory<Program>
 
             services.RemoveAll<IVenueRepository>();
             services.TryAddSingleton(VenueRepositoryMock.Object);
+
+            services.RemoveAll<IInventoryClient>();
+            services.TryAddSingleton(InventoryClientMock.Object);
 
             services.AddAuthentication(TestAuthHandler.SchemeName)
                 .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.SchemeName, options => { });
@@ -63,5 +69,10 @@ public class CatalogApiFactory : WebApplicationFactory<Program>
 
         VenueRepositoryMock.Reset();
         VenueRepositoryMock.Setup(r => r.GetAllVenuesAsync()).ReturnsAsync(new List<Venue>());
+
+        InventoryClientMock.Reset();
+        InventoryClientMock
+            .Setup(c => c.InitializeShowStockAsync(It.IsAny<Guid>(), It.IsAny<InitializeShowStockRequest>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
     }
 }

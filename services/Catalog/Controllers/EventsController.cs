@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Catalog.Service.Authorization;
+using Catalog.Service.Clients;
 using Catalog.Service.Services;
 
 namespace Catalog.Service.Controllers;
@@ -219,6 +220,14 @@ public class EventsController : ControllerBase
                 detail: ex.Message,
                 statusCode: StatusCodes.Status409Conflict,
                 title: "Invalid event status transition");
+        }
+        catch (InventoryUnavailableException ex)
+        {
+            _logger.LogWarning(ex, "Inventory was unavailable while publishing event {EventId}", eventId);
+            return Problem(
+                detail: "Could not initialize ticket stock right now. Please try again.",
+                statusCode: StatusCodes.Status503ServiceUnavailable,
+                title: "Inventory unavailable");
         }
         catch (Exception ex)
         {

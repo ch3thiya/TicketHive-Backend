@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Catalog.Service.Clients;
 using Catalog.Service.Db;
 using Catalog.Service.Models;
 
@@ -10,15 +12,30 @@ namespace Catalog.Service.Services;
 
 public class EventService : IEventService
 {
+    // ADR-004: money is numeric plus a currency code; this platform only
+    // ever prices in LKR, so there is no per-category currency to carry.
+    private const string Currency = "LKR";
+    private const string AllocationMode = "GA";
+
     private readonly IEventRepository _repository;
     private readonly IVenueService _venueService;
+    private readonly IInventoryClient _inventoryClient;
+    private readonly IOptions<PublishDefaultsOptions> _publishDefaults;
     private readonly ILogger<EventService> _logger;
     private readonly TimeProvider _timeProvider;
 
-    public EventService(IEventRepository repository, IVenueService venueService, ILogger<EventService> logger, TimeProvider timeProvider)
+    public EventService(
+        IEventRepository repository,
+        IVenueService venueService,
+        IInventoryClient inventoryClient,
+        IOptions<PublishDefaultsOptions> publishDefaults,
+        ILogger<EventService> logger,
+        TimeProvider timeProvider)
     {
         _repository = repository;
         _venueService = venueService;
+        _inventoryClient = inventoryClient;
+        _publishDefaults = publishDefaults;
         _logger = logger;
         _timeProvider = timeProvider;
     }
@@ -303,20 +320,40 @@ public class EventService : IEventService
             throw new InvalidOperationException("An event must have at least one active show before it can be published.");
         }
 
-        bool hasTicketCategories = false;
+        var showsWithCategories = new List<(Show Show, List<TicketCategory> Categories)>();
         foreach (var show in shows)
         {
             var categories = await _repository.GetTicketCategoriesByShowIdAsync(show.Id);
-            if (categories != null && categories.Count > 0)
+            if (categories == null || categories.Count == 0)
             {
-                hasTicketCategories = true;
-                break;
+                throw new InvalidOperationException("An event show must have at least one ticket category defined before publishing.");
             }
+
+            showsWithCategories.Add((show, categories));
         }
 
-        if (!hasTicketCategories)
+        // The remote, idempotent step runs before the local commit: a crash
+        // between them leaves the event in Draft with stock already
+        // initialized, so retrying the publish is harmless (SCRUM-8).
+        var defaults = _publishDefaults.Value;
+        foreach (var (show, categories) in showsWithCategories)
         {
-            throw new InvalidOperationException("An event show must have at least one ticket category defined before publishing.");
+            var request = new InitializeShowStockRequest(
+                OrganizerId: organizerId,
+                OnSaleAt: null, // until S2-05 introduces sales rules
+                MaxPerCustomer: defaults.MaxPerCustomer,
+                HoldMinutes: defaults.HoldMinutes,
+                HighDemand: false, // until S2-05 introduces sales rules
+                Categories: categories.Select(c => new InitializeShowStockCategory(
+                    CategoryId: c.Id,
+                    Capacity: c.Capacity,
+                    UnitPrice: c.Price,
+                    Currency: Currency,
+                    AllocationMode: AllocationMode
+                )).ToList()
+            );
+
+            await _inventoryClient.InitializeShowStockAsync(show.Id, request);
         }
 
         _logger.LogInformation("Publishing Event {EventId} for Organizer {OrganizerId}", eventId, organizerId);

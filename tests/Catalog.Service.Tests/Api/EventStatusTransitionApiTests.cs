@@ -72,6 +72,36 @@ public class EventStatusTransitionApiTests : IClassFixture<CatalogApiFactory>
     }
 
     [Fact]
+    public async Task PublishEvent_InventoryUnavailable_ReturnsServiceUnavailableAndEventStaysDraft()
+    {
+        // Arrange
+        const string sub = "organizer-publish-inventory-down";
+        var organizerId = AuthorizeAsOrganizer(sub);
+        var eventId = Guid.NewGuid();
+        var showId = Guid.NewGuid();
+
+        _factory.EventRepositoryMock.Setup(r => r.GetEventByIdAsync(eventId))
+            .ReturnsAsync(new Event { Id = eventId, OrganizerId = organizerId, Status = "Draft" });
+        _factory.EventRepositoryMock.Setup(r => r.GetShowsByEventIdAsync(eventId))
+            .ReturnsAsync(new List<Show> { new Show { Id = showId, EventId = eventId, Status = "Active" } });
+        _factory.EventRepositoryMock.Setup(r => r.GetTicketCategoriesByShowIdAsync(showId))
+            .ReturnsAsync(new List<TicketCategory> { new TicketCategory { Id = Guid.NewGuid(), ShowId = showId, Name = "GA", Price = 20, Capacity = 50 } });
+        _factory.InventoryClientMock
+            .Setup(c => c.InitializeShowStockAsync(showId, It.IsAny<InitializeShowStockRequest>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InventoryUnavailableException("Inventory is unavailable."));
+
+        var client = _factory.CreateClient();
+        var request = WithAuth(new HttpRequestMessage(HttpMethod.Post, $"/api/catalog/events/{eventId}/publish"), sub);
+
+        // Act
+        var response = await client.SendAsync(request);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        _factory.EventRepositoryMock.Verify(r => r.UpdateEventStatusAsync(It.IsAny<Guid>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
     public async Task CancelEvent_AlreadyCancelledEvent_ReturnsConflictProblemDetails()
     {
         // Arrange

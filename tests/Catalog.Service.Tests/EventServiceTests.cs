@@ -1,10 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 using Moq;
 using Xunit;
+using Catalog.Service.Clients;
 using Catalog.Service.Db;
 using Catalog.Service.Models;
 using Catalog.Service.Services;
@@ -15,6 +18,7 @@ public class EventServiceTests
 {
     private readonly Mock<IEventRepository> _mockRepo;
     private readonly Mock<IVenueService> _mockVenueService;
+    private readonly Mock<IInventoryClient> _mockInventoryClient;
     private readonly Mock<ILogger<EventService>> _mockLogger;
     private readonly EventService _service;
 
@@ -23,8 +27,13 @@ public class EventServiceTests
         _mockRepo = new Mock<IEventRepository>();
         _mockVenueService = new Mock<IVenueService>();
         _mockVenueService.Setup(v => v.VenueExistsAsync(It.IsAny<Guid>())).ReturnsAsync(true);
+        _mockInventoryClient = new Mock<IInventoryClient>();
+        _mockInventoryClient
+            .Setup(c => c.InitializeShowStockAsync(It.IsAny<Guid>(), It.IsAny<InitializeShowStockRequest>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
         _mockLogger = new Mock<ILogger<EventService>>();
-        _service = new EventService(_mockRepo.Object, _mockVenueService.Object, _mockLogger.Object, new FakeTimeProvider());
+        var publishDefaults = Options.Create(new PublishDefaultsOptions());
+        _service = new EventService(_mockRepo.Object, _mockVenueService.Object, _mockInventoryClient.Object, publishDefaults, _mockLogger.Object, new FakeTimeProvider());
     }
 
     [Fact]
@@ -222,6 +231,117 @@ public class EventServiceTests
     }
 
     [Fact]
+    public async Task PublishEvent_CallsInventoryBeforeUpdatingStatus()
+    {
+        // Arrange
+        var organizerId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+        var showId = Guid.NewGuid();
+        var callOrder = new List<string>();
+
+        _mockRepo.Setup(r => r.GetEventByIdAsync(eventId))
+                 .ReturnsAsync(new Event { Id = eventId, OrganizerId = organizerId, Status = "Draft" });
+        _mockRepo.Setup(r => r.GetShowsByEventIdAsync(eventId))
+                 .ReturnsAsync(new List<Show> { new Show { Id = showId, EventId = eventId, Status = "Active" } });
+        _mockRepo.Setup(r => r.GetTicketCategoriesByShowIdAsync(showId))
+                 .ReturnsAsync(new List<TicketCategory> { new TicketCategory { Id = Guid.NewGuid(), ShowId = showId, Name = "GA", Price = 20, Capacity = 50 } });
+
+        _mockInventoryClient
+            .Setup(c => c.InitializeShowStockAsync(showId, It.IsAny<InitializeShowStockRequest>(), It.IsAny<CancellationToken>()))
+            .Callback(() => callOrder.Add("inventory"))
+            .Returns(Task.CompletedTask);
+        _mockRepo.Setup(r => r.UpdateEventStatusAsync(eventId, "Published"))
+                 .Callback(() => callOrder.Add("commit"))
+                 .Returns(Task.CompletedTask);
+
+        // Act
+        await _service.PublishEventAsync(organizerId, eventId);
+
+        // Assert
+        Assert.Equal(new[] { "inventory", "commit" }, callOrder);
+    }
+
+    [Fact]
+    public async Task PublishEvent_MultipleActiveShows_CallsInventoryOncePerShow()
+    {
+        // Arrange
+        var organizerId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+        var showOneId = Guid.NewGuid();
+        var showTwoId = Guid.NewGuid();
+
+        _mockRepo.Setup(r => r.GetEventByIdAsync(eventId))
+                 .ReturnsAsync(new Event { Id = eventId, OrganizerId = organizerId, Status = "Draft" });
+        _mockRepo.Setup(r => r.GetShowsByEventIdAsync(eventId))
+                 .ReturnsAsync(new List<Show>
+                 {
+                     new Show { Id = showOneId, EventId = eventId, Status = "Active" },
+                     new Show { Id = showTwoId, EventId = eventId, Status = "Active" }
+                 });
+        _mockRepo.Setup(r => r.GetTicketCategoriesByShowIdAsync(showOneId))
+                 .ReturnsAsync(new List<TicketCategory> { new TicketCategory { Id = Guid.NewGuid(), ShowId = showOneId, Name = "GA", Price = 20, Capacity = 50 } });
+        _mockRepo.Setup(r => r.GetTicketCategoriesByShowIdAsync(showTwoId))
+                 .ReturnsAsync(new List<TicketCategory> { new TicketCategory { Id = Guid.NewGuid(), ShowId = showTwoId, Name = "VIP", Price = 80, Capacity = 20 } });
+
+        // Act
+        await _service.PublishEventAsync(organizerId, eventId);
+
+        // Assert
+        _mockInventoryClient.Verify(c => c.InitializeShowStockAsync(showOneId, It.IsAny<InitializeShowStockRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+        _mockInventoryClient.Verify(c => c.InitializeShowStockAsync(showTwoId, It.IsAny<InitializeShowStockRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+        _mockRepo.Verify(r => r.UpdateEventStatusAsync(eventId, "Published"), Times.Once);
+    }
+
+    [Fact]
+    public async Task PublishEvent_InventoryThrows_EventStaysDraftAndExceptionPropagates()
+    {
+        // Arrange
+        var organizerId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+        var showId = Guid.NewGuid();
+
+        _mockRepo.Setup(r => r.GetEventByIdAsync(eventId))
+                 .ReturnsAsync(new Event { Id = eventId, OrganizerId = organizerId, Status = "Draft" });
+        _mockRepo.Setup(r => r.GetShowsByEventIdAsync(eventId))
+                 .ReturnsAsync(new List<Show> { new Show { Id = showId, EventId = eventId, Status = "Active" } });
+        _mockRepo.Setup(r => r.GetTicketCategoriesByShowIdAsync(showId))
+                 .ReturnsAsync(new List<TicketCategory> { new TicketCategory { Id = Guid.NewGuid(), ShowId = showId, Name = "GA", Price = 20, Capacity = 50 } });
+        _mockInventoryClient
+            .Setup(c => c.InitializeShowStockAsync(showId, It.IsAny<InitializeShowStockRequest>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InventoryUnavailableException("Inventory is unavailable."));
+
+        // Act & Assert
+        await Assert.ThrowsAsync<InventoryUnavailableException>(() => _service.PublishEventAsync(organizerId, eventId));
+        _mockRepo.Verify(r => r.UpdateEventStatusAsync(It.IsAny<Guid>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task PublishEvent_RetriedAfterEarlierAttempt_SucceedsBothTimes()
+    {
+        // Arrange — simulates a crash between Inventory's idempotent
+        // initialize and Catalog's own commit: the event is still Draft on
+        // retry, and publishing again succeeds without special-casing.
+        var organizerId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+        var showId = Guid.NewGuid();
+
+        _mockRepo.Setup(r => r.GetEventByIdAsync(eventId))
+                 .ReturnsAsync(new Event { Id = eventId, OrganizerId = organizerId, Status = "Draft" });
+        _mockRepo.Setup(r => r.GetShowsByEventIdAsync(eventId))
+                 .ReturnsAsync(new List<Show> { new Show { Id = showId, EventId = eventId, Status = "Active" } });
+        _mockRepo.Setup(r => r.GetTicketCategoriesByShowIdAsync(showId))
+                 .ReturnsAsync(new List<TicketCategory> { new TicketCategory { Id = Guid.NewGuid(), ShowId = showId, Name = "GA", Price = 20, Capacity = 50 } });
+
+        // Act
+        await _service.PublishEventAsync(organizerId, eventId);
+        await _service.PublishEventAsync(organizerId, eventId);
+
+        // Assert
+        _mockInventoryClient.Verify(c => c.InitializeShowStockAsync(showId, It.IsAny<InitializeShowStockRequest>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
+        _mockRepo.Verify(r => r.UpdateEventStatusAsync(eventId, "Published"), Times.Exactly(2));
+    }
+
+    [Fact]
     public async Task PublishEvent_NoShows_ThrowsInvalidOperationException()
     {
         // Arrange
@@ -398,6 +518,36 @@ public class EventServiceTests
 
         // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(() => _service.PublishEventAsync(organizerId, eventId));
+        _mockRepo.Verify(r => r.UpdateEventStatusAsync(It.IsAny<Guid>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task PublishEvent_OneOfSeveralShowsHasNoTicketCategories_ThrowsAndCallsInventoryForNoShow()
+    {
+        // Arrange — every active show needs a category, not just one of them;
+        // this also stops Inventory being called at all when the organizer's
+        // own data is incomplete.
+        var organizerId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+        var showWithCategoryId = Guid.NewGuid();
+        var showWithoutCategoryId = Guid.NewGuid();
+
+        _mockRepo.Setup(r => r.GetEventByIdAsync(eventId))
+                 .ReturnsAsync(new Event { Id = eventId, OrganizerId = organizerId, Status = "Draft" });
+        _mockRepo.Setup(r => r.GetShowsByEventIdAsync(eventId))
+                 .ReturnsAsync(new List<Show>
+                 {
+                     new Show { Id = showWithCategoryId, EventId = eventId, Status = "Active" },
+                     new Show { Id = showWithoutCategoryId, EventId = eventId, Status = "Active" }
+                 });
+        _mockRepo.Setup(r => r.GetTicketCategoriesByShowIdAsync(showWithCategoryId))
+                 .ReturnsAsync(new List<TicketCategory> { new TicketCategory { Id = Guid.NewGuid(), ShowId = showWithCategoryId, Name = "GA", Price = 20, Capacity = 50 } });
+        _mockRepo.Setup(r => r.GetTicketCategoriesByShowIdAsync(showWithoutCategoryId))
+                 .ReturnsAsync(new List<TicketCategory>());
+
+        // Act & Assert
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _service.PublishEventAsync(organizerId, eventId));
+        _mockInventoryClient.Verify(c => c.InitializeShowStockAsync(It.IsAny<Guid>(), It.IsAny<InitializeShowStockRequest>(), It.IsAny<CancellationToken>()), Times.Never);
         _mockRepo.Verify(r => r.UpdateEventStatusAsync(It.IsAny<Guid>(), It.IsAny<string>()), Times.Never);
     }
 
