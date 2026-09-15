@@ -411,7 +411,6 @@ public sealed class EventRepositoryTests
         return await repository.CreateShowWithCategoriesAsync(show, domainCategories);
     }
 
-<<<<<<< HEAD
     [Fact]
     public async Task GetShowsAndCategoriesByIds_ManyEventsShowsAndCategories_ReturnsSameDataWithConstantQueryCount()
     {
@@ -558,7 +557,8 @@ public sealed class EventRepositoryTests
         await action();
 
         return queryCount;
-=======
+    }
+
     // shows.venue_id now has a foreign key to venues, so any test exercising
     // it needs a real venue row rather than a fabricated GUID.
     private async Task<Guid> SeedVenueAsync()
@@ -576,7 +576,6 @@ public sealed class EventRepositoryTests
         await command.ExecuteNonQueryAsync();
 
         return venueId;
->>>>>>> origin/dev
     }
 
     private EventRepository CreateRepository()

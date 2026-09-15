@@ -24,11 +24,7 @@ public class EventServiceTests
         _mockVenueService = new Mock<IVenueService>();
         _mockVenueService.Setup(v => v.VenueExistsAsync(It.IsAny<Guid>())).ReturnsAsync(true);
         _mockLogger = new Mock<ILogger<EventService>>();
-<<<<<<< HEAD
-        _service = new EventService(_mockRepo.Object, _mockLogger.Object, new FakeTimeProvider());
-=======
-        _service = new EventService(_mockRepo.Object, _mockVenueService.Object, _mockLogger.Object);
->>>>>>> origin/dev
+        _service = new EventService(_mockRepo.Object, _mockVenueService.Object, _mockLogger.Object, new FakeTimeProvider());
     }
 
     [Fact]
