@@ -1,6 +1,8 @@
 using System.Reflection;
 using System.Security.Claims;
+using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.IdentityModel.Tokens;
 using BuildingBlocks;
 using Inventory.Service.Db;
@@ -143,6 +145,36 @@ builder.Services.AddAuthorization(options =>
         .RequireClaim("aut", "APPLICATION"));
 });
 
+// Per-user limit on POST /api/inventory/holds (ADR-008): 15 attempts per 10
+// seconds. A real customer places one hold and maybe retries after a
+// network hiccup — nowhere near this; a script racing an on-sale hits it
+// within its first burst. Partitioned by the caller's sub so one customer's
+// limit never affects another's, and falls back to the remote IP for a
+// request that somehow reaches the handler unauthenticated.
+builder.Services.AddRateLimiter(options =>
+{
+    options.AddPolicy("HoldCreation", httpContext =>
+    {
+        var partitionKey = httpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+            ?? httpContext.User.FindFirst("sub")?.Value
+            ?? httpContext.Connection.RemoteIpAddress?.ToString()
+            ?? "unknown";
+
+        return RateLimitPartition.GetFixedWindowLimiter(partitionKey, _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 15,
+            Window = TimeSpan.FromSeconds(10),
+            QueueLimit = 0
+        });
+    });
+
+    options.OnRejected = (context, _) =>
+    {
+        context.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+        return ValueTask.CompletedTask;
+    };
+});
+
 var app = builder.Build();
 app.UseServiceDefaults();
 
@@ -162,6 +194,7 @@ app.UseHttpsRedirection();
 
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 app.MapDefaultEndpoints();
 
 app.MapControllers();

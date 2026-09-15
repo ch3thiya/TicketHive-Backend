@@ -3,6 +3,7 @@ using System.Security.Claims;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Inventory.Service.Services;
 
 namespace Inventory.Service.Controllers;
@@ -21,9 +22,12 @@ public class HoldsController : ControllerBase
         _holdService = holdService;
     }
 
-    // Customer authentication (the default scheme).
+    // Customer authentication (the default scheme) plus a per-user rate
+    // limit (ADR-008) — a real customer never needs fifteen hold attempts
+    // in ten seconds, a script racing an on-sale does.
     [HttpPost]
     [Authorize]
+    [EnableRateLimiting("HoldCreation")]
     [ProducesResponseType(typeof(HoldResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
