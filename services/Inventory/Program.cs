@@ -88,9 +88,14 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             RoleClaimType = "groups" // Map Asgardeo's groups claim to the standard .NET Role
         };
 
-        // Deliberately no DangerousAcceptAnyServerCertificateValidator here:
-        // Asgardeo is a public endpoint with a valid certificate, so the
-        // Catalog-style local-identity-server bypass does not apply.
+        // Bypass SSL validation for JWKS key discovery during local development if needed
+        if (builder.Environment.IsDevelopment())
+        {
+            options.BackchannelHttpHandler = new HttpClientHandler
+            {
+                ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
+            };
+        }
     })
     .AddJwtBearer("Internal", options =>
     {
