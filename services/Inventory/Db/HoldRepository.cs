@@ -1,0 +1,248 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using Npgsql;
+using Inventory.Service.Models;
+
+namespace Inventory.Service.Db;
+
+public class HoldRepository : IHoldRepository
+{
+    private readonly DbConnectionFactory _connectionFactory;
+    private readonly IAllocationStrategy _allocationStrategy;
+
+    public HoldRepository(DbConnectionFactory connectionFactory, IAllocationStrategy allocationStrategy)
+    {
+        _connectionFactory = connectionFactory;
+        _allocationStrategy = allocationStrategy;
+    }
+
+    public async Task<ShowRules?> GetShowRulesAsync(Guid showId)
+    {
+        await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
+
+        const string sql = @"
+            SELECT show_id, organizer_id, on_sale_at, max_per_customer, hold_minutes, high_demand
+            FROM show_rules
+            WHERE show_id = @ShowId;
+        ";
+
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("ShowId", showId);
+
+        await using var reader = await command.ExecuteReaderAsync();
+        if (!await reader.ReadAsync())
+        {
+            return null;
+        }
+
+        return new ShowRules
+        {
+            ShowId = reader.GetGuid(0),
+            OrganizerId = reader.GetGuid(1),
+            OnSaleAt = reader.IsDBNull(2) ? null : reader.GetFieldValue<DateTimeOffset>(2),
+            MaxPerCustomer = reader.GetInt32(3),
+            HoldMinutes = reader.GetInt32(4),
+            HighDemand = reader.GetBoolean(5)
+        };
+    }
+
+    public async Task<HoldCreationResult> CreateAsync(Hold hold, int maxPerCustomer)
+    {
+        await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
+        await using var transaction = await connection.BeginTransactionAsync();
+
+        // Existence only, never availability — categories are never deleted
+        // once a show is initialized (ADR-004), so this carries none of the
+        // race the stock allocation below guards against.
+        var requestedCategoryIds = hold.Items.Select(i => i.CategoryId).Distinct().ToList();
+        var knownCategoryIds = await GetKnownCategoryIdsAsync(connection, transaction, hold.ShowId, requestedCategoryIds);
+        var missingCategoryIds = requestedCategoryIds.Where(id => !knownCategoryIds.Contains(id)).ToList();
+        if (missingCategoryIds.Count > 0)
+        {
+            await transaction.RollbackAsync();
+            return new HoldCreationResult { Outcome = HoldCreationOutcome.CategoryNotFound, CategoryId = missingCategoryIds[0] };
+        }
+
+        var totalQuantity = hold.Items.Sum(i => i.Quantity);
+
+        const string quotaInsertSql = @"
+            INSERT INTO customer_quotas (show_id, customer_sub, quantity)
+            VALUES (@ShowId, @CustomerSub, 0)
+            ON CONFLICT DO NOTHING;
+        ";
+        await using (var command = new NpgsqlCommand(quotaInsertSql, connection, transaction))
+        {
+            command.Parameters.AddWithValue("ShowId", hold.ShowId);
+            command.Parameters.AddWithValue("CustomerSub", hold.CustomerSub);
+            await command.ExecuteNonQueryAsync();
+        }
+
+        const string quotaUpdateSql = @"
+            UPDATE customer_quotas SET quantity = quantity + @Total
+             WHERE show_id = @ShowId AND customer_sub = @CustomerSub
+               AND quantity + @Total <= @Max;
+        ";
+        int quotaRowsAffected;
+        await using (var command = new NpgsqlCommand(quotaUpdateSql, connection, transaction))
+        {
+            command.Parameters.AddWithValue("ShowId", hold.ShowId);
+            command.Parameters.AddWithValue("CustomerSub", hold.CustomerSub);
+            command.Parameters.AddWithValue("Total", totalQuantity);
+            command.Parameters.AddWithValue("Max", maxPerCustomer);
+            quotaRowsAffected = await command.ExecuteNonQueryAsync();
+        }
+
+        // Zero rows affected means the limit would be exceeded — an
+        // ordinary outcome (422), not a logged error (ADR-009).
+        if (quotaRowsAffected == 0)
+        {
+            await transaction.RollbackAsync();
+            return new HoldCreationResult { Outcome = HoldCreationOutcome.QuotaExceeded, Limit = maxPerCustomer };
+        }
+
+        // Fixed category_id order avoids deadlocking against a concurrent
+        // hold for the same show touching the same categories in a
+        // different order (ADR-007).
+        foreach (var item in hold.Items.OrderBy(i => i.CategoryId))
+        {
+            var allocated = await _allocationStrategy.TryAllocateAsync(connection, transaction, hold.ShowId, item.CategoryId, item.Quantity);
+            if (allocated is null)
+            {
+                await transaction.RollbackAsync();
+                return new HoldCreationResult { Outcome = HoldCreationOutcome.StockUnavailable, CategoryId = item.CategoryId };
+            }
+
+            item.UnitPrice = allocated.UnitPrice;
+            item.Currency = allocated.Currency;
+        }
+
+        const string holdInsertSql = @"
+            INSERT INTO holds (id, show_id, customer_sub, status, expires_at, idempotency_key, created_at)
+            VALUES (@Id, @ShowId, @CustomerSub, @Status, @ExpiresAt, @IdempotencyKey, @CreatedAt);
+        ";
+
+        const string holdItemInsertSql = @"
+            INSERT INTO hold_items (hold_id, category_id, quantity, unit_price)
+            VALUES (@HoldId, @CategoryId, @Quantity, @UnitPrice);
+        ";
+
+        try
+        {
+            await using (var command = new NpgsqlCommand(holdInsertSql, connection, transaction))
+            {
+                command.Parameters.AddWithValue("Id", hold.Id);
+                command.Parameters.AddWithValue("ShowId", hold.ShowId);
+                command.Parameters.AddWithValue("CustomerSub", hold.CustomerSub);
+                command.Parameters.AddWithValue("Status", hold.Status.ToString());
+                command.Parameters.AddWithValue("ExpiresAt", hold.ExpiresAt);
+                command.Parameters.AddWithValue("IdempotencyKey", hold.IdempotencyKey);
+                command.Parameters.AddWithValue("CreatedAt", hold.CreatedAt);
+                await command.ExecuteNonQueryAsync();
+            }
+
+            foreach (var item in hold.Items)
+            {
+                await using var command = new NpgsqlCommand(holdItemInsertSql, connection, transaction);
+                command.Parameters.AddWithValue("HoldId", hold.Id);
+                command.Parameters.AddWithValue("CategoryId", item.CategoryId);
+                command.Parameters.AddWithValue("Quantity", item.Quantity);
+                command.Parameters.AddWithValue("UnitPrice", item.UnitPrice);
+                await command.ExecuteNonQueryAsync();
+            }
+
+            await transaction.CommitAsync();
+            return new HoldCreationResult { Outcome = HoldCreationOutcome.Created, Hold = hold };
+        }
+        catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UniqueViolation)
+        {
+            // (customer_sub, idempotency_key) already has a row: this is a
+            // retry, not a new hold. Roll back everything this attempt did
+            // (quota, stock) and return the original.
+            await transaction.RollbackAsync();
+            var existing = await FindByIdempotencyKeyAsync(hold.CustomerSub, hold.IdempotencyKey);
+            return new HoldCreationResult { Outcome = HoldCreationOutcome.Duplicate, Hold = existing };
+        }
+    }
+
+    public async Task<Hold?> GetByIdAsync(Guid holdId)
+    {
+        await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
+        return await GetByIdAsync(holdId, connection, null);
+    }
+
+    private async Task<Hold?> FindByIdempotencyKeyAsync(string customerSub, string idempotencyKey)
+    {
+        await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
+
+        const string sql = "SELECT id FROM holds WHERE customer_sub = @CustomerSub AND idempotency_key = @IdempotencyKey;";
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("CustomerSub", customerSub);
+        command.Parameters.AddWithValue("IdempotencyKey", idempotencyKey);
+
+        var holdId = await command.ExecuteScalarAsync();
+        return holdId is null ? null : await GetByIdAsync((Guid)holdId, connection, null);
+    }
+
+    private static async Task<Hold?> GetByIdAsync(Guid holdId, NpgsqlConnection connection, NpgsqlTransaction? transaction)
+    {
+        const string sql = @"
+            SELECT h.id, h.show_id, h.customer_sub, h.status, h.expires_at, h.idempotency_key, h.created_at,
+                   hi.category_id, hi.quantity, hi.unit_price, s.currency
+            FROM holds h
+            JOIN hold_items hi ON hi.hold_id = h.id
+            JOIN stock s ON s.show_id = h.show_id AND s.category_id = hi.category_id
+            WHERE h.id = @HoldId
+            ORDER BY hi.category_id;
+        ";
+
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("HoldId", holdId);
+
+        await using var reader = await command.ExecuteReaderAsync();
+        Hold? hold = null;
+        while (await reader.ReadAsync())
+        {
+            hold ??= new Hold
+            {
+                Id = reader.GetGuid(0),
+                ShowId = reader.GetGuid(1),
+                CustomerSub = reader.GetString(2),
+                Status = Enum.Parse<HoldStatus>(reader.GetString(3)),
+                ExpiresAt = reader.GetFieldValue<DateTimeOffset>(4),
+                IdempotencyKey = reader.GetString(5),
+                CreatedAt = reader.GetFieldValue<DateTimeOffset>(6)
+            };
+
+            hold.Items.Add(new HoldItem
+            {
+                HoldId = hold.Id,
+                CategoryId = reader.GetGuid(7),
+                Quantity = reader.GetInt32(8),
+                UnitPrice = reader.GetDecimal(9),
+                Currency = reader.GetString(10).Trim()
+            });
+        }
+
+        return hold;
+    }
+
+    private static async Task<HashSet<Guid>> GetKnownCategoryIdsAsync(
+        NpgsqlConnection connection, NpgsqlTransaction transaction, Guid showId, List<Guid> categoryIds)
+    {
+        const string sql = "SELECT category_id FROM stock WHERE show_id = @ShowId AND category_id = ANY(@CategoryIds);";
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("ShowId", showId);
+        command.Parameters.AddWithValue("CategoryIds", categoryIds.ToArray());
+
+        await using var reader = await command.ExecuteReaderAsync();
+        var known = new HashSet<Guid>();
+        while (await reader.ReadAsync())
+        {
+            known.Add(reader.GetGuid(0));
+        }
+
+        return known;
+    }
+}
