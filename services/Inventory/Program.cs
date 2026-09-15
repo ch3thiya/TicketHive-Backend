@@ -41,6 +41,26 @@ builder.Services.AddScoped<IStockService, StockService>();
 var requiredInternalScope = builder.Configuration["Wso2:InternalApi:RequiredScope"]
     ?? throw new InvalidOperationException("Configuration 'Wso2:InternalApi:RequiredScope' is missing.");
 
+// Register CORS to allow React Frontend requests
+var allowedFrontendOrigins = builder.Configuration["Cors:AllowedOrigins"]?
+    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+    ?? new[]
+    {
+        "http://localhost:5173",  // Local dev
+        "https://tickethive-frontend.victoriouscoast-e1f47869.southeastasia.azurecontainerapps.io"  // Azure production
+    };
+
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowFrontend", policy =>
+    {
+        policy.WithOrigins(allowedFrontendOrigins)
+              .AllowAnyMethod()
+              .AllowAnyHeader()
+              .AllowCredentials();
+    });
+});
+
 // Customer-facing tokens (default scheme), mirroring Catalog's JWT bearer
 // configuration exactly.
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -132,6 +152,8 @@ if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
 }
+
+app.UseCors("AllowFrontend");
 
 app.UseHttpsRedirection();
 
