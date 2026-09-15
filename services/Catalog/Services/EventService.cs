@@ -343,7 +343,7 @@ public class EventService : IEventService
                 OnSaleAt: null, // until S2-05 introduces sales rules
                 MaxPerCustomer: defaults.MaxPerCustomer,
                 HoldMinutes: defaults.HoldMinutes,
-                HighDemand: false, // until S2-05 introduces sales rules
+                HighDemand: show.HighDemandThreshold.HasValue && show.HighDemandThreshold.Value > 0,
                 Categories: categories.Select(c => new InitializeShowStockCategory(
                     CategoryId: c.Id,
                     Capacity: c.Capacity,

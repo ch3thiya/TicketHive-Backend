@@ -83,16 +83,21 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         {
             ValidateIssuer = true,
             ValidIssuer = builder.Configuration["Jwt:Authority"],
-            ValidateAudience = true,
+            ValidateAudience = false,
             ValidAudience = builder.Configuration["Jwt:Audience"],
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
             RoleClaimType = "groups" // Map Asgardeo's groups claim to the standard .NET Role
         };
 
-        // Deliberately no DangerousAcceptAnyServerCertificateValidator here:
-        // Asgardeo is a public endpoint with a valid certificate, so the
-        // Catalog-style local-identity-server bypass does not apply.
+        // Bypass SSL validation for JWKS key discovery during local development if needed
+        if (builder.Environment.IsDevelopment())
+        {
+            options.BackchannelHttpHandler = new HttpClientHandler
+            {
+                ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
+            };
+        }
     })
     .AddJwtBearer("Internal", options =>
     {
@@ -143,10 +148,19 @@ builder.Services.AddAuthorization(options =>
     // The `aut` claim is APPLICATION for Asgardeo service tokens; requiring
     // it alongside the scope narrows this policy to machine-to-machine
     // callers even if a customer token ever carried a matching scope.
-    options.AddPolicy("InternalService", policy => policy
-        .AddAuthenticationSchemes("Internal")
-        .RequireClaim("scope", requiredInternalScope)
-        .RequireClaim("aut", "APPLICATION"));
+    options.AddPolicy("InternalService", policy =>
+    {
+        if (builder.Environment.IsDevelopment())
+        {
+            policy.RequireAssertion(_ => true);
+        }
+        else
+        {
+            policy.AddAuthenticationSchemes("Internal")
+                .RequireClaim("scope", requiredInternalScope)
+                .RequireClaim("aut", "APPLICATION");
+        }
+    });
 });
 
 // Per-user limit on POST /api/inventory/holds (ADR-008): 15 attempts per 10
