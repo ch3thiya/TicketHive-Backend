@@ -46,11 +46,12 @@ public class HoldsController : ControllerBase
         }
 
         var customerSub = GetCustomerSub();
-        var hasAdmissionToken = Request.Headers.ContainsKey(AdmissionTokenHeader);
+        var hasAdmissionToken = Request.Headers.TryGetValue(AdmissionTokenHeader, out var admissionTokenValues);
+        var admissionToken = hasAdmissionToken ? admissionTokenValues.ToString() : null;
 
         try
         {
-            var result = await _holdService.CreateHoldAsync(customerSub, idempotencyKeyValues.ToString(), hasAdmissionToken, request);
+            var result = await _holdService.CreateHoldAsync(customerSub, idempotencyKeyValues.ToString(), hasAdmissionToken, request, admissionToken);
 
             return result.Status switch
             {

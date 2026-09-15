@@ -42,6 +42,8 @@ builder.Services.AddScoped<IStockRepository, StockRepository>();
 builder.Services.AddScoped<IStockService, StockService>();
 builder.Services.AddScoped<IAllocationStrategy, GeneralAdmissionAllocationStrategy>();
 builder.Services.AddScoped<IHoldRepository, HoldRepository>();
+builder.Services.AddScoped<IWaitingRoomRepository, WaitingRoomRepository>();
+builder.Services.AddScoped<IWaitingRoomService, WaitingRoomService>();
 builder.Services.AddScoped<IHoldService, HoldService>();
 builder.Services.AddHostedService<ExpiredHoldReleaseWorker>();
 

@@ -26,6 +26,8 @@ public static class DatabaseMigrator
     {
         var normalizedConnectionString = PostgresConnectionString.Normalize(connectionString);
 
+        EnsureDatabase.For.PostgresqlDatabase(normalizedConnectionString);
+
         var builder = DeployChanges.To
             .PostgresqlDatabase(normalizedConnectionString);
 

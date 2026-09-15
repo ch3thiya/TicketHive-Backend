@@ -10,17 +10,23 @@ namespace Inventory.Service.Services;
 public class HoldService : IHoldService
 {
     private readonly IHoldRepository _repository;
+    private readonly IWaitingRoomRepository? _waitingRoomRepository;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<HoldService> _logger;
 
-    public HoldService(IHoldRepository repository, TimeProvider timeProvider, ILogger<HoldService> logger)
+    public HoldService(
+        IHoldRepository repository,
+        TimeProvider timeProvider,
+        ILogger<HoldService> logger,
+        IWaitingRoomRepository? waitingRoomRepository = null)
     {
         _repository = repository;
         _timeProvider = timeProvider;
         _logger = logger;
+        _waitingRoomRepository = waitingRoomRepository;
     }
 
-    public async Task<CreateHoldResult> CreateHoldAsync(string customerSub, string idempotencyKey, bool hasAdmissionToken, CreateHoldRequest request)
+    public async Task<CreateHoldResult> CreateHoldAsync(string customerSub, string idempotencyKey, bool hasAdmissionToken, CreateHoldRequest request, string? admissionToken = null)
     {
         if (request.Items == null || request.Items.Count == 0)
         {
@@ -41,16 +47,32 @@ public class HoldService : IHoldService
             return new CreateHoldResult { Status = CreateHoldStatus.ShowNotFound };
         }
 
-        // Fails closed before any stock is touched: no show is high-demand
-        // today, and this stays refused until S2-05's admission tokens can
-        // be verified for real.
-        if (showRules.HighDemand && !hasAdmissionToken)
-        {
-            _logger.LogInformation("Hold rejected for show {ShowId}: high-demand show with no admission token", request.ShowId);
-            return new CreateHoldResult { Status = CreateHoldStatus.HighDemandBlocked };
-        }
-
         var now = _timeProvider.GetUtcNow();
+
+        if (showRules.HighDemand)
+        {
+            if (!hasAdmissionToken)
+            {
+                _logger.LogInformation("Hold rejected for show {ShowId}: high-demand show with no admission token", request.ShowId);
+                return new CreateHoldResult { Status = CreateHoldStatus.HighDemandBlocked };
+            }
+
+            if (_waitingRoomRepository != null)
+            {
+                if (string.IsNullOrWhiteSpace(admissionToken))
+                {
+                    _logger.LogInformation("Hold rejected for show {ShowId}: admission token header value is empty", request.ShowId);
+                    return new CreateHoldResult { Status = CreateHoldStatus.HighDemandBlocked };
+                }
+
+                var isValidToken = await _waitingRoomRepository.ValidateAdmissionTokenAsync(request.ShowId, customerSub, admissionToken, now);
+                if (!isValidToken)
+                {
+                    _logger.LogInformation("Hold rejected for show {ShowId}: admission token is invalid or expired for customer {CustomerSub}", request.ShowId, customerSub);
+                    return new CreateHoldResult { Status = CreateHoldStatus.HighDemandBlocked };
+                }
+            }
+        }
         var hold = new Hold
         {
             Id = Guid.CreateVersion7(),
