@@ -39,6 +39,7 @@ builder.Services.AddScoped<IStockRepository, StockRepository>();
 builder.Services.AddScoped<IStockService, StockService>();
 builder.Services.AddScoped<IAllocationStrategy, GeneralAdmissionAllocationStrategy>();
 builder.Services.AddScoped<IHoldRepository, HoldRepository>();
+builder.Services.AddScoped<IHoldService, HoldService>();
 
 var requiredInternalScope = builder.Configuration["Wso2:InternalApi:RequiredScope"]
     ?? throw new InvalidOperationException("Configuration 'Wso2:InternalApi:RequiredScope' is missing.");
