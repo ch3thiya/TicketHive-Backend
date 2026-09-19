@@ -13,6 +13,10 @@ public record HoldItemResponse(Guid CategoryId, int Quantity, decimal UnitPrice,
 
 public record HoldResponse(Guid HoldId, Guid ShowId, string Status, DateTimeOffset ExpiresAt, List<HoldItemResponse> Items);
 
+// Booking's own request/response shape (ADR-020 tolerant reader) — includes
+// CustomerSub, which the customer-facing HoldResponse has no reason to.
+public record InternalHoldResponse(Guid HoldId, Guid ShowId, string CustomerSub, string Status, DateTimeOffset ExpiresAt, List<HoldItemResponse> Items);
+
 public enum CreateHoldStatus
 {
     Created,
@@ -51,4 +55,8 @@ public interface IHoldService
     // its expiry reads as Expired to its owner even before the sweeper has
     // processed it — the one place every hold-returning path converges.
     HoldResponse ToResponse(Hold hold);
+
+    // Same EffectiveStatus rule as ToResponse, for the internal caller
+    // (Booking, Sprint 3) deciding whether a hold is still valid to convert.
+    InternalHoldResponse ToInternalResponse(Hold hold);
 }
