@@ -136,7 +136,7 @@ public class HoldService : IHoldService
         return _repository.GetActiveHoldForCustomerAsync(showId, customerSub, now);
     }
 
-    public static HoldResponse ToResponse(Hold hold) => new(
+    public HoldResponse ToResponse(Hold hold) => new(
         hold.Id,
         hold.ShowId,
         hold.EffectiveStatus(_timeProvider.GetUtcNow()).ToString(),

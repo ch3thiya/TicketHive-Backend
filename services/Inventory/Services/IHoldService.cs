@@ -54,4 +54,7 @@ public interface IHoldService
     Task<bool> CancelHoldAsync(Guid holdId, string customerSub);
 
     Task<Hold?> GetActiveHoldForCustomerAsync(Guid showId, string customerSub);
+
+    HoldResponse ToResponse(Hold hold);
+    InternalHoldResponse ToInternalResponse(Hold hold);
 }

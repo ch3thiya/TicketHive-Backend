@@ -124,7 +124,7 @@ public class HoldsController : ControllerBase
             return NoContent();
         }
 
-        return Ok(HoldService.ToResponse(hold));
+        return Ok(_holdService.ToResponse(hold));
     }
 
     [HttpDelete("{holdId}")]

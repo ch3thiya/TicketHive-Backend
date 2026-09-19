@@ -52,7 +52,7 @@ public interface IHoldRepository
     // Scans for active holds whose expires_at timestamp has passed, releases
     // held ticket quantities back to stock, decrements customer quotas, and
     // updates status to 'Expired'. Returns count of released holds.
-    Task<int> ReleaseExpiredHoldsAsync(DateTimeOffset now);
+    Task<HoldReleaseSummary> ReleaseExpiredHoldsAsync(DateTimeOffset now, int batchSize = 100);
 
     // Calculates the total number of currently held or sold tickets for a show.
     Task<int> GetTotalHeldOrSoldAsync(Guid showId);
