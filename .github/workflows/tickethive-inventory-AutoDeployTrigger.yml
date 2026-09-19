@@ -5,7 +5,7 @@ on:
   # Automatically trigger it when detected changes in repo
   push:
     branches: 
-      [ dev, main, feature/azure-deployment, feature/scrum-13-customer-pays-for-held-tickets ]
+      [ dev, main, feature/azure-deployment ]
     paths:
     - '**'
     - '.github/workflows/tickethive-inventory-AutoDeployTrigger.yml'
