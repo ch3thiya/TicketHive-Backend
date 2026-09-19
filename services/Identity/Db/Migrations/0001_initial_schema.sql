@@ -1,5 +1,4 @@
--- Enable UUID generation extension if not exists
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+-- gen_random_uuid() is built-in for PostgreSQL 13+ (no extension required)
 
 -- Table for tracking application-level user accounts mapped to WSO2
 CREATE TABLE IF NOT EXISTS user_accounts (
