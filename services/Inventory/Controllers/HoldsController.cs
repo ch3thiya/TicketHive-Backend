@@ -111,6 +111,25 @@ public class HoldsController : ControllerBase
         return Ok(HoldService.ToResponse(hold));
     }
 
+    [HttpDelete("{holdId}")]
+    [Authorize]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> CancelHold(Guid holdId)
+    {
+        var customerSub = GetCustomerSub();
+        var cancelled = await _holdService.CancelHoldAsync(holdId, customerSub);
+        if (!cancelled)
+        {
+            return Problem(
+                detail: $"Hold '{holdId}' was not found or is no longer active.",
+                statusCode: StatusCodes.Status404NotFound,
+                title: "Hold not found");
+        }
+
+        return NoContent();
+    }
+
     private string GetCustomerSub() =>
         User.FindFirst(ClaimTypes.NameIdentifier)?.Value
         ?? User.FindFirst("sub")?.Value

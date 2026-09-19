@@ -11,12 +11,20 @@ namespace Inventory.Service.Services;
 public class StockService : IStockService
 {
     private readonly IStockRepository _repository;
+    private readonly IHoldRepository? _holdRepository;
+    private readonly TimeProvider _timeProvider;
     private readonly ILogger<StockService> _logger;
 
-    public StockService(IStockRepository repository, ILogger<StockService> logger)
+    public StockService(
+        IStockRepository repository,
+        ILogger<StockService> logger,
+        IHoldRepository? holdRepository = null,
+        TimeProvider? timeProvider = null)
     {
         _repository = repository;
         _logger = logger;
+        _holdRepository = holdRepository;
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     public async Task<List<StockItemResponse>> InitializeAsync(Guid showId, InitializeStockRequest request)
@@ -51,7 +59,8 @@ public class StockService : IStockService
             OnSaleAt = request.OnSaleAt,
             MaxPerCustomer = request.MaxPerCustomer,
             HoldMinutes = request.HoldMinutes,
-            HighDemand = request.HighDemand
+            HighDemand = request.HighDemand,
+            HighDemandThreshold = request.HighDemandThreshold
         };
 
         var stockItems = request.Categories.Select(c => new StockItem
@@ -72,6 +81,18 @@ public class StockService : IStockService
 
     public async Task<List<StockItemResponse>?> GetAvailabilityAsync(Guid showId)
     {
+        if (_holdRepository != null)
+        {
+            try
+            {
+                await _holdRepository.ReleaseExpiredHoldsAsync(_timeProvider.GetUtcNow());
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to release expired holds during availability query for show {ShowId}.", showId);
+            }
+        }
+
         var stock = await _repository.GetByShowIdAsync(showId);
         if (stock.Count == 0)
         {

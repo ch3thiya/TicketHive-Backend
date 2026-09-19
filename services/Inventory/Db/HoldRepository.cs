@@ -23,7 +23,7 @@ public class HoldRepository : IHoldRepository
         await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
 
         const string sql = @"
-            SELECT show_id, organizer_id, on_sale_at, max_per_customer, hold_minutes, high_demand
+            SELECT show_id, organizer_id, on_sale_at, max_per_customer, hold_minutes, high_demand, high_demand_threshold
             FROM show_rules
             WHERE show_id = @ShowId;
         ";
@@ -44,8 +44,45 @@ public class HoldRepository : IHoldRepository
             OnSaleAt = reader.IsDBNull(2) ? null : reader.GetFieldValue<DateTimeOffset>(2),
             MaxPerCustomer = reader.GetInt32(3),
             HoldMinutes = reader.GetInt32(4),
-            HighDemand = reader.GetBoolean(5)
+            HighDemand = reader.GetBoolean(5),
+            HighDemandThreshold = reader.IsDBNull(6) ? null : reader.GetInt32(6)
         };
+    }
+
+    public async Task<int> GetTotalHeldOrSoldAsync(Guid showId)
+    {
+        await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
+
+        const string sql = @"
+            SELECT COALESCE(SUM(capacity - available), 0)
+            FROM stock
+            WHERE show_id = @ShowId;
+        ";
+
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("ShowId", showId);
+
+        var result = await command.ExecuteScalarAsync();
+        return Convert.ToInt32(result);
+    }
+
+    public async Task<int> GetTotalActiveHoldsAsync(Guid showId, DateTimeOffset now)
+    {
+        await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
+
+        const string sql = @"
+            SELECT COALESCE(SUM(hi.quantity), 0)
+            FROM holds h
+            JOIN hold_items hi ON hi.hold_id = h.id
+            WHERE h.show_id = @ShowId AND h.status = 'Active' AND h.expires_at > @Now;
+        ";
+
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("ShowId", showId);
+        command.Parameters.AddWithValue("Now", now);
+
+        var result = await command.ExecuteScalarAsync();
+        return Convert.ToInt32(result);
     }
 
     public async Task<HoldCreationResult> CreateAsync(Hold hold, int maxPerCustomer)
@@ -286,7 +323,7 @@ public class HoldRepository : IHoldRepository
             {
                 const string restoreStockSql = @"
                     UPDATE stock
-                    SET available_quantity = available_quantity + @Quantity
+                    SET available = available + @Quantity
                     WHERE category_id = @CategoryId;
                 ";
                 await using var command = new NpgsqlCommand(restoreStockSql, connection, transaction);
@@ -329,5 +366,78 @@ public class HoldRepository : IHoldRepository
         }
 
         return known;
+    }
+
+    public async Task<bool> CancelHoldAsync(Guid holdId, string customerSub, DateTimeOffset now)
+    {
+        await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
+        await using var transaction = await connection.BeginTransactionAsync();
+
+        const string selectSql = @"
+            SELECT show_id
+            FROM holds
+            WHERE id = @HoldId AND customer_sub = @CustomerSub AND status = 'Active';
+        ";
+
+        Guid showId;
+        await using (var command = new NpgsqlCommand(selectSql, connection, transaction))
+        {
+            command.Parameters.AddWithValue("HoldId", holdId);
+            command.Parameters.AddWithValue("CustomerSub", customerSub);
+            var result = await command.ExecuteScalarAsync();
+            if (result is null) return false;
+            showId = (Guid)result;
+        }
+
+        const string updateHoldSql = "UPDATE holds SET status = 'Cancelled' WHERE id = @HoldId;";
+        await using (var command = new NpgsqlCommand(updateHoldSql, connection, transaction))
+        {
+            command.Parameters.AddWithValue("HoldId", holdId);
+            await command.ExecuteNonQueryAsync();
+        }
+
+        const string selectItemsSql = "SELECT category_id, quantity FROM hold_items WHERE hold_id = @HoldId;";
+        var items = new List<(Guid CategoryId, int Quantity)>();
+        await using (var command = new NpgsqlCommand(selectItemsSql, connection, transaction))
+        {
+            command.Parameters.AddWithValue("HoldId", holdId);
+            await using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                items.Add((reader.GetGuid(0), reader.GetInt32(1)));
+            }
+        }
+
+        int totalQuantity = items.Sum(i => i.Quantity);
+
+        foreach (var (categoryId, quantity) in items)
+        {
+            const string restoreStockSql = @"
+                UPDATE stock
+                SET available = available + @Quantity, updated_at = NOW()
+                WHERE show_id = @ShowId AND category_id = @CategoryId;
+            ";
+            await using var command = new NpgsqlCommand(restoreStockSql, connection, transaction);
+            command.Parameters.AddWithValue("Quantity", quantity);
+            command.Parameters.AddWithValue("ShowId", showId);
+            command.Parameters.AddWithValue("CategoryId", categoryId);
+            await command.ExecuteNonQueryAsync();
+        }
+
+        const string restoreQuotaSql = @"
+            UPDATE customer_quotas
+            SET held_quantity = GREATEST(0, held_quantity - @TotalQuantity), updated_at = NOW()
+            WHERE show_id = @ShowId AND customer_sub = @CustomerSub;
+        ";
+        await using (var command = new NpgsqlCommand(restoreQuotaSql, connection, transaction))
+        {
+            command.Parameters.AddWithValue("TotalQuantity", totalQuantity);
+            command.Parameters.AddWithValue("ShowId", showId);
+            command.Parameters.AddWithValue("CustomerSub", customerSub);
+            await command.ExecuteNonQueryAsync();
+        }
+
+        await transaction.CommitAsync();
+        return true;
     }
 }

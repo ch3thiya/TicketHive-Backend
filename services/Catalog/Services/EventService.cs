@@ -350,7 +350,8 @@ public class EventService : IEventService
                     UnitPrice: c.Price,
                     Currency: Currency,
                     AllocationMode: AllocationMode
-                )).ToList()
+                )).ToList(),
+                HighDemandThreshold: show.HighDemandThreshold
             );
 
             await _inventoryClient.InitializeShowStockAsync(show.Id, request);

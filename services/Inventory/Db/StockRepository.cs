@@ -22,14 +22,15 @@ public class StockRepository : IStockRepository
         using var transaction = await connection.BeginTransactionAsync();
 
         const string upsertRulesSql = @"
-            INSERT INTO show_rules (show_id, organizer_id, on_sale_at, max_per_customer, hold_minutes, high_demand)
-            VALUES (@ShowId, @OrganizerId, @OnSaleAt, @MaxPerCustomer, @HoldMinutes, @HighDemand)
+            INSERT INTO show_rules (show_id, organizer_id, on_sale_at, max_per_customer, hold_minutes, high_demand, high_demand_threshold)
+            VALUES (@ShowId, @OrganizerId, @OnSaleAt, @MaxPerCustomer, @HoldMinutes, @HighDemand, @HighDemandThreshold)
             ON CONFLICT (show_id) DO UPDATE SET
                 organizer_id = EXCLUDED.organizer_id,
                 on_sale_at = EXCLUDED.on_sale_at,
                 max_per_customer = EXCLUDED.max_per_customer,
                 hold_minutes = EXCLUDED.hold_minutes,
-                high_demand = EXCLUDED.high_demand;
+                high_demand = EXCLUDED.high_demand,
+                high_demand_threshold = EXCLUDED.high_demand_threshold;
         ";
 
         using (var rulesCommand = new NpgsqlCommand(upsertRulesSql, connection, transaction))
@@ -40,6 +41,7 @@ public class StockRepository : IStockRepository
             rulesCommand.Parameters.AddWithValue("MaxPerCustomer", rules.MaxPerCustomer);
             rulesCommand.Parameters.AddWithValue("HoldMinutes", rules.HoldMinutes);
             rulesCommand.Parameters.AddWithValue("HighDemand", rules.HighDemand);
+            rulesCommand.Parameters.AddWithValue("HighDemandThreshold", (object?)rules.HighDemandThreshold ?? DBNull.Value);
             await rulesCommand.ExecuteNonQueryAsync();
         }
 

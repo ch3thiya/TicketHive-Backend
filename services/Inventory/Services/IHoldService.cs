@@ -46,4 +46,6 @@ public interface IHoldService
     // sub against CustomerSub) is left to the controller, which is the one
     // that decides between 404 and leaking existence with a 403.
     Task<Hold?> GetHoldAsync(Guid holdId);
+
+    Task<bool> CancelHoldAsync(Guid holdId, string customerSub);
 }
