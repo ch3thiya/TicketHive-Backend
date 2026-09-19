@@ -108,7 +108,7 @@ public class HoldsController : ControllerBase
                 title: "Hold not found");
         }
 
-        return Ok(HoldService.ToResponse(hold));
+        return Ok(_holdService.ToResponse(hold));
     }
 
     private string GetCustomerSub() =>

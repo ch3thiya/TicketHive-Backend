@@ -111,10 +111,18 @@ public class HoldService : IHoldService
 
     public Task<Hold?> GetHoldAsync(Guid holdId) => _repository.GetByIdAsync(holdId);
 
-    public static HoldResponse ToResponse(Hold hold) => new(
+    public HoldResponse ToResponse(Hold hold) => new(
         hold.Id,
         hold.ShowId,
-        hold.Status.ToString(),
+        hold.EffectiveStatus(_timeProvider.GetUtcNow()).ToString(),
+        hold.ExpiresAt,
+        hold.Items.Select(i => new HoldItemResponse(i.CategoryId, i.Quantity, i.UnitPrice, i.Currency)).ToList());
+
+    public InternalHoldResponse ToInternalResponse(Hold hold) => new(
+        hold.Id,
+        hold.ShowId,
+        hold.CustomerSub,
+        hold.EffectiveStatus(_timeProvider.GetUtcNow()).ToString(),
         hold.ExpiresAt,
         hold.Items.Select(i => new HoldItemResponse(i.CategoryId, i.Quantity, i.UnitPrice, i.Currency)).ToList());
 }

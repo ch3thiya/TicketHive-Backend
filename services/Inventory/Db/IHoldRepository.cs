@@ -21,6 +21,17 @@ public class HoldCreationResult
     public int? Limit { get; init; }
 }
 
+public class HoldReleaseSummary
+{
+    public required int HoldsReleased { get; init; }
+    public required int TicketsReturned { get; init; }
+
+    // How many of the released holds hit the GREATEST(0, ...) clamp when
+    // their quota was restored — should never happen; every occurrence
+    // means quota accounting drifted somewhere else.
+    public required int QuotaClampCount { get; init; }
+}
+
 public interface IHoldRepository
 {
     // Null means the show has never been initialized.
@@ -38,8 +49,8 @@ public interface IHoldRepository
     // if it does not exist.
     Task<Hold?> GetByIdAsync(Guid holdId);
 
-    // Scans for active holds whose expires_at timestamp has passed, releases
-    // held ticket quantities back to stock, decrements customer quotas, and
-    // updates status to 'Expired'. Returns count of released holds.
-    Task<int> ReleaseExpiredHoldsAsync(DateTimeOffset now);
+    // Scans for up to batchSize active holds whose expires_at timestamp has
+    // passed, oldest expiry first, releases held ticket quantities back to
+    // stock, decrements customer quotas, and updates status to 'Expired'.
+    Task<HoldReleaseSummary> ReleaseExpiredHoldsAsync(DateTimeOffset now, int batchSize);
 }
