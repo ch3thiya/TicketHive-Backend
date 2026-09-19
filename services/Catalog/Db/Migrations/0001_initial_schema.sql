@@ -1,5 +1,4 @@
--- Enable pgcrypto extension if not exists for gen_random_uuid()
-CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+-- gen_random_uuid() is built-in for PostgreSQL 13+ (no extension required)
 
 -- Table for persisting events in catalog service
 CREATE TABLE IF NOT EXISTS events (
