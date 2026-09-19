@@ -44,7 +44,14 @@ builder.Services.AddScoped<IQueueRepository, QueueRepository>();
 builder.Services.AddScoped<IQueueService, QueueService>();
 builder.Services.AddSingleton<IAdmissionTokenIssuer, AdmissionTokenIssuer>();
 builder.Services.Configure<QueueDefaultsOptions>(builder.Configuration.GetSection(QueueDefaultsOptions.SectionName));
-builder.Services.Configure<AdmissionTokenOptions>(builder.Configuration.GetSection(AdmissionTokenOptions.SectionName));
+
+// A missing signing key fails at startup, not on an admitted customer's
+// first request.
+builder.Services.AddSingleton<IValidateOptions<AdmissionTokenOptions>, AdmissionTokenOptionsValidator>();
+builder.Services.AddOptions<AdmissionTokenOptions>()
+    .Bind(builder.Configuration.GetSection(AdmissionTokenOptions.SectionName))
+    .ValidateOnStart();
+
 builder.Services.AddHostedService<QueueAdmissionScheduler>();
 
 // Register the internal-token client (client-credentials M2M token, cached)

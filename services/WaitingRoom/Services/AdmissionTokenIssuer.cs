@@ -13,13 +13,9 @@ public class AdmissionTokenIssuer : IAdmissionTokenIssuer, IDisposable
 
     public AdmissionTokenIssuer(IOptions<AdmissionTokenOptions> options)
     {
+        // PrivateKeyPem is required and validated at startup
+        // (AdmissionTokenOptionsValidator), so it is never empty here.
         _options = options.Value;
-
-        if (string.IsNullOrWhiteSpace(_options.PrivateKeyPem))
-        {
-            throw new InvalidOperationException("Configuration 'AdmissionToken:PrivateKeyPem' is missing.");
-        }
-
         _privateKey = RSA.Create();
         _privateKey.ImportFromPem(_options.PrivateKeyPem);
     }
