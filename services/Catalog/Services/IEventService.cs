@@ -89,6 +89,8 @@ public record EventWithShowsDto(
     List<ShowDetailsDto> Shows
 );
 
+public record ShowSalesRulesDto(Guid ShowId, DateTimeOffset? OnSaleAt, bool HighDemand);
+
 public interface IEventService
 {
     Task<Event> CreateEventAsync(Guid organizerId, CreateEventDto dto);
@@ -103,4 +105,5 @@ public interface IEventService
     Task CancelEventAsync(Guid organizerId, Guid eventId);
     Task UpdateShowAsync(Guid organizerId, Guid showId, UpdateShowDto dto);
     Task CancelShowAsync(Guid organizerId, Guid showId);
+    Task<ShowSalesRulesDto?> GetSalesRulesAsync(Guid showId);
 }

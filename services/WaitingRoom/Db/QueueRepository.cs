@@ -44,6 +44,45 @@ public class QueueRepository : IQueueRepository
             Enum.Parse<QueueStatus>(reader.GetString(7)));
     }
 
+    public async Task<Queue> CreateQueueIfNotExistsAsync(
+        Guid showId,
+        DateTimeOffset onSaleAt,
+        DateTimeOffset prequeueOpensAt,
+        int admitBatch,
+        int admitIntervalSeconds,
+        CancellationToken cancellationToken = default)
+    {
+        await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
+
+        const string sql = @"
+            insert into queues (show_id, on_sale_at, prequeue_opens_at, admit_batch, admit_interval_seconds, status)
+            values (@ShowId, @OnSaleAt, @PrequeueOpensAt, @AdmitBatch, @AdmitIntervalSeconds, @PreQueueStatus)
+            on conflict (show_id) do update set show_id = queues.show_id
+            returning show_id, on_sale_at, prequeue_opens_at, serving_number, next_number, admit_batch, admit_interval_seconds, status;
+        ";
+
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("ShowId", showId);
+        command.Parameters.AddWithValue("OnSaleAt", onSaleAt);
+        command.Parameters.AddWithValue("PrequeueOpensAt", prequeueOpensAt);
+        command.Parameters.AddWithValue("AdmitBatch", admitBatch);
+        command.Parameters.AddWithValue("AdmitIntervalSeconds", admitIntervalSeconds);
+        command.Parameters.AddWithValue("PreQueueStatus", nameof(QueueStatus.PreQueue));
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        await reader.ReadAsync(cancellationToken);
+
+        return new Queue(
+            reader.GetGuid(0),
+            reader.GetFieldValue<DateTimeOffset>(1),
+            reader.GetFieldValue<DateTimeOffset>(2),
+            reader.GetInt64(3),
+            reader.GetInt64(4),
+            reader.GetInt32(5),
+            reader.GetInt32(6),
+            Enum.Parse<QueueStatus>(reader.GetString(7)));
+    }
+
     public async Task<QueueEntry?> GetEntryAsync(Guid showId, string customerSub, CancellationToken cancellationToken = default)
     {
         await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();

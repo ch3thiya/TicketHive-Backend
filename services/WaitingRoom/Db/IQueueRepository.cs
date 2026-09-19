@@ -6,6 +6,19 @@ public interface IQueueRepository
 {
     Task<Queue?> GetQueueAsync(Guid showId, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Creates the queue row for a high-demand show, or returns the existing
+    /// one unchanged if it was already created (an atomic upsert — never a
+    /// race between two simultaneous first joiners).
+    /// </summary>
+    Task<Queue> CreateQueueIfNotExistsAsync(
+        Guid showId,
+        DateTimeOffset onSaleAt,
+        DateTimeOffset prequeueOpensAt,
+        int admitBatch,
+        int admitIntervalSeconds,
+        CancellationToken cancellationToken = default);
+
     Task<QueueEntry?> GetEntryAsync(Guid showId, string customerSub, CancellationToken cancellationToken = default);
 
     /// <summary>

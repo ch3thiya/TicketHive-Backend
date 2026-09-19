@@ -1,7 +1,9 @@
 using System.Reflection;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using BuildingBlocks;
+using WaitingRoom.Service.Clients;
 using WaitingRoom.Service.Db;
 using WaitingRoom.Service.Services;
 // Load root .env file if available; a real environment variable already set
@@ -44,6 +46,23 @@ builder.Services.AddSingleton<IAdmissionTokenIssuer, AdmissionTokenIssuer>();
 builder.Services.Configure<QueueDefaultsOptions>(builder.Configuration.GetSection(QueueDefaultsOptions.SectionName));
 builder.Services.Configure<AdmissionTokenOptions>(builder.Configuration.GetSection(AdmissionTokenOptions.SectionName));
 builder.Services.AddHostedService<QueueAdmissionScheduler>();
+
+// Register the internal-token client (client-credentials M2M token, cached)
+// and the Catalog client that attaches it to outgoing calls. The standard
+// resilience handler already applies to every typed client via
+// AddServiceDefaults()'s ConfigureHttpClientDefaults.
+builder.Services.AddMemoryCache();
+builder.Services.AddInternalServiceTokenClient(builder.Configuration);
+builder.Services.Configure<CatalogClientOptions>(builder.Configuration.GetSection(CatalogClientOptions.SectionName));
+builder.Services.AddHttpClient<ICatalogClient, CatalogClient>((sp, client) =>
+{
+    var options = sp.GetRequiredService<IOptions<CatalogClientOptions>>().Value;
+    if (!string.IsNullOrWhiteSpace(options.BaseUrl))
+    {
+        client.BaseAddress = new Uri(options.BaseUrl);
+    }
+})
+.AddHttpMessageHandler<InternalServiceAuthenticationHandler>();
 
 // Register CORS to allow React Frontend requests
 var allowedFrontendOrigins = builder.Configuration["Cors:AllowedOrigins"]?

@@ -1,6 +1,8 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using WaitingRoom.Service.Clients;
+using WaitingRoom.Service.Models;
 using WaitingRoom.Service.Services;
 
 namespace WaitingRoom.Service.Controllers;
@@ -20,10 +22,23 @@ public class QueueController : ControllerBase
     [Authorize]
     [ProducesResponseType(typeof(QueueEntryResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> Join(Guid showId)
     {
         var customerSub = GetCustomerSub();
-        var entry = await _queueService.JoinAsync(showId, customerSub);
+
+        QueueEntry? entry;
+        try
+        {
+            entry = await _queueService.JoinAsync(showId, customerSub);
+        }
+        catch (CatalogUnavailableException)
+        {
+            return Problem(
+                detail: "Could not determine this show's sales rules right now. Please try again.",
+                statusCode: StatusCodes.Status503ServiceUnavailable,
+                title: "Catalog unavailable");
+        }
 
         if (entry is null)
         {
