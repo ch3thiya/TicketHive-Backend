@@ -350,7 +350,8 @@ public class EventService : IEventService
                     UnitPrice: c.Price,
                     Currency: Currency,
                     AllocationMode: AllocationMode
-                )).ToList()
+                )).ToList(),
+                HighDemandThreshold: show.HighDemandThreshold
             );
 
             await _inventoryClient.InitializeShowStockAsync(show.Id, request);
@@ -414,6 +415,28 @@ public class EventService : IEventService
 
         _logger.LogInformation("Cancelling Event {EventId} for Organizer {OrganizerId}", eventId, organizerId);
         await _repository.UpdateEventStatusAsync(eventId, "Cancelled");
+    }
+
+    public async Task DeleteEventAsync(Guid organizerId, Guid eventId)
+    {
+        var evt = await _repository.GetEventByIdAsync(eventId);
+        if (evt == null)
+        {
+            throw new KeyNotFoundException($"Event with ID '{eventId}' was not found.");
+        }
+
+        if (evt.OrganizerId != organizerId)
+        {
+            throw new UnauthorizedAccessException("You are not authorized to delete this event.");
+        }
+
+        if (evt.Status != "Cancelled" && evt.Status != "Draft")
+        {
+            throw new InvalidOperationException("Only cancelled or draft events can be deleted.");
+        }
+
+        _logger.LogInformation("Deleting Event {EventId} for Organizer {OrganizerId}", eventId, organizerId);
+        await _repository.DeleteEventAsync(eventId);
     }
 
     public async Task UpdateShowAsync(Guid organizerId, Guid showId, UpdateShowDto dto)
@@ -480,6 +503,35 @@ public class EventService : IEventService
             }
 
             await _repository.SaveTicketCategoriesAsync(showId, categories);
+        }
+
+        // Sync rules and threshold to Inventory service
+        try
+        {
+            var allCategories = await _repository.GetTicketCategoriesByShowIdAsync(showId);
+            if (allCategories.Count > 0)
+            {
+                var syncRequest = new InitializeShowStockRequest(
+                    OrganizerId: organizerId,
+                    OnSaleAt: show.OnSaleAt,
+                    MaxPerCustomer: 6,
+                    HoldMinutes: 10,
+                    HighDemand: show.HighDemandThreshold.HasValue && show.HighDemandThreshold.Value > 0,
+                    Categories: allCategories.Select(c => new InitializeShowStockCategory(
+                        CategoryId: c.Id,
+                        Capacity: c.Capacity,
+                        UnitPrice: c.Price,
+                        Currency: Currency,
+                        AllocationMode: AllocationMode
+                    )).ToList(),
+                    HighDemandThreshold: show.HighDemandThreshold
+                );
+                await _inventoryClient.InitializeShowStockAsync(showId, syncRequest);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to sync updated show rules to Inventory service for show '{ShowId}'", showId);
         }
     }
 

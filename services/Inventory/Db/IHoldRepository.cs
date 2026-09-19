@@ -49,8 +49,20 @@ public interface IHoldRepository
     // if it does not exist.
     Task<Hold?> GetByIdAsync(Guid holdId);
 
-    // Scans for up to batchSize active holds whose expires_at timestamp has
-    // passed, oldest expiry first, releases held ticket quantities back to
-    // stock, decrements customer quotas, and updates status to 'Expired'.
-    Task<HoldReleaseSummary> ReleaseExpiredHoldsAsync(DateTimeOffset now, int batchSize);
+    // Scans for active holds whose expires_at timestamp has passed, releases
+    // held ticket quantities back to stock, decrements customer quotas, and
+    // updates status to 'Expired'. Returns count of released holds.
+    Task<int> ReleaseExpiredHoldsAsync(DateTimeOffset now);
+
+    // Calculates the total number of currently held or sold tickets for a show.
+    Task<int> GetTotalHeldOrSoldAsync(Guid showId);
+
+    // Calculates the number of tickets actively being held by customers right now (status = 'Active' and expires_at > now).
+    Task<int> GetTotalActiveHoldsAsync(Guid showId, DateTimeOffset now);
+
+    // Cancels an active hold for a customer, restoring stock and quota.
+    Task<bool> CancelHoldAsync(Guid holdId, string customerSub, DateTimeOffset now);
+
+    // Returns an active hold for a given show and customer sub if one exists.
+    Task<Hold?> GetActiveHoldForCustomerAsync(Guid showId, string customerSub, DateTimeOffset now);
 }

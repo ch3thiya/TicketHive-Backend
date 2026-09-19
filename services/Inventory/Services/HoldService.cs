@@ -49,27 +49,36 @@ public class HoldService : IHoldService
 
         var now = _timeProvider.GetUtcNow();
 
-        if (showRules.HighDemand)
+        bool isHighDemandConfigured = showRules.HighDemand || (showRules.HighDemandThreshold.HasValue && showRules.HighDemandThreshold.Value > 0);
+        if (isHighDemandConfigured)
         {
-            if (!hasAdmissionToken)
-            {
-                _logger.LogInformation("Hold rejected for show {ShowId}: high-demand show with no admission token", request.ShowId);
-                return new CreateHoldResult { Status = CreateHoldStatus.HighDemandBlocked };
-            }
+            var activeHoldsCount = await _repository.GetTotalActiveHoldsAsync(request.ShowId, now);
+            var threshold = showRules.HighDemandThreshold ?? 1;
 
-            if (_waitingRoomRepository != null)
+            // Direct hold attempts are blocked ONLY when the threshold number of customers are actively holding tickets right now (activeHoldsCount >= threshold)
+            if (activeHoldsCount >= threshold)
             {
-                if (string.IsNullOrWhiteSpace(admissionToken))
+                if (!hasAdmissionToken)
                 {
-                    _logger.LogInformation("Hold rejected for show {ShowId}: admission token header value is empty", request.ShowId);
+                    _logger.LogInformation("Hold rejected for show {ShowId}: high-demand threshold ({Threshold}) reached ({ActiveHolds} active holds) and no admission token provided",
+                        request.ShowId, threshold, activeHoldsCount);
                     return new CreateHoldResult { Status = CreateHoldStatus.HighDemandBlocked };
                 }
 
-                var isValidToken = await _waitingRoomRepository.ValidateAdmissionTokenAsync(request.ShowId, customerSub, admissionToken, now);
-                if (!isValidToken)
+                if (_waitingRoomRepository != null)
                 {
-                    _logger.LogInformation("Hold rejected for show {ShowId}: admission token is invalid or expired for customer {CustomerSub}", request.ShowId, customerSub);
-                    return new CreateHoldResult { Status = CreateHoldStatus.HighDemandBlocked };
+                    if (string.IsNullOrWhiteSpace(admissionToken))
+                    {
+                        _logger.LogInformation("Hold rejected for show {ShowId}: admission token header value is empty", request.ShowId);
+                        return new CreateHoldResult { Status = CreateHoldStatus.HighDemandBlocked };
+                    }
+
+                    var isValidToken = await _waitingRoomRepository.ValidateAdmissionTokenAsync(request.ShowId, customerSub, admissionToken, now);
+                    if (!isValidToken)
+                    {
+                        _logger.LogInformation("Hold rejected for show {ShowId}: admission token is invalid or expired for customer {CustomerSub}", request.ShowId, customerSub);
+                        return new CreateHoldResult { Status = CreateHoldStatus.HighDemandBlocked };
+                    }
                 }
             }
         }
@@ -93,6 +102,10 @@ public class HoldService : IHoldService
         {
             case HoldCreationOutcome.Created:
                 _logger.LogInformation("Hold {HoldId} created for show {ShowId}", hold.Id, hold.ShowId);
+                if (hasAdmissionToken && _waitingRoomRepository != null && !string.IsNullOrWhiteSpace(admissionToken))
+                {
+                    await _waitingRoomRepository.ConsumeAdmissionTokenAsync(request.ShowId, customerSub, admissionToken, now);
+                }
                 return new CreateHoldResult { Status = CreateHoldStatus.Created, Hold = ToResponse(result.Hold!) };
             case HoldCreationOutcome.Duplicate:
                 return new CreateHoldResult { Status = CreateHoldStatus.Duplicate, Hold = ToResponse(result.Hold!) };
@@ -111,7 +124,19 @@ public class HoldService : IHoldService
 
     public Task<Hold?> GetHoldAsync(Guid holdId) => _repository.GetByIdAsync(holdId);
 
-    public HoldResponse ToResponse(Hold hold) => new(
+    public Task<bool> CancelHoldAsync(Guid holdId, string customerSub)
+    {
+        var now = _timeProvider.GetUtcNow();
+        return _repository.CancelHoldAsync(holdId, customerSub, now);
+    }
+
+    public Task<Hold?> GetActiveHoldForCustomerAsync(Guid showId, string customerSub)
+    {
+        var now = _timeProvider.GetUtcNow();
+        return _repository.GetActiveHoldForCustomerAsync(showId, customerSub, now);
+    }
+
+    public static HoldResponse ToResponse(Hold hold) => new(
         hold.Id,
         hold.ShowId,
         hold.EffectiveStatus(_timeProvider.GetUtcNow()).ToString(),

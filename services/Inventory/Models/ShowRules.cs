@@ -10,4 +10,5 @@ public class ShowRules
     public int MaxPerCustomer { get; set; }
     public int HoldMinutes { get; set; }
     public bool HighDemand { get; set; }
+    public int? HighDemandThreshold { get; set; }
 }

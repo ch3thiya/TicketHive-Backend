@@ -51,12 +51,7 @@ public interface IHoldService
     // that decides between 404 and leaking existence with a 403.
     Task<Hold?> GetHoldAsync(Guid holdId);
 
-    // Reports EffectiveStatus, not the raw stored status, so a hold past
-    // its expiry reads as Expired to its owner even before the sweeper has
-    // processed it — the one place every hold-returning path converges.
-    HoldResponse ToResponse(Hold hold);
+    Task<bool> CancelHoldAsync(Guid holdId, string customerSub);
 
-    // Same EffectiveStatus rule as ToResponse, for the internal caller
-    // (Booking, Sprint 3) deciding whether a hold is still valid to convert.
-    InternalHoldResponse ToInternalResponse(Hold hold);
+    Task<Hold?> GetActiveHoldForCustomerAsync(Guid showId, string customerSub);
 }
