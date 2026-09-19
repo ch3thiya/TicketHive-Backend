@@ -49,19 +49,23 @@ public class HoldService : IHoldService
 
         var now = _timeProvider.GetUtcNow();
 
-        bool isHighDemandConfigured = showRules.HighDemand || (showRules.HighDemandThreshold.HasValue && showRules.HighDemandThreshold.Value > 0);
-        if (isHighDemandConfigured)
+        bool isHighDemand = showRules.HighDemand;
+        bool hasThreshold = showRules.HighDemandThreshold.HasValue && showRules.HighDemandThreshold.Value > 0;
+
+        if (isHighDemand || hasThreshold)
         {
             var activeHoldsCount = await _repository.GetTotalActiveHoldsAsync(request.ShowId, now);
-            var threshold = showRules.HighDemandThreshold ?? 1;
+            var threshold = showRules.HighDemandThreshold;
 
-            // Direct hold attempts are blocked ONLY when the threshold number of customers are actively holding tickets right now (activeHoldsCount >= threshold)
-            if (activeHoldsCount >= threshold)
+            bool requiresAdmissionToken = hasThreshold
+                ? activeHoldsCount >= threshold!.Value
+                : isHighDemand;
+
+            if (requiresAdmissionToken)
             {
                 if (!hasAdmissionToken)
                 {
-                    _logger.LogInformation("Hold rejected for show {ShowId}: high-demand threshold ({Threshold}) reached ({ActiveHolds} active holds) and no admission token provided",
-                        request.ShowId, threshold, activeHoldsCount);
+                    _logger.LogInformation("Hold rejected for show {ShowId}: high-demand gate active and no admission token provided", request.ShowId);
                     return new CreateHoldResult { Status = CreateHoldStatus.HighDemandBlocked };
                 }
 
