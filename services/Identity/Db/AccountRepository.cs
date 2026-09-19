@@ -288,15 +288,4 @@ public class AccountRepository : IAccountRepository
 
         return null;
     }
-
-    public async Task DeleteUserAccountAsync(Guid id)
-    {
-        using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
-
-        const string sql = "DELETE FROM user_accounts WHERE id = @Id;";
-        using var command = new NpgsqlCommand(sql, connection);
-        command.Parameters.AddWithValue("Id", id);
-
-        await command.ExecuteNonQueryAsync();
-    }
 }

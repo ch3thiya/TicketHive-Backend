@@ -50,16 +50,6 @@ public class WaitingRoomController : ControllerBase
         return Ok(status);
     }
 
-    [HttpPost("leave")]
-    [Authorize]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    public async Task<IActionResult> LeaveQueue(Guid showId)
-    {
-        var customerSub = GetCustomerSub();
-        await _waitingRoomService.LeaveQueueAsync(showId, customerSub);
-        return Ok(new { message = "Left waiting room queue successfully." });
-    }
-
     [HttpPost("admit")]
     [Authorize(Roles = "Admin,Organizer")]
     [ProducesResponseType(typeof(AdmitCustomersResponse), StatusCodes.Status200OK)]

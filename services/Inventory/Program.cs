@@ -6,7 +6,6 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.IdentityModel.Tokens;
 using BuildingBlocks;
 using Inventory.Service.Db;
-using Inventory.Service.Models;
 using Inventory.Service.Services;
 
 if (args.Contains("--migrate"))
@@ -46,8 +45,6 @@ builder.Services.AddScoped<IHoldRepository, HoldRepository>();
 builder.Services.AddScoped<IWaitingRoomRepository, WaitingRoomRepository>();
 builder.Services.AddScoped<IWaitingRoomService, WaitingRoomService>();
 builder.Services.AddScoped<IHoldService, HoldService>();
-builder.Services.Configure<HoldExpirySweepOptions>(builder.Configuration.GetSection(HoldExpirySweepOptions.SectionName));
-builder.Services.AddSingleton<HoldExpiryMetrics>();
 builder.Services.AddHostedService<ExpiredHoldReleaseWorker>();
 
 var requiredInternalScope = builder.Configuration["Wso2:InternalApi:RequiredScope"]

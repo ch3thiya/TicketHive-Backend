@@ -101,7 +101,6 @@ public interface IEventService
     Task PublishEventAsync(Guid organizerId, Guid eventId);
     Task UpdateEventAsync(Guid organizerId, Guid eventId, UpdateEventDto dto);
     Task CancelEventAsync(Guid organizerId, Guid eventId);
-    Task DeleteEventAsync(Guid organizerId, Guid eventId);
     Task UpdateShowAsync(Guid organizerId, Guid showId, UpdateShowDto dto);
     Task CancelShowAsync(Guid organizerId, Guid showId);
 }

@@ -11,5 +11,4 @@ public interface IWaitingRoomService
     Task<QueueStatusResponse?> GetQueueStatusAsync(Guid showId, string customerSub);
     Task<AdmitCustomersResponse> AdmitNextCustomersAsync(Guid showId, int batchSize = 10, int tokenDurationMinutes = 10);
     Task<bool> ValidateAdmissionTokenAsync(Guid showId, string customerSub, string admissionToken);
-    Task LeaveQueueAsync(Guid showId, string customerSub);
 }

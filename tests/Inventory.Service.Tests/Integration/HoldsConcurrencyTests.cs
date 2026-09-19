@@ -38,7 +38,7 @@ public sealed class HoldsConcurrencyTests
 
         // Assert — the invariant that matters more than anything else in this brief.
         Assert.Equal(100, responses.Count(r => r.StatusCode == HttpStatusCode.Created));
-        Assert.Equal(400, responses.Count(r => r.StatusCode != HttpStatusCode.Created));
+        Assert.Equal(400, responses.Count(r => r.StatusCode == HttpStatusCode.Conflict));
         Assert.Equal(0, await GetAvailableAsync(showId, categoryId));
         Assert.Equal(100, await GetHeldQuantityAsync(showId, categoryId));
     }

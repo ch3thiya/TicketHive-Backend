@@ -327,36 +327,4 @@ public class Wso2ScimClient : IWso2ScimClient
 
         return null;
     }
-
-    /// <summary>
-    /// Verifies if a user still exists in Asgardeo via SCIM 2.0.
-    /// Returns false if Asgardeo SCIM endpoint responds with 404 Not Found.
-    /// </summary>
-    public async Task<bool> UserExistsInAsgardeoAsync(string wso2UserIdOrSub)
-    {
-        if (string.IsNullOrWhiteSpace(wso2UserIdOrSub))
-        {
-            return false;
-        }
-
-        try
-        {
-            var m2mToken = await GetM2mAccessTokenAsync();
-            _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", m2mToken);
-
-            var response = await _httpClient.GetAsync($"scim2/Users/{wso2UserIdOrSub}");
-            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
-            {
-                _logger.LogWarning("User {Sub} was not found in Asgardeo SCIM (404 Not Found).", wso2UserIdOrSub);
-                return false;
-            }
-
-            return response.IsSuccessStatusCode;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error checking user existence in Asgardeo for sub {Sub}. Assuming active.", wso2UserIdOrSub);
-            return true; // Fallback to true on network error so we don't accidentally delete users
-        }
-    }
 }

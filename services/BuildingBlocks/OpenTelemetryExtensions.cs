@@ -1,8 +1,6 @@
-using System.Diagnostics.Metrics;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Npgsql;
@@ -26,12 +24,6 @@ internal static class OpenTelemetryExtensions
             logging.IncludeScopes = true;
         });
 
-        // A Meter named after the service, available for injection so a
-        // service can define its own business-metric instruments (counters,
-        // histograms) without any service touching the OTel pipeline setup
-        // itself.
-        builder.Services.TryAddSingleton(new Meter(serviceName));
-
         builder.Services.AddOpenTelemetry()
             .ConfigureResource(resource => resource.AddService(serviceName))
             .WithTracing(tracing => tracing
@@ -41,8 +33,7 @@ internal static class OpenTelemetryExtensions
             .WithMetrics(metrics => metrics
                 .AddAspNetCoreInstrumentation()
                 .AddHttpClientInstrumentation()
-                .AddRuntimeInstrumentation()
-                .AddMeter(serviceName));
+                .AddRuntimeInstrumentation());
 
         var otlpEndpoint = builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"];
         if (!string.IsNullOrWhiteSpace(otlpEndpoint))

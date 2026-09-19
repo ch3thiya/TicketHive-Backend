@@ -14,16 +14,14 @@ namespace Inventory.Service.Tests;
 public class WaitingRoomServiceTests
 {
     private readonly Mock<IWaitingRoomRepository> _mockRepo;
-    private readonly Mock<IHoldRepository> _mockHoldRepo;
     private readonly FakeTimeProvider _timeProvider;
     private readonly WaitingRoomService _service;
 
     public WaitingRoomServiceTests()
     {
         _mockRepo = new Mock<IWaitingRoomRepository>();
-        _mockHoldRepo = new Mock<IHoldRepository>();
         _timeProvider = new FakeTimeProvider(new DateTimeOffset(2026, 9, 15, 10, 0, 0, TimeSpan.Zero));
-        _service = new WaitingRoomService(_mockRepo.Object, _mockHoldRepo.Object, _timeProvider, new Mock<ILogger<WaitingRoomService>>().Object);
+        _service = new WaitingRoomService(_mockRepo.Object, _timeProvider, new Mock<ILogger<WaitingRoomService>>().Object);
     }
 
     [Fact]

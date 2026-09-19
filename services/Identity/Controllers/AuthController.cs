@@ -63,19 +63,6 @@ public class AuthController : ControllerBase
         }
 
         var existingAccount = await _repository.GetUserAccountBySubAsync(subClaim);
-        
-        // Verify if user account was deleted from Asgardeo console
-        var existsInAsgardeo = await _scimClient.UserExistsInAsgardeoAsync(subClaim);
-        if (!existsInAsgardeo)
-        {
-            if (existingAccount != null)
-            {
-                _logger.LogWarning("User account for sub {Sub} was deleted from Asgardeo console. Purging local user account ID {Id}.", subClaim, existingAccount.Id);
-                await _repository.DeleteUserAccountAsync(existingAccount.Id);
-            }
-            return Unauthorized(new { message = "User account has been deleted from Asgardeo console." });
-        }
-
         if (existingAccount == null)
         {
             // First time login - provision user locally using claims-based role

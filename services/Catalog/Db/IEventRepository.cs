@@ -41,5 +41,4 @@ public interface IEventRepository
     // this show or belongs to a retired category; nothing is written in that case.
     Task SaveTicketCategoriesAsync(Guid showId, List<TicketCategory> categories);
     Task UpdateShowStatusAsync(Guid showId, string status);
-    Task DeleteEventAsync(Guid eventId);
 }

@@ -7,9 +7,7 @@ public enum WaitingRoomStatus
 {
     Waiting,
     Admitted,
-    Expired,
-    Used,
-    Left
+    Expired
 }
 
 public class WaitingRoomEntry

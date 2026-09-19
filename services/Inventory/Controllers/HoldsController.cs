@@ -108,42 +108,7 @@ public class HoldsController : ControllerBase
                 title: "Hold not found");
         }
 
-        return Ok(_holdService.ToResponse(hold));
-    }
-
-    [HttpGet("active")]
-    [Authorize]
-    [ProducesResponseType(typeof(HoldResponse), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
-    public async Task<IActionResult> GetActiveHold([FromQuery] Guid showId)
-    {
-        var customerSub = GetCustomerSub();
-        var hold = await _holdService.GetActiveHoldForCustomerAsync(showId, customerSub);
-        if (hold is null)
-        {
-            return NoContent();
-        }
-
-        return Ok(_holdService.ToResponse(hold));
-    }
-
-    [HttpDelete("{holdId}")]
-    [Authorize]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> CancelHold(Guid holdId)
-    {
-        var customerSub = GetCustomerSub();
-        var cancelled = await _holdService.CancelHoldAsync(holdId, customerSub);
-        if (!cancelled)
-        {
-            return Problem(
-                detail: $"Hold '{holdId}' was not found or is no longer active.",
-                statusCode: StatusCodes.Status404NotFound,
-                title: "Hold not found");
-        }
-
-        return NoContent();
+        return Ok(HoldService.ToResponse(hold));
     }
 
     private string GetCustomerSub() =>

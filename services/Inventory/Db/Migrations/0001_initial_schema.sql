@@ -8,8 +8,7 @@ CREATE TABLE IF NOT EXISTS show_rules (
     on_sale_at TIMESTAMPTZ NULL,
     max_per_customer INT NOT NULL,
     hold_minutes INT NOT NULL,
-    high_demand BOOLEAN NOT NULL,
-    high_demand_threshold INT NULL
+    high_demand BOOLEAN NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS stock (

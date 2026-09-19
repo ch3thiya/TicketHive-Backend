@@ -21,17 +21,6 @@ public class HoldCreationResult
     public int? Limit { get; init; }
 }
 
-public class HoldReleaseSummary
-{
-    public required int HoldsReleased { get; init; }
-    public required int TicketsReturned { get; init; }
-
-    // How many of the released holds hit the GREATEST(0, ...) clamp when
-    // their quota was restored — should never happen; every occurrence
-    // means quota accounting drifted somewhere else.
-    public required int QuotaClampCount { get; init; }
-}
-
 public interface IHoldRepository
 {
     // Null means the show has never been initialized.
@@ -52,17 +41,5 @@ public interface IHoldRepository
     // Scans for active holds whose expires_at timestamp has passed, releases
     // held ticket quantities back to stock, decrements customer quotas, and
     // updates status to 'Expired'. Returns count of released holds.
-    Task<HoldReleaseSummary> ReleaseExpiredHoldsAsync(DateTimeOffset now, int batchSize = 100);
-
-    // Calculates the total number of currently held or sold tickets for a show.
-    Task<int> GetTotalHeldOrSoldAsync(Guid showId);
-
-    // Calculates the number of tickets actively being held by customers right now (status = 'Active' and expires_at > now).
-    Task<int> GetTotalActiveHoldsAsync(Guid showId, DateTimeOffset now);
-
-    // Cancels an active hold for a customer, restoring stock and quota.
-    Task<bool> CancelHoldAsync(Guid holdId, string customerSub, DateTimeOffset now);
-
-    // Returns an active hold for a given show and customer sub if one exists.
-    Task<Hold?> GetActiveHoldForCustomerAsync(Guid showId, string customerSub, DateTimeOffset now);
+    Task<int> ReleaseExpiredHoldsAsync(DateTimeOffset now);
 }

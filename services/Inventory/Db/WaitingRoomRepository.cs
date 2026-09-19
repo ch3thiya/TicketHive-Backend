@@ -37,10 +37,15 @@ public class WaitingRoomRepository : IWaitingRoomRepository
                 var existing = MapEntry(reader);
                 await reader.CloseAsync();
 
-                // If currently active waiting or valid admitted token, return existing entry with dynamic status
-                if (existing.Status == WaitingRoomStatus.Waiting || (existing.Status == WaitingRoomStatus.Admitted && existing.TokenExpiresAt.HasValue && existing.TokenExpiresAt.Value > now))
+                // If currently active waiting or valid admitted token, return existing entry
+                if (existing.Status == WaitingRoomStatus.Waiting)
                 {
-                    return (await GetStatusAsync(showId, customerSub, now))!;
+                    return existing;
+                }
+
+                if (existing.Status == WaitingRoomStatus.Admitted && existing.TokenExpiresAt.HasValue && existing.TokenExpiresAt.Value > now)
+                {
+                    return existing;
                 }
             }
         }
@@ -127,26 +132,6 @@ public class WaitingRoomRepository : IWaitingRoomRepository
             updateCmd.Parameters.AddWithValue("Now", now);
             updateCmd.Parameters.AddWithValue("Id", entry.Id);
             await updateCmd.ExecuteNonQueryAsync();
-        }
-
-        // Calculate dynamic relative queue position for Waiting entries based on active waiting members ahead
-        if (entry.Status == WaitingRoomStatus.Waiting)
-        {
-            const string relativePosSql = @"
-                SELECT COUNT(*) + 1
-                FROM waiting_room_entries
-                WHERE show_id = @ShowId
-                  AND status = 'Waiting'
-                  AND (position < @CurrentPos OR (position = @CurrentPos AND created_at < @CurrentCreatedAt));
-            ";
-
-            await using var posCmd = new NpgsqlCommand(relativePosSql, connection);
-            posCmd.Parameters.AddWithValue("ShowId", showId);
-            posCmd.Parameters.AddWithValue("CurrentPos", entry.Position);
-            posCmd.Parameters.AddWithValue("CurrentCreatedAt", entry.CreatedAt);
-
-            var relativePos = Convert.ToInt32(await posCmd.ExecuteScalarAsync());
-            entry.Position = relativePos;
         }
 
         return entry;
@@ -283,63 +268,6 @@ public class WaitingRoomRepository : IWaitingRoomRepository
 
         return false;
     }
-
-    public async Task<int> GetActiveAdmissionsCountAsync(Guid showId, DateTimeOffset now)
-    {
-        await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
-
-        const string sql = @"
-            SELECT COUNT(*)
-            FROM waiting_room_entries
-            WHERE show_id = @ShowId 
-              AND status = 'Admitted' 
-              AND token_expires_at > @Now;
-        ";
-
-        await using var command = new NpgsqlCommand(sql, connection);
-        command.Parameters.AddWithValue("ShowId", showId);
-        command.Parameters.AddWithValue("Now", now);
-
-        return Convert.ToInt32(await command.ExecuteScalarAsync());
-    }
-
-    public async Task ConsumeAdmissionTokenAsync(Guid showId, string customerSub, string admissionToken, DateTimeOffset now)
-    {
-        await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
-
-        const string sql = @"
-            UPDATE waiting_room_entries
-            SET status = 'Used', updated_at = @Now
-            WHERE show_id = @ShowId AND customer_sub = @CustomerSub AND admission_token = @AdmissionToken;
-        ";
-
-        await using var command = new NpgsqlCommand(sql, connection);
-        command.Parameters.AddWithValue("ShowId", showId);
-        command.Parameters.AddWithValue("CustomerSub", customerSub);
-        command.Parameters.AddWithValue("AdmissionToken", admissionToken);
-        command.Parameters.AddWithValue("Now", now);
-
-        await command.ExecuteNonQueryAsync();
-    }
-
-    public async Task LeaveQueueAsync(Guid showId, string customerSub, DateTimeOffset now)
-    {
-        await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
-
-        const string sql = @"
-            UPDATE waiting_room_entries
-            SET status = 'Left', updated_at = @Now
-            WHERE show_id = @ShowId AND customer_sub = @CustomerSub;
-        ";
-
-        await using var command = new NpgsqlCommand(sql, connection);
-        command.Parameters.AddWithValue("ShowId", showId);
-        command.Parameters.AddWithValue("CustomerSub", customerSub);
-        command.Parameters.AddWithValue("Now", now);
-
-        await command.ExecuteNonQueryAsync();
-    }
-
 
     private static WaitingRoomEntry MapEntry(NpgsqlDataReader reader)
     {
