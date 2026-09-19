@@ -275,10 +275,14 @@ public class QueueRepository : IQueueRepository
 
         // Only an open queue advances; PreQueue has nothing to serve yet and
         // Closed (sold out) never advances toward nothing (brief section 8).
+        // Capped at next_number: once serving_number catches up to the
+        // highest number ever issued, a queue that has emptied stops
+        // advancing instead of racing ahead of demand — otherwise a later
+        // joiner would be admitted instantly and the gate stops working.
         const string advanceSql = @"
             update queues
-            set serving_number = serving_number + admit_batch
-            where show_id = @ShowId and status = @OpenStatus
+            set serving_number = least(serving_number + admit_batch, next_number)
+            where show_id = @ShowId and status = @OpenStatus and serving_number < next_number
             returning serving_number;
         ";
         long? newServingNumber = null;
