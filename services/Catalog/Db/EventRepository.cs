@@ -719,4 +719,40 @@ public class EventRepository : IEventRepository
             CreatedAt = reader.GetDateTime(9)
         };
     }
+
+    public async Task DeleteEventAsync(Guid eventId)
+    {
+        await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
+        await using var transaction = await connection.BeginTransactionAsync();
+
+        const string deleteCategoriesSql = @"
+            DELETE FROM ticket_categories
+            WHERE show_id IN (SELECT id FROM shows WHERE event_id = @EventId);
+        ";
+        await using (var cmd = new NpgsqlCommand(deleteCategoriesSql, connection, transaction))
+        {
+            cmd.Parameters.AddWithValue("EventId", eventId);
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        const string deleteShowsSql = @"
+            DELETE FROM shows WHERE event_id = @EventId;
+        ";
+        await using (var cmd = new NpgsqlCommand(deleteShowsSql, connection, transaction))
+        {
+            cmd.Parameters.AddWithValue("EventId", eventId);
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        const string deleteEventSql = @"
+            DELETE FROM events WHERE id = @EventId;
+        ";
+        await using (var cmd = new NpgsqlCommand(deleteEventSql, connection, transaction))
+        {
+            cmd.Parameters.AddWithValue("EventId", eventId);
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        await transaction.CommitAsync();
+    }
 }

@@ -12,4 +12,7 @@ public interface IWaitingRoomRepository
     Task<int> GetTotalWaitingAsync(Guid showId);
     Task<List<WaitingRoomEntry>> AdmitNextCustomersAsync(Guid showId, int batchSize, int tokenDurationMinutes, DateTimeOffset now);
     Task<bool> ValidateAdmissionTokenAsync(Guid showId, string customerSub, string admissionToken, DateTimeOffset now);
+    Task<int> GetActiveAdmissionsCountAsync(Guid showId, DateTimeOffset now);
+    Task ConsumeAdmissionTokenAsync(Guid showId, string customerSub, string admissionToken, DateTimeOffset now);
+    Task LeaveQueueAsync(Guid showId, string customerSub, DateTimeOffset now);
 }

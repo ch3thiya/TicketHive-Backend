@@ -13,4 +13,10 @@ public class Hold
     public string IdempotencyKey { get; set; } = string.Empty;
     public DateTimeOffset CreatedAt { get; set; }
     public List<HoldItem> Items { get; set; } = new();
+
+    // The expiry timestamp is the truth; the sweeper is cleanup. A hold
+    // reads as Expired once its time has passed even if the sweeper has
+    // not reached it yet, without mutating the stored row.
+    public HoldStatus EffectiveStatus(DateTimeOffset now) =>
+        Status == HoldStatus.Active && ExpiresAt <= now ? HoldStatus.Expired : Status;
 }

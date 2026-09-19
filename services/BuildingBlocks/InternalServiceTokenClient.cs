@@ -88,14 +88,14 @@ public class InternalServiceTokenClient : IInternalServiceTokenClient
         }
         catch (HttpRequestException ex)
         {
-            _logger.LogWarning(ex, "Failed to reach the internal service token endpoint. Falling back to dev token.");
-            return new CachedToken("dev-internal-token", _timeProvider.GetUtcNow().AddHours(1));
+            _logger.LogError(ex, "Failed to reach the internal service token endpoint.");
+            throw new InvalidOperationException("Failed to reach the internal service token endpoint.", ex);
         }
 
         if (!response.IsSuccessStatusCode)
         {
-            _logger.LogWarning("Internal service token request returned status {StatusCode}. Falling back to dev token.", response.StatusCode);
-            return new CachedToken("dev-internal-token", _timeProvider.GetUtcNow().AddHours(1));
+            _logger.LogError("Internal service token request returned status {StatusCode}.", response.StatusCode);
+            throw new InvalidOperationException($"Internal service token request failed with status code {response.StatusCode}.");
         }
 
         TokenResponse? tokenResponse;

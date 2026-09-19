@@ -304,6 +304,38 @@ public class EventsController : ControllerBase
         }
     }
 
+    [HttpDelete("{eventId}")]
+    [Authorize(Policy = "ActiveOrganizer")]
+    public async Task<IActionResult> DeleteEvent(Guid eventId)
+    {
+        try
+        {
+            var organizerId = GetCurrentOrganizerId();
+            await _eventService.DeleteEventAsync(organizerId, eventId);
+            return Ok(new { message = "Event deleted successfully.", eventId });
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return StatusCode(403, new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Problem(
+                detail: ex.Message,
+                statusCode: StatusCodes.Status409Conflict,
+                title: "Cannot delete event");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error deleting event {EventId}", eventId);
+            return StatusCode(500, new { message = "An error occurred while deleting the event." });
+        }
+    }
+
     [HttpPut("/api/catalog/shows/{showId}")]
     [Authorize(Policy = "ActiveOrganizer")]
     public async Task<IActionResult> UpdateShow(Guid showId, [FromBody] UpdateShowDto dto)
