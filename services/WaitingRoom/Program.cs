@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using BuildingBlocks;
 using WaitingRoom.Service.Db;
+using WaitingRoom.Service.Services;
 // Load root .env file if available; a real environment variable already set
 // (docker-compose, Container Apps) always wins over the .env file.
 DotNetEnv.Env.TraversePath().NoClobber().Load();
@@ -34,8 +35,11 @@ builder.AddServiceDefaults();
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 
-// Register DB Connection
+// Register DB Connection, Repositories and Services
 builder.Services.AddSingleton<DbConnectionFactory>();
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddScoped<IQueueRepository, QueueRepository>();
+builder.Services.AddScoped<IQueueService, QueueService>();
 
 // Register CORS to allow React Frontend requests
 var allowedFrontendOrigins = builder.Configuration["Cors:AllowedOrigins"]?
