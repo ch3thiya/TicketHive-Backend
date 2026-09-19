@@ -284,13 +284,17 @@ public class HoldRepository : IHoldRepository
 
             foreach (var (categoryId, quantity) in items)
             {
+                // Scoped by (show_id, category_id) — the table's actual
+                // primary key — so this can never touch another show's
+                // stock if a category id were ever reused.
                 const string restoreStockSql = @"
                     UPDATE stock
-                    SET available_quantity = available_quantity + @Quantity
-                    WHERE category_id = @CategoryId;
+                    SET available = available + @Quantity
+                    WHERE show_id = @ShowId AND category_id = @CategoryId;
                 ";
                 await using var command = new NpgsqlCommand(restoreStockSql, connection, transaction);
                 command.Parameters.AddWithValue("Quantity", quantity);
+                command.Parameters.AddWithValue("ShowId", showId);
                 command.Parameters.AddWithValue("CategoryId", categoryId);
                 await command.ExecuteNonQueryAsync();
             }

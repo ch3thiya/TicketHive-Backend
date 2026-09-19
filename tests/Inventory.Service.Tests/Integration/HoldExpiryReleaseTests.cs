@@ -23,7 +23,7 @@ public sealed class HoldExpiryReleaseTests
 
     public HoldExpiryReleaseTests(PostgresFixture db) => _db = db;
 
-    [Fact(Skip = "Unskipped in 'fix: return stock to the correct column on hold expiry'.")]
+    [Fact]
     public async Task ReleaseExpiredHoldsAsync_HoldPastExpiry_RestoresStockAndQuotaAndMarksExpired()
     {
         // Arrange

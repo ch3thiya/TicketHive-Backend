@@ -24,7 +24,7 @@ public sealed class HoldExpiryConcurrencyTests
 
     public HoldExpiryConcurrencyTests(PostgresFixture db) => _db = db;
 
-    [Fact(Skip = "Unskipped in 'fix: return stock to the correct column on hold expiry'.")]
+    [Fact]
     public async Task ReleaseExpiredHoldsAsync_TwoInstancesConcurrently_EveryHoldReleasedExactlyOnceAndStockNeverExceedsCapacity()
     {
         const int showCount = 3;
