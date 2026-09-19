@@ -14,4 +14,5 @@ public interface IWaitingRoomRepository
     Task<bool> ValidateAdmissionTokenAsync(Guid showId, string customerSub, string admissionToken, DateTimeOffset now);
     Task<int> GetActiveAdmissionsCountAsync(Guid showId, DateTimeOffset now);
     Task ConsumeAdmissionTokenAsync(Guid showId, string customerSub, string admissionToken, DateTimeOffset now);
+    Task LeaveQueueAsync(Guid showId, string customerSub, DateTimeOffset now);
 }

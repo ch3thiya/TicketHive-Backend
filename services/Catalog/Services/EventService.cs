@@ -417,6 +417,28 @@ public class EventService : IEventService
         await _repository.UpdateEventStatusAsync(eventId, "Cancelled");
     }
 
+    public async Task DeleteEventAsync(Guid organizerId, Guid eventId)
+    {
+        var evt = await _repository.GetEventByIdAsync(eventId);
+        if (evt == null)
+        {
+            throw new KeyNotFoundException($"Event with ID '{eventId}' was not found.");
+        }
+
+        if (evt.OrganizerId != organizerId)
+        {
+            throw new UnauthorizedAccessException("You are not authorized to delete this event.");
+        }
+
+        if (evt.Status != "Cancelled" && evt.Status != "Draft")
+        {
+            throw new InvalidOperationException("Only cancelled or draft events can be deleted.");
+        }
+
+        _logger.LogInformation("Deleting Event {EventId} for Organizer {OrganizerId}", eventId, organizerId);
+        await _repository.DeleteEventAsync(eventId);
+    }
+
     public async Task UpdateShowAsync(Guid organizerId, Guid showId, UpdateShowDto dto)
     {
         var show = await _repository.GetShowByIdAsync(showId);

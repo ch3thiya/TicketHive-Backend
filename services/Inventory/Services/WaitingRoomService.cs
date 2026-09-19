@@ -98,6 +98,12 @@ public class WaitingRoomService : IWaitingRoomService
         return _repository.ValidateAdmissionTokenAsync(showId, customerSub, admissionToken, now);
     }
 
+    public Task LeaveQueueAsync(Guid showId, string customerSub)
+    {
+        var now = _timeProvider.GetUtcNow();
+        return _repository.LeaveQueueAsync(showId, customerSub, now);
+    }
+
     private static QueueStatusResponse ToQueueStatusResponse(WaitingRoomEntry entry, int totalWaiting)
     {
         return new QueueStatusResponse(
