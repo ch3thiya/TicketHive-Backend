@@ -40,6 +40,7 @@ builder.Services.AddSingleton<DbConnectionFactory>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<IQueueRepository, QueueRepository>();
 builder.Services.AddScoped<IQueueService, QueueService>();
+builder.Services.AddSingleton<IAdmissionTokenIssuer, AdmissionTokenIssuer>();
 
 // Register CORS to allow React Frontend requests
 var allowedFrontendOrigins = builder.Configuration["Cors:AllowedOrigins"]?

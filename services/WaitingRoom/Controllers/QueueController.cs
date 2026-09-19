@@ -36,6 +36,16 @@ public class QueueController : ControllerBase
         return Ok(_queueService.ToResponse(entry));
     }
 
+    [HttpGet("{showId}/entries/me")]
+    [Authorize]
+    [ProducesResponseType(typeof(QueuePositionResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetPosition(Guid showId)
+    {
+        var customerSub = GetCustomerSub();
+        var position = await _queueService.GetPositionAsync(showId, customerSub);
+        return Ok(position);
+    }
+
     private string GetCustomerSub() =>
         User.FindFirst(ClaimTypes.NameIdentifier)?.Value
         ?? User.FindFirst("sub")?.Value

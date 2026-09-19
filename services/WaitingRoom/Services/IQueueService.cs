@@ -4,6 +4,20 @@ namespace WaitingRoom.Service.Services;
 
 public record QueueEntryResponse(Guid ShowId, long? QueueNumber, DateTimeOffset JoinedAt);
 
+public enum QueuePositionStatus
+{
+    NotInQueue,
+    Waiting,
+    Admitted
+}
+
+public record QueuePositionResponse(
+    QueuePositionStatus Status,
+    long? Position,
+    DateTimeOffset? OnSaleAt,
+    string? AdmissionToken,
+    DateTimeOffset? AdmissionExpiresAt);
+
 public interface IQueueService
 {
     /// <summary>
@@ -14,4 +28,11 @@ public interface IQueueService
     Task<QueueEntry?> JoinAsync(Guid showId, string customerSub, CancellationToken cancellationToken = default);
 
     QueueEntryResponse ToResponse(QueueEntry entry);
+
+    /// <summary>
+    /// The customer's current state: not in the queue, waiting (with a
+    /// position once numbers are assigned, or the sale time before that),
+    /// or admitted with a signed token.
+    /// </summary>
+    Task<QueuePositionResponse> GetPositionAsync(Guid showId, string customerSub, CancellationToken cancellationToken = default);
 }
