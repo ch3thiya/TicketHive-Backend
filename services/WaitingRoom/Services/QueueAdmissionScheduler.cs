@@ -1,0 +1,63 @@
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using WaitingRoom.Service.Db;
+
+namespace WaitingRoom.Service.Services;
+
+// A singleton job: pg_try_advisory_xact_lock inside TryAdvanceServingNumberAsync
+// means any number of instances can run this loop and only one ever advances
+// a given queue on a given tick (concurrency.md).
+public class QueueAdmissionScheduler : BackgroundService
+{
+    private readonly IServiceScopeFactory _scopeFactory;
+    private readonly ILogger<QueueAdmissionScheduler> _logger;
+    private readonly TimeSpan _period;
+
+    public QueueAdmissionScheduler(
+        IServiceScopeFactory scopeFactory,
+        ILogger<QueueAdmissionScheduler> logger,
+        IOptions<QueueDefaultsOptions> options,
+        TimeSpan? periodOverride = null)
+    {
+        _scopeFactory = scopeFactory;
+        _logger = logger;
+        _period = periodOverride ?? TimeSpan.FromSeconds(options.Value.AdmitIntervalSeconds);
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        _logger.LogInformation("Queue admission scheduler started with period {Period}.", _period);
+
+        using var timer = new PeriodicTimer(_period);
+        while (!stoppingToken.IsCancellationRequested && await timer.WaitForNextTickAsync(stoppingToken))
+        {
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var repository = scope.ServiceProvider.GetRequiredService<IQueueRepository>();
+                var openShowIds = await repository.GetOpenShowIdsAsync(stoppingToken);
+
+                foreach (var showId in openShowIds)
+                {
+                    var newServingNumber = await repository.TryAdvanceServingNumberAsync(showId, stoppingToken);
+                    if (newServingNumber is not null)
+                    {
+                        _logger.LogInformation("Queue {ShowId} serving number advanced to {ServingNumber}.", showId, newServingNumber);
+                    }
+                }
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "An error occurred while advancing waiting room queues.");
+            }
+        }
+
+        _logger.LogInformation("Queue admission scheduler stopping.");
+    }
+}

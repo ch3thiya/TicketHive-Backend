@@ -71,6 +71,6 @@ public sealed class DuplicateJoinTests
             })
             .Build();
 
-        return new QueueRepository(new DbConnectionFactory(configuration));
+        return new QueueRepository(new DbConnectionFactory(configuration), TimeProvider.System);
     }
 }

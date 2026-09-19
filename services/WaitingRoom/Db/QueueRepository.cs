@@ -6,10 +6,12 @@ namespace WaitingRoom.Service.Db;
 public class QueueRepository : IQueueRepository
 {
     private readonly DbConnectionFactory _connectionFactory;
+    private readonly TimeProvider _timeProvider;
 
-    public QueueRepository(DbConnectionFactory connectionFactory)
+    public QueueRepository(DbConnectionFactory connectionFactory, TimeProvider timeProvider)
     {
         _connectionFactory = connectionFactory;
+        _timeProvider = timeProvider;
     }
 
     public async Task<Queue?> GetQueueAsync(Guid showId, CancellationToken cancellationToken = default)
@@ -213,8 +215,85 @@ public class QueueRepository : IQueueRepository
         await transaction.CommitAsync(cancellationToken);
     }
 
-    public Task<long?> TryAdvanceServingNumberAsync(Guid showId, CancellationToken cancellationToken = default) =>
-        throw new NotImplementedException("Added when the scheduler is implemented.");
+    public async Task<long?> TryAdvanceServingNumberAsync(Guid showId, CancellationToken cancellationToken = default)
+    {
+        await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        const string lockSql = "select pg_try_advisory_xact_lock(hashtext(@ShowId));";
+        bool lockAcquired;
+        await using (var lockCommand = new NpgsqlCommand(lockSql, connection, transaction))
+        {
+            lockCommand.Parameters.AddWithValue("ShowId", showId.ToString());
+            lockAcquired = (bool)(await lockCommand.ExecuteScalarAsync(cancellationToken))!;
+        }
+
+        if (!lockAcquired)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return null;
+        }
+
+        // Only an open queue advances; PreQueue has nothing to serve yet and
+        // Closed (sold out) never advances toward nothing (brief section 8).
+        const string advanceSql = @"
+            update queues
+            set serving_number = serving_number + admit_batch
+            where show_id = @ShowId and status = @OpenStatus
+            returning serving_number;
+        ";
+        long? newServingNumber = null;
+        await using (var advanceCommand = new NpgsqlCommand(advanceSql, connection, transaction))
+        {
+            advanceCommand.Parameters.AddWithValue("ShowId", showId);
+            advanceCommand.Parameters.AddWithValue("OpenStatus", nameof(QueueStatus.Open));
+            var result = await advanceCommand.ExecuteScalarAsync(cancellationToken);
+            if (result is not null)
+            {
+                newServingNumber = (long)result;
+            }
+        }
+
+        if (newServingNumber is null)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return null;
+        }
+
+        const string admitSql = @"
+            update queue_entries
+            set admitted_at = @Now
+            where show_id = @ShowId and queue_number <= @ServingNumber and admitted_at is null;
+        ";
+        await using (var admitCommand = new NpgsqlCommand(admitSql, connection, transaction))
+        {
+            admitCommand.Parameters.AddWithValue("ShowId", showId);
+            admitCommand.Parameters.AddWithValue("ServingNumber", newServingNumber.Value);
+            admitCommand.Parameters.AddWithValue("Now", _timeProvider.GetUtcNow());
+            await admitCommand.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return newServingNumber;
+    }
+
+    public async Task<IReadOnlyList<Guid>> GetOpenShowIdsAsync(CancellationToken cancellationToken = default)
+    {
+        await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
+
+        const string sql = "select show_id from queues where status = @OpenStatus;";
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("OpenStatus", nameof(QueueStatus.Open));
+
+        var showIds = new List<Guid>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            showIds.Add(reader.GetGuid(0));
+        }
+
+        return showIds;
+    }
 
     private static QueueEntry ReadEntry(NpgsqlDataReader reader) => new(
         reader.GetGuid(0),

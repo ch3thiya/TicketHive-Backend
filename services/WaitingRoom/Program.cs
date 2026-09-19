@@ -41,6 +41,8 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<IQueueRepository, QueueRepository>();
 builder.Services.AddScoped<IQueueService, QueueService>();
 builder.Services.AddSingleton<IAdmissionTokenIssuer, AdmissionTokenIssuer>();
+builder.Services.Configure<QueueDefaultsOptions>(builder.Configuration.GetSection(QueueDefaultsOptions.SectionName));
+builder.Services.AddHostedService<QueueAdmissionScheduler>();
 
 // Register CORS to allow React Frontend requests
 var allowedFrontendOrigins = builder.Configuration["Cors:AllowedOrigins"]?

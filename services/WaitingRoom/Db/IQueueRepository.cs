@@ -32,4 +32,6 @@ public interface IQueueRepository
     /// serving_number when this call took the lock, or null when another instance held it.
     /// </summary>
     Task<long?> TryAdvanceServingNumberAsync(Guid showId, CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<Guid>> GetOpenShowIdsAsync(CancellationToken cancellationToken = default);
 }

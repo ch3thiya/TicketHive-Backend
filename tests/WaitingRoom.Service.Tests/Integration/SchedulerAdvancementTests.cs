@@ -58,6 +58,6 @@ public sealed class SchedulerAdvancementTests
             })
             .Build();
 
-        return new QueueRepository(new DbConnectionFactory(configuration));
+        return new QueueRepository(new DbConnectionFactory(configuration), TimeProvider.System);
     }
 }
