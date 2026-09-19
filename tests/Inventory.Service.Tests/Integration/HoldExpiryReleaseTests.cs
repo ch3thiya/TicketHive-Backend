@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Inventory.Service.Db;
+using Inventory.Service.Models;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Time.Testing;
 using Npgsql;
@@ -44,14 +46,149 @@ public sealed class HoldExpiryReleaseTests
         timeProvider.Advance(TimeSpan.FromMinutes(2));
         var summary = await repository.ReleaseExpiredHoldsAsync(timeProvider.GetUtcNow(), batchSize: 200);
 
-        // Assert
-        Assert.Equal(1, summary.HoldsReleased);
-        Assert.Equal(5, summary.TicketsReturned);
-        Assert.Equal(0, summary.QuotaClampCount);
+        // Assert — ReleaseExpiredHoldsAsync sweeps the whole table (by
+        // design, ADR-008), so its aggregate counts only ever grow when
+        // other tests' expired holds share this pass; assert at least ours
+        // was counted, and check our own hold's state precisely.
+        Assert.True(summary.HoldsReleased >= 1);
+        Assert.True(summary.TicketsReturned >= 5);
         Assert.Equal("Expired", await GetHoldStatusAsync(holdId));
         Assert.Equal(100, await GetAvailableAsync(showId, categoryId));
         Assert.Equal(0, await GetQuotaAsync(showId, customerSub));
     }
+
+    [Fact]
+    public async Task ReleaseExpiredHoldsAsync_HoldNotYetExpired_LeavesItUntouched()
+    {
+        // Arrange — AC6: a hold whose expiry is still in the future.
+        var showId = Guid.NewGuid();
+        var categoryId = Guid.NewGuid();
+        const string customerSub = "not-yet-expired-customer";
+        var now = DateTimeOffset.UtcNow;
+
+        await SeedShowAsync(showId, categoryId, capacity: 100, available: 95);
+        var holdId = await SeedActiveHoldAsync(showId, categoryId, customerSub, quantity: 5, expiresAt: now.AddMinutes(5));
+        await SeedQuotaAsync(showId, customerSub, quantity: 5);
+
+        var repository = CreateRepository();
+
+        // Act
+        await repository.ReleaseExpiredHoldsAsync(now, batchSize: 200);
+
+        // Assert — this hold specifically was left alone. (The sweep is
+        // system-wide by design, so other tests' expired holds may also be
+        // claimed in the same pass — that's not this test's concern.)
+        Assert.Equal("Active", await GetHoldStatusAsync(holdId));
+        Assert.Equal(95, await GetAvailableAsync(showId, categoryId));
+        Assert.Equal(5, await GetQuotaAsync(showId, customerSub));
+    }
+
+    [Fact]
+    public async Task ReleaseExpiredHoldsAsync_QuotaAtLimitThenExpired_CustomerCanHoldAgain()
+    {
+        // Arrange — AC1/AC2: a customer holds up to their per-show limit, the
+        // hold expires, and after one sweep pass they can hold up to the
+        // limit again.
+        var showId = Guid.NewGuid();
+        var categoryId = Guid.NewGuid();
+        const string customerSub = "limit-customer";
+        const int maxPerCustomer = 4;
+        var now = DateTimeOffset.UtcNow;
+
+        await SeedShowAsync(showId, categoryId, capacity: 100, available: 100);
+        var repository = CreateRepository();
+
+        var firstHold = NewHold(showId, categoryId, customerSub, quantity: maxPerCustomer, idempotencyKey: "first-hold", expiresAt: now.AddMinutes(-1));
+        var createResult = await repository.CreateAsync(firstHold, maxPerCustomer);
+        Assert.Equal(HoldCreationOutcome.Created, createResult.Outcome);
+
+        // Confirm the customer is genuinely at their limit before the sweep.
+        var blockedHold = NewHold(showId, categoryId, customerSub, quantity: 1, idempotencyKey: "blocked", expiresAt: now.AddMinutes(10));
+        var blockedResult = await repository.CreateAsync(blockedHold, maxPerCustomer);
+        Assert.Equal(HoldCreationOutcome.QuotaExceeded, blockedResult.Outcome);
+
+        // Act — the sweep releases the expired hold (among whatever else is
+        // due across the shared database at this moment)...
+        await repository.ReleaseExpiredHoldsAsync(now, batchSize: 200);
+        Assert.Equal("Expired", await GetHoldStatusAsync(firstHold.Id));
+
+        // ...and the customer can hold up to the limit again.
+        var secondHold = NewHold(showId, categoryId, customerSub, quantity: maxPerCustomer, idempotencyKey: "second-hold", expiresAt: now.AddMinutes(10));
+        var secondResult = await repository.CreateAsync(secondHold, maxPerCustomer);
+
+        // Assert
+        Assert.Equal(HoldCreationOutcome.Created, secondResult.Outcome);
+        Assert.Equal(maxPerCustomer, await GetQuotaAsync(showId, customerSub));
+    }
+
+    [Fact]
+    public async Task ReleaseExpiredHoldsAsync_MoreExpiredHoldsThanBatchSize_ClearsOverSeveralPassesWithNoneSkipped()
+    {
+        // Arrange — five expired holds, a batch size of two.
+        var showId = Guid.NewGuid();
+        var categoryId = Guid.NewGuid();
+        var now = DateTimeOffset.UtcNow;
+        const int holdCount = 5;
+        const int batchSize = 2;
+
+        await SeedShowAsync(showId, categoryId, capacity: 100, available: 90);
+        var holdIds = new List<Guid>();
+        for (int i = 0; i < holdCount; i++)
+        {
+            var customerSub = $"batch-customer-{i}";
+            holdIds.Add(await SeedActiveHoldAsync(showId, categoryId, customerSub, quantity: 2, expiresAt: now.AddMinutes(-1)));
+            await SeedQuotaAsync(showId, customerSub, quantity: 2);
+        }
+
+        var repository = CreateRepository();
+
+        // Act — one pass never releases more than batchSize, however many
+        // expired holds exist system-wide (the sweep is not scoped to one
+        // show, ADR-008).
+        var firstPass = await repository.ReleaseExpiredHoldsAsync(now, batchSize);
+        Assert.True(firstPass.HoldsReleased <= batchSize, $"A single pass released {firstPass.HoldsReleased}, more than the batch size {batchSize}.");
+
+        // Repeated passes eventually clear every one of ours — checked
+        // directly by hold id rather than by trusting the pass-by-pass
+        // aggregate, since other tests' expired holds may share these same
+        // passes without ever exceeding a generous number of attempts.
+        for (int pass = 0; pass < holdCount + 5 && !await AllExpiredAsync(holdIds); pass++)
+        {
+            await repository.ReleaseExpiredHoldsAsync(now, batchSize);
+        }
+
+        // Assert — none of our holds were skipped or lost.
+        foreach (var holdId in holdIds)
+        {
+            Assert.Equal("Expired", await GetHoldStatusAsync(holdId));
+        }
+        Assert.Equal(100, await GetAvailableAsync(showId, categoryId));
+    }
+
+    private async Task<bool> AllExpiredAsync(List<Guid> holdIds)
+    {
+        foreach (var holdId in holdIds)
+        {
+            if (await GetHoldStatusAsync(holdId) != "Expired")
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static Hold NewHold(Guid showId, Guid categoryId, string customerSub, int quantity, string idempotencyKey, DateTimeOffset expiresAt) => new()
+    {
+        Id = Guid.CreateVersion7(),
+        ShowId = showId,
+        CustomerSub = customerSub,
+        Status = HoldStatus.Active,
+        ExpiresAt = expiresAt,
+        IdempotencyKey = idempotencyKey,
+        CreatedAt = expiresAt.AddMinutes(-10),
+        Items = new List<HoldItem> { new() { CategoryId = categoryId, Quantity = quantity } }
+    };
 
     private HoldRepository CreateRepository()
     {
