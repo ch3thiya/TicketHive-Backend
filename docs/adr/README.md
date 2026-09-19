@@ -26,6 +26,7 @@ Accepted records are never rewritten; a changed decision is a new record that am
 | [018](018-telemetry-backends.md) | Telemetry backends within budget |
 | [019](019-metrics-and-alerting.md) | Business metrics, dashboard and alerting |
 | [020](020-modularity-and-decoupling-rules.md) | Modularity and decoupling rules inside each codebase |
+| [021](021-waiting-room-availability-check.md) | The waiting room's one read of Inventory's availability (amends 002) |
 
 ## Template
 

@@ -12,11 +12,15 @@
   <Folder Name="/services/Inventory/">
     <Project Path="services/Inventory/Inventory.Service.csproj" />
   </Folder>
+  <Folder Name="/services/WaitingRoom/">
+    <Project Path="services/WaitingRoom/WaitingRoom.Service.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Architecture.Tests/Architecture.Tests.csproj" />
     <Project Path="tests/BuildingBlocks.Tests/BuildingBlocks.Tests.csproj" />
     <Project Path="tests/Catalog.Service.Tests/Catalog.Service.Tests.csproj" />
     <Project Path="tests/Identity.Service.Tests/Identity.Service.Tests.csproj" />
     <Project Path="tests/Inventory.Service.Tests/Inventory.Service.Tests.csproj" />
+    <Project Path="tests/WaitingRoom.Service.Tests/WaitingRoom.Service.Tests.csproj" />
   </Folder>
 </Solution>
