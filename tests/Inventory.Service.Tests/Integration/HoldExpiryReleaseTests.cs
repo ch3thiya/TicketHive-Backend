@@ -42,7 +42,7 @@ public sealed class HoldExpiryReleaseTests
 
         // Act — advance past the hold's expiry and run one sweep pass.
         timeProvider.Advance(TimeSpan.FromMinutes(2));
-        var releasedCount = await repository.ReleaseExpiredHoldsAsync(timeProvider.GetUtcNow());
+        var releasedCount = await repository.ReleaseExpiredHoldsAsync(timeProvider.GetUtcNow(), batchSize: 200);
 
         // Assert
         Assert.Equal(1, releasedCount);

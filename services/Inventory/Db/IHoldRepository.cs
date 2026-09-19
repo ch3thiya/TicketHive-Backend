@@ -38,8 +38,9 @@ public interface IHoldRepository
     // if it does not exist.
     Task<Hold?> GetByIdAsync(Guid holdId);
 
-    // Scans for active holds whose expires_at timestamp has passed, releases
-    // held ticket quantities back to stock, decrements customer quotas, and
-    // updates status to 'Expired'. Returns count of released holds.
-    Task<int> ReleaseExpiredHoldsAsync(DateTimeOffset now);
+    // Scans for up to batchSize active holds whose expires_at timestamp has
+    // passed, oldest expiry first, releases held ticket quantities back to
+    // stock, decrements customer quotas, and updates status to 'Expired'.
+    // Returns count of released holds.
+    Task<int> ReleaseExpiredHoldsAsync(DateTimeOffset now, int batchSize);
 }

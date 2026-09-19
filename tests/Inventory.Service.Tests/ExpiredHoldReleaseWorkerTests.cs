@@ -39,7 +39,7 @@ public class ExpiredHoldReleaseWorkerTests
     [Fact]
     public async Task Worker_ExecutesRelease_WhenTimerFires()
     {
-        _mockRepo.Setup(r => r.ReleaseExpiredHoldsAsync(It.IsAny<DateTimeOffset>()))
+        _mockRepo.Setup(r => r.ReleaseExpiredHoldsAsync(It.IsAny<DateTimeOffset>(), It.IsAny<int>()))
                  .ReturnsAsync(3);
 
         using var cts = new CancellationTokenSource();
@@ -54,6 +54,6 @@ public class ExpiredHoldReleaseWorkerTests
         cts.Cancel();
         await worker.StopAsync(CancellationToken.None);
 
-        _mockRepo.Verify(r => r.ReleaseExpiredHoldsAsync(It.IsAny<DateTimeOffset>()), Times.AtLeastOnce);
+        _mockRepo.Verify(r => r.ReleaseExpiredHoldsAsync(It.IsAny<DateTimeOffset>(), It.IsAny<int>()), Times.AtLeastOnce);
     }
 }

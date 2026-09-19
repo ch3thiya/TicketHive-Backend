@@ -228,16 +228,20 @@ public class HoldRepository : IHoldRepository
         return hold;
     }
 
-    public async Task<int> ReleaseExpiredHoldsAsync(DateTimeOffset now)
+    public async Task<int> ReleaseExpiredHoldsAsync(DateTimeOffset now, int batchSize)
     {
         await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
         await using var transaction = await connection.BeginTransactionAsync();
 
-        // 1. Fetch expired active holds with row locks
+        // 1. Fetch expired active holds with row locks, oldest expiry
+        // first and capped at batchSize so one pass never locks the whole
+        // table during an on-sale with thousands of simultaneous expiries.
         const string selectExpiredSql = @"
             SELECT id, show_id, customer_sub
             FROM holds
             WHERE status = 'Active' AND expires_at <= @Now
+            ORDER BY expires_at
+            LIMIT @BatchSize
             FOR UPDATE SKIP LOCKED;
         ";
 
@@ -245,6 +249,7 @@ public class HoldRepository : IHoldRepository
         await using (var command = new NpgsqlCommand(selectExpiredSql, connection, transaction))
         {
             command.Parameters.AddWithValue("Now", now);
+            command.Parameters.AddWithValue("BatchSize", batchSize);
             await using var reader = await command.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {

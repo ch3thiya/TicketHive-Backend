@@ -59,8 +59,8 @@ public sealed class HoldExpiryConcurrencyTests
 
         // Act — two "instances" sweep the same database at the same time.
         var results = await Task.WhenAll(
-            repositoryOne.ReleaseExpiredHoldsAsync(now),
-            repositoryTwo.ReleaseExpiredHoldsAsync(now));
+            repositoryOne.ReleaseExpiredHoldsAsync(now, batchSize: 200),
+            repositoryTwo.ReleaseExpiredHoldsAsync(now, batchSize: 200));
 
         // Assert — every hold released exactly once, split across the two
         // instances however SKIP LOCKED happened to land, never both.

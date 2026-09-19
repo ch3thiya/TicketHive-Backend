@@ -10,6 +10,10 @@ namespace Inventory.Service.Services;
 
 public class ExpiredHoldReleaseWorker : BackgroundService
 {
+    // Replaced by HoldExpirySweepOptions in "feat: move sweeper interval
+    // and batch size to configuration".
+    private const int DefaultBatchSize = 200;
+
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<ExpiredHoldReleaseWorker> _logger;
@@ -40,7 +44,7 @@ public class ExpiredHoldReleaseWorker : BackgroundService
                 var repository = scope.ServiceProvider.GetRequiredService<IHoldRepository>();
                 var now = _timeProvider.GetUtcNow();
 
-                int releasedCount = await repository.ReleaseExpiredHoldsAsync(now);
+                int releasedCount = await repository.ReleaseExpiredHoldsAsync(now, DefaultBatchSize);
                 if (releasedCount > 0)
                 {
                     _logger.LogInformation("Expired hold worker automatically released {Count} expired hold(s) at {Timestamp}.", releasedCount, now);
