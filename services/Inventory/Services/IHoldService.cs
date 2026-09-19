@@ -13,6 +13,10 @@ public record HoldItemResponse(Guid CategoryId, int Quantity, decimal UnitPrice,
 
 public record HoldResponse(Guid HoldId, Guid ShowId, string Status, DateTimeOffset ExpiresAt, List<HoldItemResponse> Items);
 
+// Booking's own request/response shape (ADR-020 tolerant reader) — includes
+// CustomerSub, which the customer-facing HoldResponse has no reason to.
+public record InternalHoldResponse(Guid HoldId, Guid ShowId, string CustomerSub, string Status, DateTimeOffset ExpiresAt, List<HoldItemResponse> Items);
+
 public enum CreateHoldStatus
 {
     Created,

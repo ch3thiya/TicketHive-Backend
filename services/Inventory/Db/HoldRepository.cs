@@ -264,16 +264,20 @@ public class HoldRepository : IHoldRepository
         return hold;
     }
 
-    public async Task<int> ReleaseExpiredHoldsAsync(DateTimeOffset now)
+    public async Task<HoldReleaseSummary> ReleaseExpiredHoldsAsync(DateTimeOffset now, int batchSize)
     {
         await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
         await using var transaction = await connection.BeginTransactionAsync();
 
-        // 1. Fetch expired active holds with row locks
+        // 1. Fetch expired active holds with row locks, oldest expiry
+        // first and capped at batchSize so one pass never locks the whole
+        // table during an on-sale with thousands of simultaneous expiries.
         const string selectExpiredSql = @"
             SELECT id, show_id, customer_sub
             FROM holds
             WHERE status = 'Active' AND expires_at <= @Now
+            ORDER BY expires_at
+            LIMIT @BatchSize
             FOR UPDATE SKIP LOCKED;
         ";
 
@@ -281,6 +285,7 @@ public class HoldRepository : IHoldRepository
         await using (var command = new NpgsqlCommand(selectExpiredSql, connection, transaction))
         {
             command.Parameters.AddWithValue("Now", now);
+            command.Parameters.AddWithValue("BatchSize", batchSize);
             await using var reader = await command.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
@@ -291,10 +296,13 @@ public class HoldRepository : IHoldRepository
         if (expiredHolds.Count == 0)
         {
             await transaction.CommitAsync();
-            return 0;
+            return new HoldReleaseSummary { HoldsReleased = 0, TicketsReturned = 0, QuotaClampCount = 0 };
         }
 
         // 2. Process each expired hold: update status, restore stock and quotas
+        int totalTicketsReturned = 0;
+        int quotaClampCount = 0;
+
         foreach (var (holdId, showId, customerSub) in expiredHolds)
         {
             const string updateHoldSql = "UPDATE holds SET status = 'Expired' WHERE id = @HoldId;";
@@ -317,36 +325,61 @@ public class HoldRepository : IHoldRepository
             }
 
             int totalQuantity = items.Sum(i => i.Quantity);
+            totalTicketsReturned += totalQuantity;
 
             foreach (var (categoryId, quantity) in items)
             {
+                // Scoped by (show_id, category_id) — the table's actual
+                // primary key — so this can never touch another show's
+                // stock if a category id were ever reused.
                 const string restoreStockSql = @"
                     UPDATE stock
                     SET available = available + @Quantity
-                    WHERE category_id = @CategoryId;
+                    WHERE show_id = @ShowId AND category_id = @CategoryId;
                 ";
                 await using var command = new NpgsqlCommand(restoreStockSql, connection, transaction);
                 command.Parameters.AddWithValue("Quantity", quantity);
+                command.Parameters.AddWithValue("ShowId", showId);
                 command.Parameters.AddWithValue("CategoryId", categoryId);
                 await command.ExecuteNonQueryAsync();
             }
 
+            // The "before" CTE takes FOR UPDATE so a concurrent release for
+            // the same (show_id, customer_sub) blocks and re-reads the
+            // committed value instead of racing this one. Comparing it
+            // against the post-clamp quantity says whether the clamp
+            // engaged, without a second round trip.
             const string restoreQuotaSql = @"
+                WITH before AS (
+                    SELECT quantity FROM customer_quotas
+                    WHERE show_id = @ShowId AND customer_sub = @CustomerSub
+                    FOR UPDATE
+                )
                 UPDATE customer_quotas
-                SET quantity = GREATEST(0, quantity - @Quantity)
-                WHERE show_id = @ShowId AND customer_sub = @CustomerSub;
+                SET quantity = GREATEST(0, (SELECT quantity FROM before) - @Quantity)
+                WHERE show_id = @ShowId AND customer_sub = @CustomerSub
+                RETURNING (SELECT quantity FROM before) < @Quantity;
             ";
             await using (var command = new NpgsqlCommand(restoreQuotaSql, connection, transaction))
             {
                 command.Parameters.AddWithValue("Quantity", totalQuantity);
                 command.Parameters.AddWithValue("ShowId", showId);
                 command.Parameters.AddWithValue("CustomerSub", customerSub);
-                await command.ExecuteNonQueryAsync();
+                var wasClamped = (bool)(await command.ExecuteScalarAsync())!;
+                if (wasClamped)
+                {
+                    quotaClampCount++;
+                }
             }
         }
 
         await transaction.CommitAsync();
-        return expiredHolds.Count;
+        return new HoldReleaseSummary
+        {
+            HoldsReleased = expiredHolds.Count,
+            TicketsReturned = totalTicketsReturned,
+            QuotaClampCount = quotaClampCount
+        };
     }
 
     private static async Task<HashSet<Guid>> GetKnownCategoryIdsAsync(

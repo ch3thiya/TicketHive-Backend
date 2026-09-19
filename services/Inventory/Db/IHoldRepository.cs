@@ -21,6 +21,17 @@ public class HoldCreationResult
     public int? Limit { get; init; }
 }
 
+public class HoldReleaseSummary
+{
+    public required int HoldsReleased { get; init; }
+    public required int TicketsReturned { get; init; }
+
+    // How many of the released holds hit the GREATEST(0, ...) clamp when
+    // their quota was restored — should never happen; every occurrence
+    // means quota accounting drifted somewhere else.
+    public required int QuotaClampCount { get; init; }
+}
+
 public interface IHoldRepository
 {
     // Null means the show has never been initialized.
