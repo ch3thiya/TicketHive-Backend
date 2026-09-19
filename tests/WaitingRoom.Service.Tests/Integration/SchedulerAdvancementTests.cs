@@ -49,6 +49,26 @@ public sealed class SchedulerAdvancementTests
         Assert.Single(results, r => r is not null);
     }
 
+    [Fact]
+    public async Task TryAdvanceServingNumberAsync_FewerJoinersThanTheBatch_StopsAtNextNumberInsteadOfOvershooting()
+    {
+        // Arrange — a queue that emptied after a single joiner (queue_number
+        // 1, so next_number is 2); admit_batch is far larger than that.
+        var repository = CreateRepository();
+        var showId = Guid.CreateVersion7();
+        await TestData.SeedQueueAsync(_db.ConnectionString, showId, DateTimeOffset.UtcNow.AddMinutes(-1), admitBatch: 50, status: "Open");
+        await TestData.SetNextNumberAsync(_db.ConnectionString, showId, nextNumber: 2);
+
+        // Act
+        var first = await repository.TryAdvanceServingNumberAsync(showId);
+        var second = await repository.TryAdvanceServingNumberAsync(showId);
+
+        // Assert — stops at next_number rather than racing ahead to 50, and
+        // the next tick finds nothing left to advance toward.
+        Assert.Equal(2, first);
+        Assert.Null(second);
+    }
+
     private QueueRepository CreateRepository()
     {
         var configuration = new ConfigurationBuilder()
