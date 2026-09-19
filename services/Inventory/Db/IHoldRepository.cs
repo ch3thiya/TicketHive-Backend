@@ -51,4 +51,7 @@ public interface IHoldRepository
 
     // Cancels an active hold for a customer, restoring stock and quota.
     Task<bool> CancelHoldAsync(Guid holdId, string customerSub, DateTimeOffset now);
+
+    // Returns an active hold for a given show and customer sub if one exists.
+    Task<Hold?> GetActiveHoldForCustomerAsync(Guid showId, string customerSub, DateTimeOffset now);
 }

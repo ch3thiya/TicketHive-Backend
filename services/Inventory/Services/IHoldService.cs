@@ -48,4 +48,6 @@ public interface IHoldService
     Task<Hold?> GetHoldAsync(Guid holdId);
 
     Task<bool> CancelHoldAsync(Guid holdId, string customerSub);
+
+    Task<Hold?> GetActiveHoldForCustomerAsync(Guid showId, string customerSub);
 }

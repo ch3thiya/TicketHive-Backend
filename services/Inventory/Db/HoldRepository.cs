@@ -71,10 +71,9 @@ public class HoldRepository : IHoldRepository
         await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
 
         const string sql = @"
-            SELECT COALESCE(SUM(hi.quantity), 0)
-            FROM holds h
-            JOIN hold_items hi ON hi.hold_id = h.id
-            WHERE h.show_id = @ShowId AND h.status = 'Active' AND h.expires_at > @Now;
+            SELECT COUNT(id)
+            FROM holds
+            WHERE show_id = @ShowId AND status = 'Active' AND expires_at > @Now;
         ";
 
         await using var command = new NpgsqlCommand(sql, connection);
@@ -414,7 +413,7 @@ public class HoldRepository : IHoldRepository
         {
             const string restoreStockSql = @"
                 UPDATE stock
-                SET available = available + @Quantity, updated_at = NOW()
+                SET available = available + @Quantity
                 WHERE show_id = @ShowId AND category_id = @CategoryId;
             ";
             await using var command = new NpgsqlCommand(restoreStockSql, connection, transaction);
@@ -426,7 +425,7 @@ public class HoldRepository : IHoldRepository
 
         const string restoreQuotaSql = @"
             UPDATE customer_quotas
-            SET held_quantity = GREATEST(0, held_quantity - @TotalQuantity), updated_at = NOW()
+            SET quantity = GREATEST(0, quantity - @TotalQuantity)
             WHERE show_id = @ShowId AND customer_sub = @CustomerSub;
         ";
         await using (var command = new NpgsqlCommand(restoreQuotaSql, connection, transaction))
@@ -439,5 +438,32 @@ public class HoldRepository : IHoldRepository
 
         await transaction.CommitAsync();
         return true;
+    }
+
+    public async Task<Hold?> GetActiveHoldForCustomerAsync(Guid showId, string customerSub, DateTimeOffset now)
+    {
+        await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
+
+        const string selectSql = @"
+            SELECT id
+            FROM holds
+            WHERE show_id = @ShowId AND customer_sub = @CustomerSub AND status = 'Active' AND expires_at > @Now
+            ORDER BY created_at DESC
+            LIMIT 1;
+        ";
+
+        Guid? holdId = null;
+        await using (var command = new NpgsqlCommand(selectSql, connection))
+        {
+            command.Parameters.AddWithValue("ShowId", showId);
+            command.Parameters.AddWithValue("CustomerSub", customerSub);
+            command.Parameters.AddWithValue("Now", now);
+
+            var result = await command.ExecuteScalarAsync();
+            if (result != null) holdId = (Guid)result;
+        }
+
+        if (holdId is null) return null;
+        return await GetByIdAsync(holdId.Value);
     }
 }

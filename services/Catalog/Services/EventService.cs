@@ -504,6 +504,35 @@ public class EventService : IEventService
 
             await _repository.SaveTicketCategoriesAsync(showId, categories);
         }
+
+        // Sync rules and threshold to Inventory service
+        try
+        {
+            var allCategories = await _repository.GetTicketCategoriesByShowIdAsync(showId);
+            if (allCategories.Count > 0)
+            {
+                var syncRequest = new InitializeShowStockRequest(
+                    OrganizerId: organizerId,
+                    OnSaleAt: show.OnSaleAt,
+                    MaxPerCustomer: 6,
+                    HoldMinutes: 10,
+                    HighDemand: show.HighDemandThreshold.HasValue && show.HighDemandThreshold.Value > 0,
+                    Categories: allCategories.Select(c => new InitializeShowStockCategory(
+                        CategoryId: c.Id,
+                        Capacity: c.Capacity,
+                        UnitPrice: c.Price,
+                        Currency: Currency,
+                        AllocationMode: AllocationMode
+                    )).ToList(),
+                    HighDemandThreshold: show.HighDemandThreshold
+                );
+                await _inventoryClient.InitializeShowStockAsync(showId, syncRequest);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to sync updated show rules to Inventory service for show '{ShowId}'", showId);
+        }
     }
 
     public async Task CancelShowAsync(Guid organizerId, Guid showId)

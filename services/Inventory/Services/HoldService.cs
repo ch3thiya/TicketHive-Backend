@@ -130,6 +130,12 @@ public class HoldService : IHoldService
         return _repository.CancelHoldAsync(holdId, customerSub, now);
     }
 
+    public Task<Hold?> GetActiveHoldForCustomerAsync(Guid showId, string customerSub)
+    {
+        var now = _timeProvider.GetUtcNow();
+        return _repository.GetActiveHoldForCustomerAsync(showId, customerSub, now);
+    }
+
     public static HoldResponse ToResponse(Hold hold) => new(
         hold.Id,
         hold.ShowId,
