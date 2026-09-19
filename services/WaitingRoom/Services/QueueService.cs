@@ -84,29 +84,29 @@ public class QueueService : IQueueService
         var entry = await _repository.GetEntryAsync(showId, customerSub, cancellationToken);
         if (entry is null)
         {
-            return new QueuePositionResponse(QueuePositionStatus.NotInQueue, null, null, null, null);
+            return new QueuePositionResponse(QueuePositionStatus.NotInQueue.ToString(), null, null, null, null);
         }
 
         if (entry.AdmittedAt is not null)
         {
             var (token, expiresAt) = _admissionTokenIssuer.Issue(showId, customerSub, entry.AdmittedAt.Value);
-            return new QueuePositionResponse(QueuePositionStatus.Admitted, null, null, token, expiresAt);
+            return new QueuePositionResponse(QueuePositionStatus.Admitted.ToString(), null, null, token, expiresAt);
         }
 
         var queue = await _repository.GetQueueAsync(showId, cancellationToken);
 
         if (queue?.Status == QueueStatus.Closed)
         {
-            return new QueuePositionResponse(QueuePositionStatus.SoldOut, null, null, null, null);
+            return new QueuePositionResponse(QueuePositionStatus.SoldOut.ToString(), null, null, null, null);
         }
 
         if (entry.QueueNumber is null)
         {
             // Still in the pre-queue: no position yet, only the sale time.
-            return new QueuePositionResponse(QueuePositionStatus.Waiting, null, queue?.OnSaleAt, null, null);
+            return new QueuePositionResponse(QueuePositionStatus.Waiting.ToString(), null, queue?.OnSaleAt, null, null);
         }
 
         var position = entry.QueueNumber.Value - (queue?.ServingNumber ?? 0);
-        return new QueuePositionResponse(QueuePositionStatus.Waiting, position, null, null, null);
+        return new QueuePositionResponse(QueuePositionStatus.Waiting.ToString(), position, null, null, null);
     }
 }

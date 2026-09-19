@@ -13,7 +13,7 @@ public enum QueuePositionStatus
 }
 
 public record QueuePositionResponse(
-    QueuePositionStatus Status,
+    string Status,
     long? Position,
     DateTimeOffset? OnSaleAt,
     string? AdmissionToken,

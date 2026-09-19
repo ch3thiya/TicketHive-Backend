@@ -141,7 +141,7 @@ public class QueueServiceTests
         var result = await _service.GetPositionAsync(showId, "customer-1");
 
         // Assert
-        Assert.Equal(QueuePositionStatus.NotInQueue, result.Status);
+        Assert.Equal(QueuePositionStatus.NotInQueue.ToString(), result.Status);
         Assert.Null(result.Position);
     }
 
@@ -160,7 +160,7 @@ public class QueueServiceTests
         var result = await _service.GetPositionAsync(showId, "customer-1");
 
         // Assert
-        Assert.Equal(QueuePositionStatus.Waiting, result.Status);
+        Assert.Equal(QueuePositionStatus.Waiting.ToString(), result.Status);
         Assert.Null(result.Position);
         Assert.Equal(queue.OnSaleAt, result.OnSaleAt);
     }
@@ -180,7 +180,7 @@ public class QueueServiceTests
         var result = await _service.GetPositionAsync(showId, "customer-1");
 
         // Assert
-        Assert.Equal(QueuePositionStatus.Waiting, result.Status);
+        Assert.Equal(QueuePositionStatus.Waiting.ToString(), result.Status);
         Assert.Equal(50, result.Position);
     }
 
@@ -200,7 +200,7 @@ public class QueueServiceTests
         var result = await _service.GetPositionAsync(showId, "customer-1");
 
         // Assert
-        Assert.Equal(QueuePositionStatus.Admitted, result.Status);
+        Assert.Equal(QueuePositionStatus.Admitted.ToString(), result.Status);
         Assert.Equal("signed-token", result.AdmissionToken);
         Assert.Equal(admittedAt.AddMinutes(15), result.AdmissionExpiresAt);
         _mockRepository.Verify(r => r.GetQueueAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -221,7 +221,7 @@ public class QueueServiceTests
         var result = await _service.GetPositionAsync(showId, "customer-1");
 
         // Assert
-        Assert.Equal(QueuePositionStatus.SoldOut, result.Status);
+        Assert.Equal(QueuePositionStatus.SoldOut.ToString(), result.Status);
         Assert.Null(result.Position);
     }
 }
