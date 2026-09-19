@@ -264,7 +264,7 @@ public class HoldRepository : IHoldRepository
         return hold;
     }
 
-    public async Task<HoldReleaseSummary> ReleaseExpiredHoldsAsync(DateTimeOffset now, int batchSize)
+    public async Task<HoldReleaseSummary> ReleaseExpiredHoldsAsync(DateTimeOffset now, int batchSize = 100)
     {
         await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
         await using var transaction = await connection.BeginTransactionAsync();
