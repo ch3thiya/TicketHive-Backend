@@ -42,10 +42,12 @@ public sealed class HoldExpiryReleaseTests
 
         // Act — advance past the hold's expiry and run one sweep pass.
         timeProvider.Advance(TimeSpan.FromMinutes(2));
-        var releasedCount = await repository.ReleaseExpiredHoldsAsync(timeProvider.GetUtcNow(), batchSize: 200);
+        var summary = await repository.ReleaseExpiredHoldsAsync(timeProvider.GetUtcNow(), batchSize: 200);
 
         // Assert
-        Assert.Equal(1, releasedCount);
+        Assert.Equal(1, summary.HoldsReleased);
+        Assert.Equal(5, summary.TicketsReturned);
+        Assert.Equal(0, summary.QuotaClampCount);
         Assert.Equal("Expired", await GetHoldStatusAsync(holdId));
         Assert.Equal(100, await GetAvailableAsync(showId, categoryId));
         Assert.Equal(0, await GetQuotaAsync(showId, customerSub));

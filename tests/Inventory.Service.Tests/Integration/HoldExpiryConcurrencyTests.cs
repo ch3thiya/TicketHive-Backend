@@ -64,7 +64,8 @@ public sealed class HoldExpiryConcurrencyTests
 
         // Assert — every hold released exactly once, split across the two
         // instances however SKIP LOCKED happened to land, never both.
-        Assert.Equal(showCount * holdsPerShow, results[0] + results[1]);
+        Assert.Equal(showCount * holdsPerShow, results[0].HoldsReleased + results[1].HoldsReleased);
+        Assert.Equal(showCount * holdsPerShow * quantityPerHold, results[0].TicketsReturned + results[1].TicketsReturned);
 
         for (int s = 0; s < showCount; s++)
         {

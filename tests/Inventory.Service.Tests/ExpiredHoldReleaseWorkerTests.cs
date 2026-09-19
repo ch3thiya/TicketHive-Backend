@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.Metrics;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
@@ -42,7 +43,7 @@ public class ExpiredHoldReleaseWorkerTests
     public async Task Worker_ExecutesRelease_WhenTimerFires()
     {
         _mockRepo.Setup(r => r.ReleaseExpiredHoldsAsync(It.IsAny<DateTimeOffset>(), It.IsAny<int>()))
-                 .ReturnsAsync(3);
+                 .ReturnsAsync(new HoldReleaseSummary { HoldsReleased = 3, TicketsReturned = 6, QuotaClampCount = 0 });
 
         using var cts = new CancellationTokenSource();
         var worker = new ExpiredHoldReleaseWorker(
@@ -50,6 +51,7 @@ public class ExpiredHoldReleaseWorkerTests
             _timeProvider,
             new Mock<ILogger<ExpiredHoldReleaseWorker>>().Object,
             Options.Create(new HoldExpirySweepOptions()),
+            new HoldExpiryMetrics(new Meter(nameof(ExpiredHoldReleaseWorkerTests))),
             periodOverride: TimeSpan.FromMilliseconds(50));
 
         var runTask = worker.StartAsync(cts.Token);

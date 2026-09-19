@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
@@ -15,6 +16,7 @@ public class ExpiredHoldReleaseWorker : BackgroundService
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<ExpiredHoldReleaseWorker> _logger;
+    private readonly HoldExpiryMetrics _metrics;
     private readonly TimeSpan _period;
     private readonly int _batchSize;
 
@@ -23,11 +25,13 @@ public class ExpiredHoldReleaseWorker : BackgroundService
         TimeProvider timeProvider,
         ILogger<ExpiredHoldReleaseWorker> logger,
         IOptions<HoldExpirySweepOptions> options,
+        HoldExpiryMetrics metrics,
         TimeSpan? periodOverride = null)
     {
         _scopeFactory = scopeFactory;
         _timeProvider = timeProvider;
         _logger = logger;
+        _metrics = metrics;
         _period = periodOverride ?? TimeSpan.FromSeconds(options.Value.IntervalSeconds);
         _batchSize = options.Value.BatchSize;
     }
@@ -39,16 +43,25 @@ public class ExpiredHoldReleaseWorker : BackgroundService
         using var timer = new PeriodicTimer(_period);
         while (!stoppingToken.IsCancellationRequested && await timer.WaitForNextTickAsync(stoppingToken))
         {
+            var stopwatch = Stopwatch.StartNew();
             try
             {
                 using var scope = _scopeFactory.CreateScope();
                 var repository = scope.ServiceProvider.GetRequiredService<IHoldRepository>();
                 var now = _timeProvider.GetUtcNow();
 
-                int releasedCount = await repository.ReleaseExpiredHoldsAsync(now, _batchSize);
-                if (releasedCount > 0)
+                var summary = await repository.ReleaseExpiredHoldsAsync(now, _batchSize);
+                _metrics.HoldsExpired.Add(summary.HoldsReleased);
+                _metrics.TicketsReturned.Add(summary.TicketsReturned);
+
+                if (summary.HoldsReleased > 0)
                 {
-                    _logger.LogInformation("Expired hold worker automatically released {Count} expired hold(s) at {Timestamp}.", releasedCount, now);
+                    _logger.LogInformation("Expired hold worker automatically released {Count} expired hold(s) at {Timestamp}.", summary.HoldsReleased, now);
+                }
+
+                if (summary.QuotaClampCount > 0)
+                {
+                    _logger.LogWarning("Quota clamp engaged for {Count} expired hold(s) this sweep; a customer's quota was already lower than the hold being released, which means quota accounting drifted elsewhere.", summary.QuotaClampCount);
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -58,6 +71,10 @@ public class ExpiredHoldReleaseWorker : BackgroundService
             catch (Exception ex)
             {
                 _logger.LogError(ex, "An error occurred while releasing expired ticket holds.");
+            }
+            finally
+            {
+                _metrics.SweepDurationMs.Record(stopwatch.Elapsed.TotalMilliseconds);
             }
         }
 
