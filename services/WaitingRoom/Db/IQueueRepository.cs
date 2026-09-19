@@ -48,6 +48,9 @@ public interface IQueueRepository
 
     Task<IReadOnlyList<Guid>> GetOpenShowIdsAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>Every queue still in PreQueue whose on_sale_at is now due.</summary>
+    Task<IReadOnlyList<Guid>> GetShowIdsDueForOnSaleTransitionAsync(CancellationToken cancellationToken = default);
+
     /// <summary>Every queue that has not already closed (PreQueue or Open).</summary>
     Task<IReadOnlyList<Guid>> GetActiveShowIdsAsync(CancellationToken cancellationToken = default);
 

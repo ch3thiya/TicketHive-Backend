@@ -334,6 +334,25 @@ public class QueueRepository : IQueueRepository
         return showIds;
     }
 
+    public async Task<IReadOnlyList<Guid>> GetShowIdsDueForOnSaleTransitionAsync(CancellationToken cancellationToken = default)
+    {
+        await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
+
+        const string sql = "select show_id from queues where status = @PreQueueStatus and on_sale_at <= @Now;";
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("PreQueueStatus", nameof(QueueStatus.PreQueue));
+        command.Parameters.AddWithValue("Now", _timeProvider.GetUtcNow());
+
+        var showIds = new List<Guid>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            showIds.Add(reader.GetGuid(0));
+        }
+
+        return showIds;
+    }
+
     public async Task<IReadOnlyList<Guid>> GetActiveShowIdsAsync(CancellationToken cancellationToken = default)
     {
         await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();

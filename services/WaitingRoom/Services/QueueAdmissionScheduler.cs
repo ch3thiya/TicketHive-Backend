@@ -37,6 +37,18 @@ public class QueueAdmissionScheduler : BackgroundService
             {
                 using var scope = _scopeFactory.CreateScope();
                 var repository = scope.ServiceProvider.GetRequiredService<IQueueRepository>();
+
+                // Move any queue whose on-sale time has arrived out of
+                // PreQueue before advancing anyone, so a lagging transition
+                // never lets a post-sale joiner take a number the pre-queue
+                // pool hasn't been ranked into yet.
+                var dueShowIds = await repository.GetShowIdsDueForOnSaleTransitionAsync(stoppingToken);
+                foreach (var showId in dueShowIds)
+                {
+                    await repository.RunOnSaleTransitionAsync(showId, stoppingToken);
+                    _logger.LogInformation("Queue {ShowId} transitioned to Open at on-sale.", showId);
+                }
+
                 var openShowIds = await repository.GetOpenShowIdsAsync(stoppingToken);
 
                 foreach (var showId in openShowIds)

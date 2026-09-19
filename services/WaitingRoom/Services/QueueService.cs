@@ -38,7 +38,18 @@ public class QueueService : IQueueService
             return null;
         }
 
-        return now < queue.OnSaleAt
+        // The scheduler transitions a queue at on-sale, but a join landing
+        // in the gap before its next tick must never be routed on OnSaleAt
+        // alone — that is how a post-sale joiner ended up with queue_number
+        // 0 while PreQueue entries sat with no number at all. Route on the
+        // queue's actual status, running the transition inline if it is overdue.
+        if (queue.Status == QueueStatus.PreQueue && now >= queue.OnSaleAt)
+        {
+            await _repository.RunOnSaleTransitionAsync(showId, cancellationToken);
+            queue = await _repository.GetQueueAsync(showId, cancellationToken) ?? queue;
+        }
+
+        return queue.Status == QueueStatus.PreQueue
             ? await _repository.JoinPreQueueAsync(showId, customerSub, now, cancellationToken)
             : await _repository.JoinPostSaleAsync(showId, customerSub, now, cancellationToken);
     }
