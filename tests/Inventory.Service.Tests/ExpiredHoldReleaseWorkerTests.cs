@@ -3,10 +3,12 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 using Moq;
 using Xunit;
 using Inventory.Service.Db;
+using Inventory.Service.Models;
 using Inventory.Service.Services;
 
 namespace Inventory.Service.Tests;
@@ -47,7 +49,8 @@ public class ExpiredHoldReleaseWorkerTests
             _mockScopeFactory.Object,
             _timeProvider,
             new Mock<ILogger<ExpiredHoldReleaseWorker>>().Object,
-            TimeSpan.FromMilliseconds(50));
+            Options.Create(new HoldExpirySweepOptions()),
+            periodOverride: TimeSpan.FromMilliseconds(50));
 
         var runTask = worker.StartAsync(cts.Token);
         await Task.Delay(150); // Allow worker timer tick
