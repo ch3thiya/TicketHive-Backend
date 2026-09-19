@@ -340,7 +340,7 @@ public class EventService : IEventService
         {
             var request = new InitializeShowStockRequest(
                 OrganizerId: organizerId,
-                OnSaleAt: null, // until S2-05 introduces sales rules
+                OnSaleAt: show.OnSaleAt.HasValue ? new DateTimeOffset(show.OnSaleAt.Value, TimeSpan.Zero) : null,
                 MaxPerCustomer: defaults.MaxPerCustomer,
                 HoldMinutes: defaults.HoldMinutes,
                 HighDemand: show.HighDemandThreshold.HasValue && show.HighDemandThreshold.Value > 0,
