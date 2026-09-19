@@ -141,8 +141,77 @@ public class QueueRepository : IQueueRepository
         return entry;
     }
 
-    public Task RunOnSaleTransitionAsync(Guid showId, CancellationToken cancellationToken = default) =>
-        throw new NotImplementedException("Added when the on-sale transition is implemented.");
+    public async Task RunOnSaleTransitionAsync(Guid showId, CancellationToken cancellationToken = default)
+    {
+        await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        // Transaction-scoped (not session-scoped) so the lock always releases
+        // at commit or rollback, even if the underlying connection is later
+        // handed back out from Npgsql's pool. Safe to attempt from any instance.
+        const string lockSql = "select pg_try_advisory_xact_lock(hashtext(@ShowId));";
+        bool lockAcquired;
+        await using (var lockCommand = new NpgsqlCommand(lockSql, connection, transaction))
+        {
+            lockCommand.Parameters.AddWithValue("ShowId", showId.ToString());
+            lockAcquired = (bool)(await lockCommand.ExecuteScalarAsync(cancellationToken))!;
+        }
+
+        if (!lockAcquired)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return;
+        }
+
+        // Locking the row also blocks a concurrent post-sale join (which
+        // takes the same row lock) until the transition finishes.
+        const string statusSql = "select status from queues where show_id = @ShowId for update;";
+        string? status;
+        await using (var statusCommand = new NpgsqlCommand(statusSql, connection, transaction))
+        {
+            statusCommand.Parameters.AddWithValue("ShowId", showId);
+            status = (string?)await statusCommand.ExecuteScalarAsync(cancellationToken);
+        }
+
+        // Idempotent: no queue, or already transitioned — nothing to do.
+        if (status != nameof(QueueStatus.PreQueue))
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return;
+        }
+
+        const string assignSql = @"
+            with ranked as (
+                select customer_sub, row_number() over (order by random_rank) as rn
+                from queue_entries
+                where show_id = @ShowId and queue_number is null
+            )
+            update queue_entries qe
+            set queue_number = ranked.rn
+            from ranked
+            where qe.show_id = @ShowId and qe.customer_sub = ranked.customer_sub;
+        ";
+        await using (var assignCommand = new NpgsqlCommand(assignSql, connection, transaction))
+        {
+            assignCommand.Parameters.AddWithValue("ShowId", showId);
+            await assignCommand.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        const string openSql = @"
+            update queues
+            set next_number = (select coalesce(max(queue_number), 0) from queue_entries where show_id = @ShowId) + 1,
+                status = @OpenStatus
+            where show_id = @ShowId;
+        ";
+        await using (var openCommand = new NpgsqlCommand(openSql, connection, transaction))
+        {
+            openCommand.Parameters.AddWithValue("ShowId", showId);
+            openCommand.Parameters.AddWithValue("OpenStatus", nameof(QueueStatus.Open));
+            await openCommand.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+    }
 
     public Task<long?> TryAdvanceServingNumberAsync(Guid showId, CancellationToken cancellationToken = default) =>
         throw new NotImplementedException("Added when the scheduler is implemented.");
