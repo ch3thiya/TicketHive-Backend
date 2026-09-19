@@ -46,4 +46,9 @@ public interface IHoldService
     // sub against CustomerSub) is left to the controller, which is the one
     // that decides between 404 and leaking existence with a 403.
     Task<Hold?> GetHoldAsync(Guid holdId);
+
+    // Reports EffectiveStatus, not the raw stored status, so a hold past
+    // its expiry reads as Expired to its owner even before the sweeper has
+    // processed it — the one place every hold-returning path converges.
+    HoldResponse ToResponse(Hold hold);
 }
