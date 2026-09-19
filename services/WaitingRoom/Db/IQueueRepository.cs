@@ -1,0 +1,35 @@
+using WaitingRoom.Service.Models;
+
+namespace WaitingRoom.Service.Db;
+
+public interface IQueueRepository
+{
+    Task<Queue?> GetQueueAsync(Guid showId, CancellationToken cancellationToken = default);
+
+    Task<QueueEntry?> GetEntryAsync(Guid showId, string customerSub, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Inserts an entry with a random rank and no queue number. A repeat call for the
+    /// same show and customer returns the existing row unchanged (composite primary key upsert).
+    /// </summary>
+    Task<QueueEntry> JoinPreQueueAsync(Guid showId, string customerSub, DateTimeOffset joinedAt, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Inserts an entry taking the next queue number, incremented atomically. A repeat call for
+    /// the same show and customer returns the existing row unchanged.
+    /// </summary>
+    Task<QueueEntry> JoinPostSaleAsync(Guid showId, string customerSub, DateTimeOffset joinedAt, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Assigns queue_number to every pre-queue entry ordered by random_rank, advances next_number
+    /// past the highest assigned, and opens the queue. Guarded by pg_try_advisory_lock so it is
+    /// safe to attempt from any instance.
+    /// </summary>
+    Task RunOnSaleTransitionAsync(Guid showId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Advances serving_number by admit_batch under pg_try_advisory_lock. Returns the new
+    /// serving_number when this call took the lock, or null when another instance held it.
+    /// </summary>
+    Task<long?> TryAdvanceServingNumberAsync(Guid showId, CancellationToken cancellationToken = default);
+}
