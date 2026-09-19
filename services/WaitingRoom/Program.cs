@@ -64,6 +64,20 @@ builder.Services.AddHttpClient<ICatalogClient, CatalogClient>((sp, client) =>
 })
 .AddHttpMessageHandler<InternalServiceAuthenticationHandler>();
 
+// Inventory's availability endpoint is public and anonymous, so this client
+// carries no service token — unlike the Catalog client above.
+builder.Services.Configure<InventoryClientOptions>(builder.Configuration.GetSection(InventoryClientOptions.SectionName));
+builder.Services.AddHttpClient<IInventoryClient, InventoryClient>((sp, client) =>
+{
+    var options = sp.GetRequiredService<IOptions<InventoryClientOptions>>().Value;
+    if (!string.IsNullOrWhiteSpace(options.BaseUrl))
+    {
+        client.BaseAddress = new Uri(options.BaseUrl);
+    }
+});
+builder.Services.Configure<QueueSellOutOptions>(builder.Configuration.GetSection(QueueSellOutOptions.SectionName));
+builder.Services.AddHostedService<QueueSellOutChecker>();
+
 // Register CORS to allow React Frontend requests
 var allowedFrontendOrigins = builder.Configuration["Cors:AllowedOrigins"]?
     .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)

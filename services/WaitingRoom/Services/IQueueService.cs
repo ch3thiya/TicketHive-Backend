@@ -8,7 +8,8 @@ public enum QueuePositionStatus
 {
     NotInQueue,
     Waiting,
-    Admitted
+    Admitted,
+    SoldOut
 }
 
 public record QueuePositionResponse(

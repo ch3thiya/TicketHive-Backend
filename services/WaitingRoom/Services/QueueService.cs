@@ -84,6 +84,11 @@ public class QueueService : IQueueService
 
         var queue = await _repository.GetQueueAsync(showId, cancellationToken);
 
+        if (queue?.Status == QueueStatus.Closed)
+        {
+            return new QueuePositionResponse(QueuePositionStatus.SoldOut, null, null, null, null);
+        }
+
         if (entry.QueueNumber is null)
         {
             // Still in the pre-queue: no position yet, only the sale time.

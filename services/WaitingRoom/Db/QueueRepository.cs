@@ -334,6 +334,35 @@ public class QueueRepository : IQueueRepository
         return showIds;
     }
 
+    public async Task<IReadOnlyList<Guid>> GetActiveShowIdsAsync(CancellationToken cancellationToken = default)
+    {
+        await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
+
+        const string sql = "select show_id from queues where status <> @ClosedStatus;";
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("ClosedStatus", nameof(QueueStatus.Closed));
+
+        var showIds = new List<Guid>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            showIds.Add(reader.GetGuid(0));
+        }
+
+        return showIds;
+    }
+
+    public async Task CloseQueueAsync(Guid showId, CancellationToken cancellationToken = default)
+    {
+        await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
+
+        const string sql = "update queues set status = @ClosedStatus where show_id = @ShowId and status <> @ClosedStatus;";
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("ShowId", showId);
+        command.Parameters.AddWithValue("ClosedStatus", nameof(QueueStatus.Closed));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     private static QueueEntry ReadEntry(NpgsqlDataReader reader) => new(
         reader.GetGuid(0),
         reader.GetString(1),

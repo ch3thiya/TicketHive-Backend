@@ -47,4 +47,10 @@ public interface IQueueRepository
     Task<long?> TryAdvanceServingNumberAsync(Guid showId, CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<Guid>> GetOpenShowIdsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Every queue that has not already closed (PreQueue or Open).</summary>
+    Task<IReadOnlyList<Guid>> GetActiveShowIdsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Idempotent: closing an already-closed queue is a no-op.</summary>
+    Task CloseQueueAsync(Guid showId, CancellationToken cancellationToken = default);
 }
