@@ -1,0 +1,58 @@
+name: Trigger auto deployment for tickethive-inventory
+
+# When this action will be executed
+on:
+  # Automatically trigger it when detected changes in repo
+  push:
+    branches: 
+      [ dev, main, feature/azure-deployment, feature/scrum-13-customer-pays-for-held-tickets ]
+    paths:
+    - '**'
+    - '.github/workflows/tickethive-inventory-AutoDeployTrigger.yml'
+
+  # Allow manual trigger 
+  workflow_dispatch:      
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions: 
+      id-token: write #This is required for requesting the OIDC JWT Token
+      contents: read #Required when GH token is used to authenticate with private repo
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Restore Solution Dependencies
+        run: dotnet restore
+
+      - name: Build Solution
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Run Tests
+        run: dotnet test --no-build --configuration Release --verbosity normal
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.TICKETHIVEINVENTORY_AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.TICKETHIVEINVENTORY_AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.TICKETHIVEINVENTORY_AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build and push container image to registry
+        uses: azure/container-apps-deploy-action@v2
+        with:
+          appSourcePath: ${{ github.workspace }}
+          dockerfilePath: services/Inventory/Dockerfile
+          registryUrl: tickethiveacr.azurecr.io
+          registryUsername: ${{ secrets.TICKETHIVEINVENTORY_REGISTRY_USERNAME }}
+          registryPassword: ${{ secrets.TICKETHIVEINVENTORY_REGISTRY_PASSWORD }}
+          containerAppName: tickethive-inventory
+          resourceGroup: TicketHive-RG
+          imageToBuild: tickethiveacr.azurecr.io/tickethive-inventory:${{ github.sha }}
