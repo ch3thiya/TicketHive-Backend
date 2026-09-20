@@ -10,7 +10,7 @@ namespace Inventory.Service.Services;
 public class HoldService : IHoldService
 {
     private readonly IHoldRepository _repository;
-    private readonly IWaitingRoomRepository? _waitingRoomRepository;
+    private readonly IAdmissionTokenVerifier _admissionTokenVerifier;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<HoldService> _logger;
 
@@ -18,12 +18,12 @@ public class HoldService : IHoldService
         IHoldRepository repository,
         TimeProvider timeProvider,
         ILogger<HoldService> logger,
-        IWaitingRoomRepository? waitingRoomRepository = null)
+        IAdmissionTokenVerifier admissionTokenVerifier)
     {
         _repository = repository;
         _timeProvider = timeProvider;
         _logger = logger;
-        _waitingRoomRepository = waitingRoomRepository;
+        _admissionTokenVerifier = admissionTokenVerifier;
     }
 
     public async Task<CreateHoldResult> CreateHoldAsync(string customerSub, string idempotencyKey, bool hasAdmissionToken, CreateHoldRequest request, string? admissionToken = null)
@@ -63,26 +63,16 @@ public class HoldService : IHoldService
 
             if (requiresAdmissionToken)
             {
-                if (!hasAdmissionToken)
+                if (!hasAdmissionToken || string.IsNullOrWhiteSpace(admissionToken))
                 {
                     _logger.LogInformation("Hold rejected for show {ShowId}: high-demand gate active and no admission token provided", request.ShowId);
                     return new CreateHoldResult { Status = CreateHoldStatus.HighDemandBlocked };
                 }
 
-                if (_waitingRoomRepository != null)
+                if (!_admissionTokenVerifier.Verify(request.ShowId, customerSub, admissionToken))
                 {
-                    if (string.IsNullOrWhiteSpace(admissionToken))
-                    {
-                        _logger.LogInformation("Hold rejected for show {ShowId}: admission token header value is empty", request.ShowId);
-                        return new CreateHoldResult { Status = CreateHoldStatus.HighDemandBlocked };
-                    }
-
-                    var isValidToken = await _waitingRoomRepository.ValidateAdmissionTokenAsync(request.ShowId, customerSub, admissionToken, now);
-                    if (!isValidToken)
-                    {
-                        _logger.LogInformation("Hold rejected for show {ShowId}: admission token is invalid or expired for customer {CustomerSub}", request.ShowId, customerSub);
-                        return new CreateHoldResult { Status = CreateHoldStatus.HighDemandBlocked };
-                    }
+                    _logger.LogInformation("Hold rejected for show {ShowId}: admission token failed verification", request.ShowId);
+                    return new CreateHoldResult { Status = CreateHoldStatus.HighDemandBlocked };
                 }
             }
         }
@@ -106,10 +96,6 @@ public class HoldService : IHoldService
         {
             case HoldCreationOutcome.Created:
                 _logger.LogInformation("Hold {HoldId} created for show {ShowId}", hold.Id, hold.ShowId);
-                if (hasAdmissionToken && _waitingRoomRepository != null && !string.IsNullOrWhiteSpace(admissionToken))
-                {
-                    await _waitingRoomRepository.ConsumeAdmissionTokenAsync(request.ShowId, customerSub, admissionToken, now);
-                }
                 return new CreateHoldResult { Status = CreateHoldStatus.Created, Hold = ToResponse(result.Hold!) };
             case HoldCreationOutcome.Duplicate:
                 return new CreateHoldResult { Status = CreateHoldStatus.Duplicate, Hold = ToResponse(result.Hold!) };
