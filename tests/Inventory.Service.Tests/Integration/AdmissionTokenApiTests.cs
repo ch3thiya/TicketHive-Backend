@@ -25,7 +25,13 @@ public sealed class AdmissionTokenApiTests
 
     public AdmissionTokenApiTests(HoldsApiFixture fixture) => _fixture = fixture;
 
-    [Fact(Skip = "Unskipped in 'test: add admission gate tests' (SCRUM-11)")]
+    // Each test below uses its own customer sub. The per-user rate limit on
+    // POST /api/inventory/holds (ADR-008, 15 per 10 seconds) is partitioned
+    // by sub but shared across every test in the "HoldsApi" collection, so
+    // reusing one sub across this many requests would starve unrelated
+    // tests in the same collection (e.g. HoldsApiTests) of their own quota.
+
+    [Fact]
     public async Task CreateHold_HighDemandShow_NoAdmissionTokenHeader_ReturnsForbidden()
     {
         // Arrange
@@ -34,45 +40,45 @@ public sealed class AdmissionTokenApiTests
         await SeedShowAsync(showId, categoryId, capacity: 10, maxPerCustomer: 6, highDemand: true);
 
         // Act
-        var response = await PostHoldAsync(showId, categoryId, customerSub: "customer-1", idempotencyKey: "key-1", admissionToken: null);
+        var response = await PostHoldAsync(showId, categoryId, customerSub: "admission-no-header", idempotencyKey: "key-1", admissionToken: null);
 
         // Assert
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    [Fact(Skip = "Unskipped in 'test: add admission gate tests' (SCRUM-11)")]
+    [Fact]
     public async Task CreateHold_HighDemandShow_ValidToken_Succeeds()
     {
         // Arrange
         var showId = Guid.NewGuid();
         var categoryId = Guid.NewGuid();
         await SeedShowAsync(showId, categoryId, capacity: 10, maxPerCustomer: 6, highDemand: true);
-        var token = AdmissionTokenTestKeys.MintToken(showId, "customer-1", DateTimeOffset.UtcNow);
+        var token = AdmissionTokenTestKeys.MintToken(showId, "admission-valid-token", DateTimeOffset.UtcNow);
 
         // Act
-        var response = await PostHoldAsync(showId, categoryId, customerSub: "customer-1", idempotencyKey: "key-1", admissionToken: token);
+        var response = await PostHoldAsync(showId, categoryId, customerSub: "admission-valid-token", idempotencyKey: "key-1", admissionToken: token);
 
         // Assert
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
     }
 
-    [Fact(Skip = "Unskipped in 'test: add admission gate tests' (SCRUM-11)")]
+    [Fact]
     public async Task CreateHold_HighDemandShow_ExpiredToken_ReturnsForbidden()
     {
         // Arrange
         var showId = Guid.NewGuid();
         var categoryId = Guid.NewGuid();
         await SeedShowAsync(showId, categoryId, capacity: 10, maxPerCustomer: 6, highDemand: true);
-        var token = AdmissionTokenTestKeys.MintToken(showId, "customer-1", DateTimeOffset.UtcNow.AddMinutes(-20), lifetime: TimeSpan.FromMinutes(5));
+        var token = AdmissionTokenTestKeys.MintToken(showId, "admission-expired-token", DateTimeOffset.UtcNow.AddMinutes(-20), lifetime: TimeSpan.FromMinutes(5));
 
         // Act
-        var response = await PostHoldAsync(showId, categoryId, customerSub: "customer-1", idempotencyKey: "key-1", admissionToken: token);
+        var response = await PostHoldAsync(showId, categoryId, customerSub: "admission-expired-token", idempotencyKey: "key-1", admissionToken: token);
 
         // Assert
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    [Fact(Skip = "Unskipped in 'test: add admission gate tests' (SCRUM-11)")]
+    [Fact]
     public async Task CreateHold_HighDemandShow_TokenForDifferentShow_ReturnsForbidden()
     {
         // Arrange
@@ -80,16 +86,16 @@ public sealed class AdmissionTokenApiTests
         var otherShowId = Guid.NewGuid();
         var categoryId = Guid.NewGuid();
         await SeedShowAsync(showId, categoryId, capacity: 10, maxPerCustomer: 6, highDemand: true);
-        var token = AdmissionTokenTestKeys.MintToken(otherShowId, "customer-1", DateTimeOffset.UtcNow);
+        var token = AdmissionTokenTestKeys.MintToken(otherShowId, "admission-wrong-show", DateTimeOffset.UtcNow);
 
         // Act
-        var response = await PostHoldAsync(showId, categoryId, customerSub: "customer-1", idempotencyKey: "key-1", admissionToken: token);
+        var response = await PostHoldAsync(showId, categoryId, customerSub: "admission-wrong-show", idempotencyKey: "key-1", admissionToken: token);
 
         // Assert
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    [Fact(Skip = "Unskipped in 'test: add admission gate tests' (SCRUM-11)")]
+    [Fact]
     public async Task CreateHold_HighDemandShow_TokenSignedByDifferentKey_ReturnsForbidden()
     {
         // Arrange
@@ -97,16 +103,16 @@ public sealed class AdmissionTokenApiTests
         var categoryId = Guid.NewGuid();
         await SeedShowAsync(showId, categoryId, capacity: 10, maxPerCustomer: 6, highDemand: true);
         using var wrongKey = RSA.Create(2048);
-        var token = AdmissionTokenTestKeys.MintToken(showId, "customer-1", DateTimeOffset.UtcNow, signAs: wrongKey);
+        var token = AdmissionTokenTestKeys.MintToken(showId, "admission-wrong-key", DateTimeOffset.UtcNow, signAs: wrongKey);
 
         // Act
-        var response = await PostHoldAsync(showId, categoryId, customerSub: "customer-1", idempotencyKey: "key-1", admissionToken: token);
+        var response = await PostHoldAsync(showId, categoryId, customerSub: "admission-wrong-key", idempotencyKey: "key-1", admissionToken: token);
 
         // Assert
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    [Fact(Skip = "Unskipped in 'test: add admission gate tests' (SCRUM-11)")]
+    [Fact]
     public async Task CreateHold_HighDemandShow_MalformedToken_ReturnsForbidden()
     {
         // Arrange
@@ -115,29 +121,29 @@ public sealed class AdmissionTokenApiTests
         await SeedShowAsync(showId, categoryId, capacity: 10, maxPerCustomer: 6, highDemand: true);
 
         // Act
-        var response = await PostHoldAsync(showId, categoryId, customerSub: "customer-1", idempotencyKey: "key-1", admissionToken: "not-a-jwt");
+        var response = await PostHoldAsync(showId, categoryId, customerSub: "admission-malformed-token", idempotencyKey: "key-1", admissionToken: "not-a-jwt");
 
         // Assert
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    [Fact(Skip = "Unskipped in 'test: add admission gate tests' (SCRUM-11)")]
+    [Fact]
     public async Task CreateHold_HighDemandShow_TokenForDifferentCustomer_ReturnsForbidden()
     {
         // Arrange
         var showId = Guid.NewGuid();
         var categoryId = Guid.NewGuid();
         await SeedShowAsync(showId, categoryId, capacity: 10, maxPerCustomer: 6, highDemand: true);
-        var token = AdmissionTokenTestKeys.MintToken(showId, "someone-else", DateTimeOffset.UtcNow);
+        var token = AdmissionTokenTestKeys.MintToken(showId, "admission-token-owner", DateTimeOffset.UtcNow);
 
         // Act
-        var response = await PostHoldAsync(showId, categoryId, customerSub: "customer-1", idempotencyKey: "key-1", admissionToken: token);
+        var response = await PostHoldAsync(showId, categoryId, customerSub: "admission-different-requester", idempotencyKey: "key-1", admissionToken: token);
 
         // Assert
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    [Fact(Skip = "Unskipped in 'test: add admission gate tests' (SCRUM-11)")]
+    [Fact]
     public async Task CreateHold_HighDemandShow_AllRejectionReasons_ReturnIndistinguishableProblemDetails()
     {
         // Arrange — the four ways a hold can be rejected at the gate: no
@@ -147,14 +153,15 @@ public sealed class AdmissionTokenApiTests
         var categoryId = Guid.NewGuid();
         await SeedShowAsync(showId, categoryId, capacity: 10, maxPerCustomer: 6, highDemand: true);
         using var wrongKey = RSA.Create(2048);
+        const string requester = "admission-indistinguishable";
 
-        var noHeader = await PostHoldAsync(showId, categoryId, "customer-1", "key-no-header", admissionToken: null);
-        var wrongShow = await PostHoldAsync(showId, categoryId, "customer-1", "key-wrong-show",
-            admissionToken: AdmissionTokenTestKeys.MintToken(Guid.NewGuid(), "customer-1", DateTimeOffset.UtcNow));
-        var wrongCustomer = await PostHoldAsync(showId, categoryId, "customer-1", "key-wrong-customer",
+        var noHeader = await PostHoldAsync(showId, categoryId, requester, "key-no-header", admissionToken: null);
+        var wrongShow = await PostHoldAsync(showId, categoryId, requester, "key-wrong-show",
+            admissionToken: AdmissionTokenTestKeys.MintToken(Guid.NewGuid(), requester, DateTimeOffset.UtcNow));
+        var wrongCustomer = await PostHoldAsync(showId, categoryId, requester, "key-wrong-customer",
             admissionToken: AdmissionTokenTestKeys.MintToken(showId, "someone-else", DateTimeOffset.UtcNow));
-        var wrongKeySignature = await PostHoldAsync(showId, categoryId, "customer-1", "key-wrong-key",
-            admissionToken: AdmissionTokenTestKeys.MintToken(showId, "customer-1", DateTimeOffset.UtcNow, signAs: wrongKey));
+        var wrongKeySignature = await PostHoldAsync(showId, categoryId, requester, "key-wrong-key",
+            admissionToken: AdmissionTokenTestKeys.MintToken(showId, requester, DateTimeOffset.UtcNow, signAs: wrongKey));
 
         // Act
         var bodies = await Task.WhenAll(
@@ -177,7 +184,7 @@ public sealed class AdmissionTokenApiTests
         });
     }
 
-    [Fact(Skip = "Unskipped in 'test: add admission gate tests' (SCRUM-11)")]
+    [Fact]
     public async Task CreateHold_NotHighDemandShow_SucceedsRegardlessOfAdmissionToken()
     {
         // Arrange
@@ -186,10 +193,10 @@ public sealed class AdmissionTokenApiTests
         await SeedShowAsync(showId, categoryId, capacity: 10, maxPerCustomer: 6, highDemand: false);
 
         // Act — no token at all.
-        var withoutToken = await PostHoldAsync(showId, categoryId, "customer-1", "key-a", admissionToken: null);
+        var withoutToken = await PostHoldAsync(showId, categoryId, "admission-not-high-demand-a", "key-a", admissionToken: null);
 
         // Act — a token that wouldn't even verify (malformed), still ignored.
-        var withJunkToken = await PostHoldAsync(showId, categoryId, "customer-2", "key-b", admissionToken: "not-a-jwt");
+        var withJunkToken = await PostHoldAsync(showId, categoryId, "admission-not-high-demand-b", "key-b", admissionToken: "not-a-jwt");
 
         // Assert
         Assert.Equal(HttpStatusCode.Created, withoutToken.StatusCode);
