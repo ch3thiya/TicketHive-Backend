@@ -19,7 +19,7 @@ public class PayHereService : IPayHereService
     {
         _logger = logger;
         _merchantId = configuration["PayHere:MerchantId"] ?? "1238120";
-        _merchantSecret = configuration["PayHere:MerchantSecret"] ?? "MTY2NTA5OTMzMTM4NjMzODUyMjgzMjYwMDEwMjkxMTgyNDc5MTcyNg==";
+        _merchantSecret = configuration["PayHere:MerchantSecret"] ?? "MjM1OTc0NjAzMjM5Njc3OTg3MTExNjY0NjgzODEyMTI0NDYxODM3Mw==";
         _returnUrl = configuration["PayHere:ReturnUrl"] ?? "http://localhost:5173/checkout";
         _cancelUrl = configuration["PayHere:CancelUrl"] ?? "http://localhost:5173/checkout";
         _notifyUrl = configuration["PayHere:NotifyUrl"] ?? "http://localhost:5005/api/booking/payment/notify";

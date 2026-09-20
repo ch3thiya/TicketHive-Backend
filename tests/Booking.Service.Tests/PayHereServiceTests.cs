@@ -16,7 +16,7 @@ public class PayHereServiceTests
             .AddInMemoryCollection(new System.Collections.Generic.Dictionary<string, string?>
             {
                 ["PayHere:MerchantId"] = "1238120",
-                ["PayHere:MerchantSecret"] = "MTY2NTA5OTMzMTM4NjMzODUyMjgzMjYwMDEwMjkxMTgyNDc5MTcyNg==",
+                ["PayHere:MerchantSecret"] = "MjM1OTc0NjAzMjM5Njc3OTg3MTExNjY0NjgzODEyMTI0NDYxODM3Mw==",
                 ["PayHere:ReturnUrl"] = "http://localhost:5173/checkout",
                 ["PayHere:CancelUrl"] = "http://localhost:5173/checkout",
                 ["PayHere:NotifyUrl"] = "http://localhost:5005/api/booking/payment/notify"
@@ -52,7 +52,7 @@ public class PayHereServiceTests
         var currency = "LKR";
         var statusCode = "2";
 
-        var secretMd5 = System.Security.Cryptography.MD5.HashData(System.Text.Encoding.UTF8.GetBytes("MTY2NTA5OTMzMTM4NjMzODUyMjgzMjYwMDEwMjkxMTgyNDc5MTcyNg=="));
+        var secretMd5 = System.Security.Cryptography.MD5.HashData(System.Text.Encoding.UTF8.GetBytes("MjM1OTc0NjAzMjM5Njc3OTg3MTExNjY0NjgzODEyMTI0NDYxODM3Mw=="));
         var secretHex = System.Convert.ToHexString(secretMd5).ToUpperInvariant();
         var raw = $"{merchantId}{orderId}{amount}{currency}{statusCode}{secretHex}";
         var expectedSig = System.Convert.ToHexString(System.Security.Cryptography.MD5.HashData(System.Text.Encoding.UTF8.GetBytes(raw))).ToUpperInvariant();

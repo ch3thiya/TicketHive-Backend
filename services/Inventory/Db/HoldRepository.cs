@@ -275,7 +275,7 @@ public class HoldRepository : IHoldRepository
         const string selectExpiredSql = @"
             SELECT id, show_id, customer_sub
             FROM holds
-            WHERE status = 'Active' AND expires_at <= @Now
+            WHERE status IN ('Active', 'PaymentPending') AND expires_at <= @Now
             ORDER BY expires_at
             LIMIT @BatchSize
             FOR UPDATE SKIP LOCKED;

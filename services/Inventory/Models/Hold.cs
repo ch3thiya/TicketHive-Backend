@@ -18,5 +18,5 @@ public class Hold
     // reads as Expired once its time has passed even if the sweeper has
     // not reached it yet, without mutating the stored row.
     public HoldStatus EffectiveStatus(DateTimeOffset now) =>
-        Status == HoldStatus.Active && ExpiresAt <= now ? HoldStatus.Expired : Status;
+        (Status == HoldStatus.Active || Status == HoldStatus.PaymentPending) && ExpiresAt <= now ? HoldStatus.Expired : Status;
 }

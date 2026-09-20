@@ -19,7 +19,9 @@ public class PayHereService : IPayHereService
     {
         _logger = logger;
         _merchantId = configuration["PayHere:MerchantId"] ?? throw new InvalidOperationException("PayHere:MerchantId configuration is missing.");
-        _merchantSecret = configuration["PayHere:MerchantSecret"] ?? throw new InvalidOperationException("PayHere:MerchantSecret configuration is missing.");
+        _merchantSecret = configuration["PayHere:MerchantSecret"]
+            ?? configuration["PayHere:AppSecret"]
+            ?? throw new InvalidOperationException("PayHere:MerchantSecret or PayHere:AppSecret configuration is missing.");
         _returnUrl = configuration["PayHere:ReturnUrl"] ?? "http://localhost:5173/checkout";
         _cancelUrl = configuration["PayHere:CancelUrl"] ?? "http://localhost:5173/checkout";
         _notifyUrl = configuration["PayHere:NotifyUrl"] ?? "http://localhost:5006/api/payment/notify";
