@@ -3,6 +3,7 @@ using System.Security.Claims;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using BuildingBlocks;
 using Inventory.Service.Db;
@@ -43,8 +44,6 @@ builder.Services.AddScoped<IStockRepository, StockRepository>();
 builder.Services.AddScoped<IStockService, StockService>();
 builder.Services.AddScoped<IAllocationStrategy, GeneralAdmissionAllocationStrategy>();
 builder.Services.AddScoped<IHoldRepository, HoldRepository>();
-builder.Services.AddScoped<IWaitingRoomRepository, WaitingRoomRepository>();
-builder.Services.AddScoped<IWaitingRoomService, WaitingRoomService>();
 builder.Services.AddScoped<IHoldService, HoldService>();
 builder.Services.Configure<HoldExpirySweepOptions>(builder.Configuration.GetSection(HoldExpirySweepOptions.SectionName));
 builder.Services.AddSingleton<HoldExpiryMetrics>();
@@ -52,6 +51,23 @@ builder.Services.AddHostedService<ExpiredHoldReleaseWorker>();
 
 var requiredInternalScope = builder.Configuration["Wso2:InternalApi:RequiredScope"]
     ?? throw new InvalidOperationException("Configuration 'Wso2:InternalApi:RequiredScope' is missing.");
+
+// The admission-token gate must fail closed: a missing public key stops
+// Inventory from starting rather than falling back to no verification
+// (that fallback is exactly the bug this replaces — see HoldService).
+// ValidateOnStart, not a plain throw, so the check runs against the fully
+// assembled configuration (including what a WebApplicationFactory test
+// host layers on) instead of the snapshot available before builder.Build().
+builder.Services.AddSingleton<IValidateOptions<AdmissionTokenOptions>, AdmissionTokenOptionsValidator>();
+builder.Services.AddOptions<AdmissionTokenOptions>()
+    .Bind(builder.Configuration.GetSection(AdmissionTokenOptions.SectionName))
+    .ValidateOnStart();
+
+builder.Services.AddSingleton<IAdmissionTokenVerifier>(sp =>
+{
+    var options = sp.GetRequiredService<IOptions<AdmissionTokenOptions>>().Value;
+    return new AdmissionTokenVerifier(options.PublicKeyPem, options.Issuer, sp.GetRequiredService<TimeProvider>());
+});
 
 // Register CORS to allow React Frontend requests
 var allowedFrontendOrigins = builder.Configuration["Cors:AllowedOrigins"]?

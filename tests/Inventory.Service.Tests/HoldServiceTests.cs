@@ -14,14 +14,16 @@ namespace Inventory.Service.Tests;
 public class HoldServiceTests
 {
     private readonly Mock<IHoldRepository> _mockRepo;
+    private readonly Mock<IAdmissionTokenVerifier> _mockVerifier;
     private readonly FakeTimeProvider _timeProvider;
     private readonly HoldService _service;
 
     public HoldServiceTests()
     {
         _mockRepo = new Mock<IHoldRepository>();
+        _mockVerifier = new Mock<IAdmissionTokenVerifier>();
         _timeProvider = new FakeTimeProvider(new DateTimeOffset(2026, 9, 15, 10, 0, 0, TimeSpan.Zero));
-        _service = new HoldService(_mockRepo.Object, _timeProvider, new Mock<ILogger<HoldService>>().Object);
+        _service = new HoldService(_mockRepo.Object, _timeProvider, new Mock<ILogger<HoldService>>().Object, _mockVerifier.Object);
     }
 
     private static CreateHoldRequest ValidRequest(params CreateHoldItemRequest[] items) =>
@@ -93,37 +95,14 @@ public class HoldServiceTests
     }
 
     [Fact]
-    public async Task CreateHoldAsync_HighDemandShowWithAdmissionToken_ProceedsToAllocation()
-    {
-        var showRules = ActiveShowRules(highDemand: true);
-        var request = new CreateHoldRequest(showRules.ShowId, new List<CreateHoldItemRequest> { new(Guid.NewGuid(), 1) });
-        _mockRepo.Setup(r => r.GetShowRulesAsync(showRules.ShowId)).ReturnsAsync(showRules);
-        _mockRepo.Setup(r => r.CreateAsync(It.IsAny<Hold>(), showRules.MaxPerCustomer))
-                 .ReturnsAsync(new HoldCreationResult { Outcome = HoldCreationOutcome.Created, Hold = HoldWithItem(showRules.ShowId) });
-
-        var result = await _service.CreateHoldAsync("sub", "key", hasAdmissionToken: true, request);
-
-        Assert.Equal(CreateHoldStatus.Created, result.Status);
-        _mockRepo.Verify(r => r.CreateAsync(It.IsAny<Hold>(), showRules.MaxPerCustomer), Times.Once);
-    }
-
-    [Fact]
     public async Task CreateHoldAsync_HighDemandShowWithInvalidToken_ReturnsHighDemandBlocked()
     {
-        var mockWaitingRoomRepo = new Mock<IWaitingRoomRepository>();
-        var serviceWithWaitingRoom = new HoldService(
-            _mockRepo.Object,
-            _timeProvider,
-            new Mock<ILogger<HoldService>>().Object,
-            mockWaitingRoomRepo.Object);
-
         var showRules = ActiveShowRules(highDemand: true);
         var request = new CreateHoldRequest(showRules.ShowId, new List<CreateHoldItemRequest> { new(Guid.NewGuid(), 1) });
         _mockRepo.Setup(r => r.GetShowRulesAsync(showRules.ShowId)).ReturnsAsync(showRules);
-        mockWaitingRoomRepo.Setup(r => r.ValidateAdmissionTokenAsync(showRules.ShowId, "sub", "bad-token", It.IsAny<DateTimeOffset>()))
-                            .ReturnsAsync(false);
+        _mockVerifier.Setup(v => v.Verify(showRules.ShowId, "sub", "bad-token")).Returns(false);
 
-        var result = await serviceWithWaitingRoom.CreateHoldAsync("sub", "key", hasAdmissionToken: true, request, admissionToken: "bad-token");
+        var result = await _service.CreateHoldAsync("sub", "key", hasAdmissionToken: true, request, admissionToken: "bad-token");
 
         Assert.Equal(CreateHoldStatus.HighDemandBlocked, result.Status);
         _mockRepo.Verify(r => r.CreateAsync(It.IsAny<Hold>(), It.IsAny<int>()), Times.Never);
@@ -132,22 +111,14 @@ public class HoldServiceTests
     [Fact]
     public async Task CreateHoldAsync_HighDemandShowWithValidToken_ProceedsToAllocation()
     {
-        var mockWaitingRoomRepo = new Mock<IWaitingRoomRepository>();
-        var serviceWithWaitingRoom = new HoldService(
-            _mockRepo.Object,
-            _timeProvider,
-            new Mock<ILogger<HoldService>>().Object,
-            mockWaitingRoomRepo.Object);
-
         var showRules = ActiveShowRules(highDemand: true);
         var request = new CreateHoldRequest(showRules.ShowId, new List<CreateHoldItemRequest> { new(Guid.NewGuid(), 1) });
         _mockRepo.Setup(r => r.GetShowRulesAsync(showRules.ShowId)).ReturnsAsync(showRules);
-        mockWaitingRoomRepo.Setup(r => r.ValidateAdmissionTokenAsync(showRules.ShowId, "sub", "valid-token", It.IsAny<DateTimeOffset>()))
-                            .ReturnsAsync(true);
+        _mockVerifier.Setup(v => v.Verify(showRules.ShowId, "sub", "valid-token")).Returns(true);
         _mockRepo.Setup(r => r.CreateAsync(It.IsAny<Hold>(), showRules.MaxPerCustomer))
                  .ReturnsAsync(new HoldCreationResult { Outcome = HoldCreationOutcome.Created, Hold = HoldWithItem(showRules.ShowId) });
 
-        var result = await serviceWithWaitingRoom.CreateHoldAsync("sub", "key", hasAdmissionToken: true, request, admissionToken: "valid-token");
+        var result = await _service.CreateHoldAsync("sub", "key", hasAdmissionToken: true, request, admissionToken: "valid-token");
 
         Assert.Equal(CreateHoldStatus.Created, result.Status);
         _mockRepo.Verify(r => r.CreateAsync(It.IsAny<Hold>(), showRules.MaxPerCustomer), Times.Once);
