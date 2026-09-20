@@ -116,7 +116,14 @@ public class PaymentEventListener : BackgroundService
                 }
                 catch (ConsumeException ex)
                 {
-                    _logger.LogWarning("Kafka consume exception in PaymentEventListener: {Reason}", ex.Error.Reason);
+                    if (ex.Error.Code == ErrorCode.UnknownTopicOrPart)
+                    {
+                        _logger.LogDebug("Kafka topic not available yet: {Reason}", ex.Error.Reason);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Kafka consume exception in PaymentEventListener: {Reason}", ex.Error.Reason);
+                    }
                 }
                 catch (Exception ex)
                 {
