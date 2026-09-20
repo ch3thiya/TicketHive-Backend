@@ -39,4 +39,91 @@ public class InternalHoldsController : ControllerBase
 
         return Ok(_holdService.ToInternalResponse(hold));
     }
+
+    [HttpPatch("{holdId}/freeze")]
+    [Authorize(Policy = "InternalService")]
+    [ProducesResponseType(typeof(InternalHoldResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> FreezeHold(Guid holdId)
+    {
+        var hold = await _holdService.GetHoldAsync(holdId);
+        if (hold is null)
+        {
+            return Problem(
+                detail: $"Hold '{holdId}' was not found.",
+                statusCode: StatusCodes.Status404NotFound,
+                title: "Hold not found");
+        }
+
+        var success = await _holdService.FreezeHoldAsync(holdId);
+        if (!success)
+        {
+            return Problem(
+                detail: $"Hold '{holdId}' cannot be frozen (already expired or not active).",
+                statusCode: StatusCodes.Status409Conflict,
+                title: "Hold state conflict");
+        }
+
+        var updated = await _holdService.GetHoldAsync(holdId);
+        return Ok(_holdService.ToInternalResponse(updated!));
+    }
+
+    [HttpPatch("{holdId}/convert")]
+    [Authorize(Policy = "InternalService")]
+    [ProducesResponseType(typeof(InternalHoldResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> ConvertHold(Guid holdId)
+    {
+        var hold = await _holdService.GetHoldAsync(holdId);
+        if (hold is null)
+        {
+            return Problem(
+                detail: $"Hold '{holdId}' was not found.",
+                statusCode: StatusCodes.Status404NotFound,
+                title: "Hold not found");
+        }
+
+        var success = await _holdService.ConvertHoldAsync(holdId);
+        if (!success)
+        {
+            return Problem(
+                detail: $"Hold '{holdId}' cannot be converted (not in frozen/active state).",
+                statusCode: StatusCodes.Status409Conflict,
+                title: "Hold state conflict");
+        }
+
+        var updated = await _holdService.GetHoldAsync(holdId);
+        return Ok(_holdService.ToInternalResponse(updated!));
+    }
+
+    [HttpPatch("{holdId}/release")]
+    [Authorize(Policy = "InternalService")]
+    [ProducesResponseType(typeof(InternalHoldResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> ReleaseHold(Guid holdId)
+    {
+        var hold = await _holdService.GetHoldAsync(holdId);
+        if (hold is null)
+        {
+            return Problem(
+                detail: $"Hold '{holdId}' was not found.",
+                statusCode: StatusCodes.Status404NotFound,
+                title: "Hold not found");
+        }
+
+        var success = await _holdService.ReleaseHoldAsync(holdId);
+        if (!success)
+        {
+            return Problem(
+                detail: $"Hold '{holdId}' cannot be released (already converted or cancelled).",
+                statusCode: StatusCodes.Status409Conflict,
+                title: "Hold state conflict");
+        }
+
+        var updated = await _holdService.GetHoldAsync(holdId);
+        return Ok(_holdService.ToInternalResponse(updated!));
+    }
 }

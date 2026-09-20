@@ -340,7 +340,7 @@ public class EventService : IEventService
         {
             var request = new InitializeShowStockRequest(
                 OrganizerId: organizerId,
-                OnSaleAt: null, // until S2-05 introduces sales rules
+                OnSaleAt: show.OnSaleAt.HasValue ? new DateTimeOffset(show.OnSaleAt.Value, TimeSpan.Zero) : null,
                 MaxPerCustomer: defaults.MaxPerCustomer,
                 HoldMinutes: defaults.HoldMinutes,
                 HighDemand: show.HighDemandThreshold.HasValue && show.HighDemandThreshold.Value > 0,
@@ -556,5 +556,22 @@ public class EventService : IEventService
 
         _logger.LogInformation("Cancelling Show {ShowId} for Organizer {OrganizerId}", showId, organizerId);
         await _repository.UpdateShowStatusAsync(showId, "Cancelled");
+    }
+
+    public async Task<ShowSalesRulesDto?> GetSalesRulesAsync(Guid showId)
+    {
+        var show = await _repository.GetShowByIdAsync(showId);
+        if (show is null)
+        {
+            return null;
+        }
+
+        // timestamptz always round-trips as DateTime with Kind.Utc via Npgsql.
+        var onSaleAt = show.OnSaleAt.HasValue
+            ? new DateTimeOffset(show.OnSaleAt.Value, TimeSpan.Zero)
+            : (DateTimeOffset?)null;
+        var highDemand = show.HighDemandThreshold.HasValue && show.HighDemandThreshold.Value > 0;
+
+        return new ShowSalesRulesDto(show.Id, onSaleAt, highDemand);
     }
 }

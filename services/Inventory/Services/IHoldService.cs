@@ -55,6 +55,10 @@ public interface IHoldService
 
     Task<Hold?> GetActiveHoldForCustomerAsync(Guid showId, string customerSub);
 
+    Task<bool> FreezeHoldAsync(Guid holdId);
+    Task<bool> ConvertHoldAsync(Guid holdId);
+    Task<bool> ReleaseHoldAsync(Guid holdId);
+
     HoldResponse ToResponse(Hold hold);
     InternalHoldResponse ToInternalResponse(Hold hold);
 }

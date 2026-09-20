@@ -65,4 +65,13 @@ public interface IHoldRepository
 
     // Returns an active hold for a given show and customer sub if one exists.
     Task<Hold?> GetActiveHoldForCustomerAsync(Guid showId, string customerSub, DateTimeOffset now);
+
+    // Freezes an active hold by changing status to PaymentPending if not expired.
+    Task<bool> FreezeHoldAsync(Guid holdId, DateTimeOffset now);
+
+    // Converts a hold (PaymentPending or Active) to Converted and increments sold count.
+    Task<bool> ConvertHoldAsync(Guid holdId);
+
+    // Releases a hold (PaymentPending or Active) to Cancelled and restores stock and quota.
+    Task<bool> ReleaseHoldAsync(Guid holdId);
 }

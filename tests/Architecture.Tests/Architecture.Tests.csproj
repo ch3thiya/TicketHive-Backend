@@ -22,6 +22,7 @@
     <ProjectReference Include="..\..\services\Identity\Identity.Service.csproj" />
     <ProjectReference Include="..\..\services\Catalog\Catalog.Service.csproj" />
     <ProjectReference Include="..\..\services\Inventory\Inventory.Service.csproj" />
+    <ProjectReference Include="..\..\services\WaitingRoom\WaitingRoom.Service.csproj" />
   </ItemGroup>
 
 </Project>

@@ -37,7 +37,8 @@ public class HoldsApiFactory : WebApplicationFactory<Program>
         {
             config.AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["ConnectionStrings:DefaultConnection"] = _connectionString
+                ["ConnectionStrings:DefaultConnection"] = _connectionString,
+                ["AdmissionToken:PublicKeyPem"] = AdmissionTokenTestKeys.PublicKeyPem
             });
         });
 

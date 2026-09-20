@@ -1295,4 +1295,113 @@ public class EventServiceTests
         await Assert.ThrowsAsync<ArgumentException>(() => _service.UpdateShowAsync(organizerId, showId, updateDto));
         _mockRepo.Verify(r => r.UpdateShowAsync(It.IsAny<Show>()), Times.Never);
     }
+
+    [Fact]
+    public async Task PublishEvent_ShowHasOnSaleAt_SendsTheRealOnSaleAtToInventory()
+    {
+        // Arrange
+        var organizerId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+        var showId = Guid.NewGuid();
+        var onSaleAt = new DateTime(2026, 10, 1, 9, 0, 0, DateTimeKind.Utc);
+
+        _mockRepo.Setup(r => r.GetEventByIdAsync(eventId))
+                 .ReturnsAsync(new Event { Id = eventId, OrganizerId = organizerId, Status = "Draft" });
+        _mockRepo.Setup(r => r.GetShowsByEventIdAsync(eventId))
+                 .ReturnsAsync(new List<Show> { new Show { Id = showId, EventId = eventId, Status = "Active", OnSaleAt = onSaleAt } });
+        _mockRepo.Setup(r => r.GetTicketCategoriesByShowIdAsync(showId))
+                 .ReturnsAsync(new List<TicketCategory> { new TicketCategory { Id = Guid.NewGuid(), ShowId = showId, Name = "GA", Price = 20, Capacity = 50 } });
+
+        InitializeShowStockRequest? capturedRequest = null;
+        _mockInventoryClient
+            .Setup(c => c.InitializeShowStockAsync(showId, It.IsAny<InitializeShowStockRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<Guid, InitializeShowStockRequest, CancellationToken>((_, request, _) => capturedRequest = request)
+            .Returns(Task.CompletedTask);
+
+        // Act
+        await _service.PublishEventAsync(organizerId, eventId);
+
+        // Assert
+        Assert.NotNull(capturedRequest);
+        Assert.Equal(new DateTimeOffset(onSaleAt, TimeSpan.Zero), capturedRequest!.OnSaleAt);
+    }
+
+    [Fact]
+    public async Task PublishEvent_ShowHasNoOnSaleAt_SendsNullToInventory()
+    {
+        // Arrange
+        var organizerId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+        var showId = Guid.NewGuid();
+
+        _mockRepo.Setup(r => r.GetEventByIdAsync(eventId))
+                 .ReturnsAsync(new Event { Id = eventId, OrganizerId = organizerId, Status = "Draft" });
+        _mockRepo.Setup(r => r.GetShowsByEventIdAsync(eventId))
+                 .ReturnsAsync(new List<Show> { new Show { Id = showId, EventId = eventId, Status = "Active", OnSaleAt = null } });
+        _mockRepo.Setup(r => r.GetTicketCategoriesByShowIdAsync(showId))
+                 .ReturnsAsync(new List<TicketCategory> { new TicketCategory { Id = Guid.NewGuid(), ShowId = showId, Name = "GA", Price = 20, Capacity = 50 } });
+
+        InitializeShowStockRequest? capturedRequest = null;
+        _mockInventoryClient
+            .Setup(c => c.InitializeShowStockAsync(showId, It.IsAny<InitializeShowStockRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<Guid, InitializeShowStockRequest, CancellationToken>((_, request, _) => capturedRequest = request)
+            .Returns(Task.CompletedTask);
+
+        // Act
+        await _service.PublishEventAsync(organizerId, eventId);
+
+        // Assert
+        Assert.NotNull(capturedRequest);
+        Assert.Null(capturedRequest!.OnSaleAt);
+    }
+
+    [Fact]
+    public async Task GetSalesRulesAsync_HighDemandShowWithOnSaleAt_ReturnsOnSaleAtAndHighDemandTrue()
+    {
+        // Arrange
+        var showId = Guid.NewGuid();
+        var onSaleAt = new DateTime(2026, 10, 1, 9, 0, 0, DateTimeKind.Utc);
+        _mockRepo.Setup(r => r.GetShowByIdAsync(showId))
+                 .ReturnsAsync(new Show { Id = showId, OnSaleAt = onSaleAt, HighDemandThreshold = 5 });
+
+        // Act
+        var result = await _service.GetSalesRulesAsync(showId);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal(showId, result!.ShowId);
+        Assert.Equal(new DateTimeOffset(onSaleAt, TimeSpan.Zero), result.OnSaleAt);
+        Assert.True(result.HighDemand);
+    }
+
+    [Fact]
+    public async Task GetSalesRulesAsync_ThresholdIsZero_ReturnsHighDemandFalse()
+    {
+        // Arrange
+        var showId = Guid.NewGuid();
+        _mockRepo.Setup(r => r.GetShowByIdAsync(showId))
+                 .ReturnsAsync(new Show { Id = showId, OnSaleAt = null, HighDemandThreshold = 0 });
+
+        // Act
+        var result = await _service.GetSalesRulesAsync(showId);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.False(result!.HighDemand);
+        Assert.Null(result.OnSaleAt);
+    }
+
+    [Fact]
+    public async Task GetSalesRulesAsync_UnknownShow_ReturnsNull()
+    {
+        // Arrange
+        var showId = Guid.NewGuid();
+        _mockRepo.Setup(r => r.GetShowByIdAsync(showId)).ReturnsAsync((Show?)null);
+
+        // Act
+        var result = await _service.GetSalesRulesAsync(showId);
+
+        // Assert
+        Assert.Null(result);
+    }
 }

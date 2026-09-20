@@ -21,3 +21,6 @@ appsettings.*.local.json
 # OS files
 .DS_Store
 Thumbs.db
+
+# Local key material (e.g. admission-token dev keys)
+.keys/
