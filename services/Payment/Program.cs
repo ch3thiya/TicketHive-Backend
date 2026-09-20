@@ -1,10 +1,9 @@
 using System.Reflection;
 using BuildingBlocks;
-using Booking.Service.Clients;
-using Booking.Service.Db;
-using Booking.Service.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
+using Payment.Service.Db;
+using Payment.Service.Services;
 
 if (args.Contains("--migrate"))
 {
@@ -12,7 +11,7 @@ if (args.Contains("--migrate"))
     var migrationConnectionString = migrationBuilder.Configuration.GetConnectionString("DefaultConnection")
         ?? throw new InvalidOperationException("Connection string 'DefaultConnection' is missing from configuration.");
     using var loggerFactory = LoggerFactory.Create(logging => logging.AddConsole());
-    var migrationLogger = loggerFactory.CreateLogger("Booking.Migrations");
+    var migrationLogger = loggerFactory.CreateLogger("Payment.Migrations");
 
     try
     {
@@ -21,7 +20,7 @@ if (args.Contains("--migrate"))
     }
     catch (Exception ex)
     {
-        migrationLogger.LogError(ex, "Booking database migration failed");
+        migrationLogger.LogError(ex, "Payment database migration failed");
         return 1;
     }
 }
@@ -34,17 +33,9 @@ builder.Services.AddOpenApi();
 
 builder.Services.AddSingleton<DbConnectionFactory>();
 builder.Services.AddSingleton(TimeProvider.System);
-builder.Services.AddScoped<IOrderRepository, OrderRepository>();
+builder.Services.AddScoped<IPaymentRepository, PaymentRepository>();
 builder.Services.AddScoped<IPayHereService, PayHereService>();
-builder.Services.AddSingleton<IKafkaProducer, KafkaProducer>();
-builder.Services.AddScoped<IOrderService, OrderService>();
-builder.Services.AddHostedService<PaymentEventListener>();
-
-var inventoryBaseUrl = builder.Configuration["InventoryService:BaseUrl"] ?? "http://localhost:5002/";
-builder.Services.AddHttpClient<IInventoryClient, InventoryClient>(client =>
-{
-    client.BaseAddress = new Uri(inventoryBaseUrl);
-});
+builder.Services.AddSingleton<IKafkaPaymentProducer, KafkaPaymentProducer>();
 
 var allowedFrontendOrigins = builder.Configuration["Cors:AllowedOrigins"]?
     .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)

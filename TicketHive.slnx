@@ -15,6 +15,9 @@
   <Folder Name="/services/Inventory/">
     <Project Path="services/Inventory/Inventory.Service.csproj" />
   </Folder>
+  <Folder Name="/services/Payment/">
+    <Project Path="services/Payment/Payment.Service.csproj" />
+  </Folder>
   <Folder Name="/services/WaitingRoom/">
     <Project Path="services/WaitingRoom/WaitingRoom.Service.csproj" />
   </Folder>
@@ -25,6 +28,7 @@
     <Project Path="tests/Catalog.Service.Tests/Catalog.Service.Tests.csproj" />
     <Project Path="tests/Identity.Service.Tests/Identity.Service.Tests.csproj" />
     <Project Path="tests/Inventory.Service.Tests/Inventory.Service.Tests.csproj" />
+    <Project Path="tests/Payment.Service.Tests/Payment.Service.Tests.csproj" />
     <Project Path="tests/WaitingRoom.Service.Tests/WaitingRoom.Service.Tests.csproj" />
   </Folder>
 </Solution>
