@@ -35,14 +35,23 @@ public class PaymentEventListener : BackgroundService
             BootstrapServers = _bootstrapServers,
             GroupId = "booking-service-payment-listeners",
             AutoOffsetReset = AutoOffsetReset.Earliest,
-            EnableAutoCommit = true
+            EnableAutoCommit = true,
+            SocketTimeoutMs = 3000
         };
 
         await Task.Yield();
 
         try
         {
-            using var consumer = new ConsumerBuilder<string, string>(config).Build();
+            using var consumer = new ConsumerBuilder<string, string>(config)
+                .SetErrorHandler((_, e) =>
+                {
+                    if (e.IsBrokerError)
+                    {
+                        _logger.LogDebug("Kafka broker connection status: {Reason}", e.Reason);
+                    }
+                })
+                .Build();
             consumer.Subscribe(new[] { "tickethive.payment.succeeded", "tickethive.payment.failed" });
             _logger.LogInformation("PaymentEventListener subscribed to payment Kafka topics");
 
