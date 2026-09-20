@@ -29,13 +29,14 @@ public class HoldServiceTests
     private static CreateHoldRequest ValidRequest(params CreateHoldItemRequest[] items) =>
         new(Guid.NewGuid(), new List<CreateHoldItemRequest>(items));
 
-    private ShowRules ActiveShowRules(int maxPerCustomer = 6, int holdMinutes = 10, bool highDemand = false) => new()
+    private ShowRules ActiveShowRules(int maxPerCustomer = 6, int holdMinutes = 10, bool highDemand = false, int? highDemandThreshold = null) => new()
     {
         ShowId = Guid.NewGuid(),
         OrganizerId = Guid.NewGuid(),
         MaxPerCustomer = maxPerCustomer,
         HoldMinutes = holdMinutes,
-        HighDemand = highDemand
+        HighDemand = highDemand,
+        HighDemandThreshold = highDemandThreshold
     };
 
     [Fact]
@@ -85,6 +86,21 @@ public class HoldServiceTests
     public async Task CreateHoldAsync_HighDemandShowWithoutAdmissionToken_ReturnsHighDemandBlockedBeforeTouchingStock()
     {
         var showRules = ActiveShowRules(highDemand: true);
+        var request = new CreateHoldRequest(showRules.ShowId, new List<CreateHoldItemRequest> { new(Guid.NewGuid(), 1) });
+        _mockRepo.Setup(r => r.GetShowRulesAsync(showRules.ShowId)).ReturnsAsync(showRules);
+
+        var result = await _service.CreateHoldAsync("sub", "key", hasAdmissionToken: false, request);
+
+        Assert.Equal(CreateHoldStatus.HighDemandBlocked, result.Status);
+        _mockRepo.Verify(r => r.CreateAsync(It.IsAny<Hold>(), It.IsAny<int>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateHoldAsync_HighDemandShowWithZeroActiveHolds_StillRequiresAdmissionToken()
+    {
+        // High demand is a scheduled property of the show (ADR-011), not something
+        // derived from current traffic, so a quiet show must still gate on it.
+        var showRules = ActiveShowRules(highDemand: true, highDemandThreshold: 500);
         var request = new CreateHoldRequest(showRules.ShowId, new List<CreateHoldItemRequest> { new(Guid.NewGuid(), 1) });
         _mockRepo.Setup(r => r.GetShowRulesAsync(showRules.ShowId)).ReturnsAsync(showRules);
 
