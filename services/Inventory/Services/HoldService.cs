@@ -49,31 +49,18 @@ public class HoldService : IHoldService
 
         var now = _timeProvider.GetUtcNow();
 
-        bool isHighDemand = showRules.HighDemand;
-        bool hasThreshold = showRules.HighDemandThreshold.HasValue && showRules.HighDemandThreshold.Value > 0;
-
-        if (isHighDemand || hasThreshold)
+        if (showRules.HighDemand)
         {
-            var activeHoldsCount = await _repository.GetTotalActiveHoldsAsync(request.ShowId, now);
-            var threshold = showRules.HighDemandThreshold;
-
-            bool requiresAdmissionToken = hasThreshold
-                ? activeHoldsCount >= threshold!.Value
-                : isHighDemand;
-
-            if (requiresAdmissionToken)
+            if (!hasAdmissionToken || string.IsNullOrWhiteSpace(admissionToken))
             {
-                if (!hasAdmissionToken || string.IsNullOrWhiteSpace(admissionToken))
-                {
-                    _logger.LogInformation("Hold rejected for show {ShowId}: high-demand gate active and no admission token provided", request.ShowId);
-                    return new CreateHoldResult { Status = CreateHoldStatus.HighDemandBlocked };
-                }
+                _logger.LogInformation("Hold rejected for show {ShowId}: high-demand gate active and no admission token provided", request.ShowId);
+                return new CreateHoldResult { Status = CreateHoldStatus.HighDemandBlocked };
+            }
 
-                if (!_admissionTokenVerifier.Verify(request.ShowId, customerSub, admissionToken))
-                {
-                    _logger.LogInformation("Hold rejected for show {ShowId}: admission token failed verification", request.ShowId);
-                    return new CreateHoldResult { Status = CreateHoldStatus.HighDemandBlocked };
-                }
+            if (!_admissionTokenVerifier.Verify(request.ShowId, customerSub, admissionToken))
+            {
+                _logger.LogInformation("Hold rejected for show {ShowId}: admission token failed verification", request.ShowId);
+                return new CreateHoldResult { Status = CreateHoldStatus.HighDemandBlocked };
             }
         }
         var hold = new Hold

@@ -66,24 +66,6 @@ public class HoldRepository : IHoldRepository
         return Convert.ToInt32(result);
     }
 
-    public async Task<int> GetTotalActiveHoldsAsync(Guid showId, DateTimeOffset now)
-    {
-        await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
-
-        const string sql = @"
-            SELECT COUNT(id)
-            FROM holds
-            WHERE show_id = @ShowId AND status = 'Active' AND expires_at > @Now;
-        ";
-
-        await using var command = new NpgsqlCommand(sql, connection);
-        command.Parameters.AddWithValue("ShowId", showId);
-        command.Parameters.AddWithValue("Now", now);
-
-        var result = await command.ExecuteScalarAsync();
-        return Convert.ToInt32(result);
-    }
-
     public async Task<HoldCreationResult> CreateAsync(Hold hold, int maxPerCustomer)
     {
         await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
