@@ -1,5 +1,8 @@
 <Solution>
   <Folder Name="/services/" />
+  <Folder Name="/services/Booking/">
+    <Project Path="services/Booking/Booking.Service.csproj" />
+  </Folder>
   <Folder Name="/services/BuildingBlocks/">
     <Project Path="services/BuildingBlocks/BuildingBlocks.csproj" />
   </Folder>
@@ -17,6 +20,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Architecture.Tests/Architecture.Tests.csproj" />
+    <Project Path="tests/Booking.Service.Tests/Booking.Service.Tests.csproj" />
     <Project Path="tests/BuildingBlocks.Tests/BuildingBlocks.Tests.csproj" />
     <Project Path="tests/Catalog.Service.Tests/Catalog.Service.Tests.csproj" />
     <Project Path="tests/Identity.Service.Tests/Identity.Service.Tests.csproj" />
