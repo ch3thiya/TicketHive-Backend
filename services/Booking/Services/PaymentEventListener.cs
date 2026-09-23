@@ -65,6 +65,7 @@ public class PaymentEventListener : BackgroundService
                     using var scope = _scopeFactory.CreateScope();
                     var orderRepository = scope.ServiceProvider.GetRequiredService<IOrderRepository>();
                     var inventoryClient = scope.ServiceProvider.GetRequiredService<IInventoryClient>();
+                    var ticketService = scope.ServiceProvider.GetRequiredService<ITicketService>();
                     var kafkaProducer = scope.ServiceProvider.GetRequiredService<IKafkaProducer>();
                     var timeProvider = scope.ServiceProvider.GetRequiredService<TimeProvider>();
 
@@ -72,17 +73,29 @@ public class PaymentEventListener : BackgroundService
 
                     if (consumeResult.Topic == "tickethive.payment.succeeded")
                     {
+                        _logger.LogInformation("PaymentEventListener received payment.succeeded message: {Message}", consumeResult.Message.Value);
                         using var doc = JsonDocument.Parse(consumeResult.Message.Value);
-                        if (doc.RootElement.TryGetProperty("OrderId", out var orderIdProp) &&
-                            Guid.TryParse(orderIdProp.GetString(), out var orderId))
+                        var orderIdProp = doc.RootElement.EnumerateObject()
+                            .FirstOrDefault(p => string.Equals(p.Name, "OrderId", StringComparison.OrdinalIgnoreCase)).Value;
+
+                        if (orderIdProp.ValueKind == JsonValueKind.String && Guid.TryParse(orderIdProp.GetString(), out var orderId))
                         {
                             var order = await orderRepository.GetByIdAsync(orderId);
                             if (order != null && order.Status != OrderStatus.Confirmed)
                             {
                                 await orderRepository.UpdateStatusAsync(order.Id, OrderStatus.Confirmed, now);
-                                await inventoryClient.ConvertHoldAsync(order.HoldId);
+                                try
+                                {
+                                    await inventoryClient.ConvertHoldAsync(order.HoldId);
+                                }
+                                catch (Exception ex)
+                                {
+                                    _logger.LogWarning(ex, "Failed to convert hold {HoldId} for order {OrderId}", order.HoldId, order.Id);
+                                }
 
-                                _logger.LogInformation("Order {OrderId} confirmed via Kafka event. Converted hold {HoldId}", order.Id, order.HoldId);
+                                var issuedTickets = await ticketService.IssueTicketsForOrderAsync(order);
+
+                                _logger.LogInformation("Order {OrderId} confirmed via Kafka event. Issued {Count} tickets & converted hold {HoldId}", order.Id, issuedTickets.Count, order.HoldId);
 
                                 await kafkaProducer.PublishOrderConfirmedAsync(new
                                 {
@@ -92,22 +105,33 @@ public class PaymentEventListener : BackgroundService
                                     ShowId = order.ShowId,
                                     TotalAmount = order.TotalAmount,
                                     Currency = order.Currency,
-                                    ConfirmedAt = now
+                                    ConfirmedAt = now,
+                                    TicketCount = issuedTickets.Count
                                 });
                             }
                         }
                     }
                     else if (consumeResult.Topic == "tickethive.payment.failed")
                     {
+                        _logger.LogInformation("PaymentEventListener received payment.failed message: {Message}", consumeResult.Message.Value);
                         using var doc = JsonDocument.Parse(consumeResult.Message.Value);
-                        if (doc.RootElement.TryGetProperty("OrderId", out var orderIdProp) &&
-                            Guid.TryParse(orderIdProp.GetString(), out var orderId))
+                        var orderIdProp = doc.RootElement.EnumerateObject()
+                            .FirstOrDefault(p => string.Equals(p.Name, "OrderId", StringComparison.OrdinalIgnoreCase)).Value;
+
+                        if (orderIdProp.ValueKind == JsonValueKind.String && Guid.TryParse(orderIdProp.GetString(), out var orderId))
                         {
                             var order = await orderRepository.GetByIdAsync(orderId);
                             if (order != null && order.Status == OrderStatus.PaymentPending)
                             {
                                 await orderRepository.UpdateStatusAsync(order.Id, OrderStatus.Failed, now);
-                                await inventoryClient.ReleaseHoldAsync(order.HoldId);
+                                try
+                                {
+                                    await inventoryClient.ReleaseHoldAsync(order.HoldId);
+                                }
+                                catch (Exception ex)
+                                {
+                                    _logger.LogWarning(ex, "Failed to release hold {HoldId} for order {OrderId}", order.HoldId, order.Id);
+                                }
 
                                 _logger.LogInformation("Order {OrderId} failed via Kafka event. Released hold {HoldId}", order.Id, order.HoldId);
                             }

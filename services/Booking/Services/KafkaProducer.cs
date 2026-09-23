@@ -22,6 +22,16 @@ public class KafkaProducer : IKafkaProducer
 
     public async Task PublishOrderConfirmedAsync(object orderConfirmedEvent)
     {
+        await ProduceTopicAsync("tickethive.order.confirmed", orderConfirmedEvent);
+    }
+
+    public async Task PublishTicketsIssuedAsync(object ticketsIssuedEvent)
+    {
+        await ProduceTopicAsync("tickethive.tickets.issued", ticketsIssuedEvent);
+    }
+
+    private async Task ProduceTopicAsync(string topic, object messagePayload)
+    {
         var config = new ProducerConfig
         {
             BootstrapServers = _bootstrapServers,
@@ -31,20 +41,19 @@ public class KafkaProducer : IKafkaProducer
         try
         {
             using var producer = new ProducerBuilder<string, string>(config).Build();
-            var json = JsonSerializer.Serialize(orderConfirmedEvent);
-            
-            var result = await producer.ProduceAsync("tickethive.order.confirmed", new Message<string, string>
+            var json = JsonSerializer.Serialize(messagePayload);
+
+            var result = await producer.ProduceAsync(topic, new Message<string, string>
             {
                 Key = Guid.NewGuid().ToString(),
                 Value = json
             });
 
-            _logger.LogInformation("Published tickethive.order.confirmed to Kafka partition {Partition} at offset {Offset}", result.Partition, result.Offset);
+            _logger.LogInformation("Published {Topic} to Kafka partition {Partition} at offset {Offset}", topic, result.Partition, result.Offset);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to publish tickethive.order.confirmed to Kafka");
-            // Do not crash order processing if Kafka is unreachable during local dev
+            _logger.LogError(ex, "Failed to publish {Topic} to Kafka", topic);
         }
     }
 }

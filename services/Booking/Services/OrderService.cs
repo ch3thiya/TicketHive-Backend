@@ -13,6 +13,7 @@ public class OrderService : IOrderService
     private readonly IOrderRepository _repository;
     private readonly IInventoryClient _inventoryClient;
     private readonly IPayHereService _payHereService;
+    private readonly ITicketService _ticketService;
     private readonly IKafkaProducer _kafkaProducer;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<OrderService> _logger;
@@ -21,6 +22,7 @@ public class OrderService : IOrderService
         IOrderRepository repository,
         IInventoryClient inventoryClient,
         IPayHereService payHereService,
+        ITicketService ticketService,
         IKafkaProducer kafkaProducer,
         TimeProvider timeProvider,
         ILogger<OrderService> logger)
@@ -28,6 +30,7 @@ public class OrderService : IOrderService
         _repository = repository;
         _inventoryClient = inventoryClient;
         _payHereService = payHereService;
+        _ticketService = ticketService;
         _kafkaProducer = kafkaProducer;
         _timeProvider = timeProvider;
         _logger = logger;
@@ -139,6 +142,8 @@ public class OrderService : IOrderService
 
             _logger.LogInformation("Order {OrderId} marked Confirmed. Converting hold {HoldId}", order.Id, order.HoldId);
 
+            var issuedTickets = await _ticketService.IssueTicketsForOrderAsync(order);
+
             await _kafkaProducer.PublishOrderConfirmedAsync(new
             {
                 OrderId = order.Id,
@@ -148,6 +153,7 @@ public class OrderService : IOrderService
                 TotalAmount = order.TotalAmount,
                 Currency = order.Currency,
                 ConfirmedAt = now,
+                TicketCount = issuedTickets.Count,
                 Items = order.Items.Select(i => new { i.CategoryId, i.Quantity, i.UnitPrice })
             });
 

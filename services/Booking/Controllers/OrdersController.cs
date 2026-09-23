@@ -1,6 +1,9 @@
 using System;
 using System.Security.Claims;
 using System.Threading.Tasks;
+using Booking.Service.Clients;
+using Booking.Service.Db;
+using Booking.Service.Models;
 using Booking.Service.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -14,11 +17,25 @@ public class OrdersController : ControllerBase
 {
     private readonly IOrderService _orderService;
     private readonly IPayHereService _payHereService;
+    private readonly IOrderRepository _orderRepository;
+    private readonly IInventoryClient _inventoryClient;
+    private readonly ITicketService _ticketService;
+    private readonly TimeProvider _timeProvider;
 
-    public OrdersController(IOrderService orderService, IPayHereService payHereService)
+    public OrdersController(
+        IOrderService orderService,
+        IPayHereService payHereService,
+        IOrderRepository orderRepository,
+        IInventoryClient inventoryClient,
+        ITicketService ticketService,
+        TimeProvider timeProvider)
     {
         _orderService = orderService;
         _payHereService = payHereService;
+        _orderRepository = orderRepository;
+        _inventoryClient = inventoryClient;
+        _ticketService = ticketService;
+        _timeProvider = timeProvider;
     }
 
     [HttpPost]
@@ -89,12 +106,27 @@ public class OrdersController : ControllerBase
             return Problem(detail: $"Order '{id}' was not found.", statusCode: StatusCodes.Status404NotFound, title: "Order not found");
         }
 
+        var now = _timeProvider.GetUtcNow();
+        var expiresAt = order.CreatedAt.AddMinutes(10);
+        var isExpired = order.Status == OrderStatus.PaymentPending && now >= expiresAt;
+
+        if (isExpired && order.Status == OrderStatus.PaymentPending)
+        {
+            await _orderRepository.UpdateStatusAsync(order.Id, OrderStatus.Failed, now);
+            try { await _inventoryClient.ReleaseHoldAsync(order.HoldId); } catch { }
+        }
+
+        var currentStatus = isExpired ? OrderStatus.Failed : order.Status;
+
         return Ok(new
         {
             orderId = order.Id,
-            status = order.Status.ToString(),
+            status = currentStatus.ToString(),
             totalAmount = order.TotalAmount,
             currency = order.Currency,
+            createdAt = order.CreatedAt,
+            expiresAt = expiresAt,
+            isExpired = isExpired,
             updatedAt = order.UpdatedAt
         });
     }
@@ -116,4 +148,43 @@ public class OrdersController : ControllerBase
 
         return Ok(checkoutParams);
     }
+
+    [HttpPost("{id}/confirm-sandbox")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> ConfirmSandboxOrder(Guid id)
+    {
+        var order = await _orderService.GetOrderAsync(id);
+        if (order is null)
+        {
+            return Problem(detail: $"Order '{id}' was not found.", statusCode: StatusCodes.Status404NotFound, title: "Order not found");
+        }
+
+        var now = _timeProvider.GetUtcNow();
+        var expiresAt = order.CreatedAt.AddMinutes(10);
+
+        if (order.Status == OrderStatus.PaymentPending && now >= expiresAt)
+        {
+            await _orderRepository.UpdateStatusAsync(order.Id, OrderStatus.Failed, now);
+            try { await _inventoryClient.ReleaseHoldAsync(order.HoldId); } catch { }
+            return Problem(detail: "Hold has expired. Ticket is no longer available.", statusCode: StatusCodes.Status409Conflict, title: "Hold Expired");
+        }
+
+        if (order.Status != OrderStatus.Confirmed)
+        {
+            await _orderRepository.UpdateStatusAsync(order.Id, OrderStatus.Confirmed, now);
+            try { await _inventoryClient.ConvertHoldAsync(order.HoldId); } catch { }
+            await _ticketService.IssueTicketsForOrderAsync(order);
+        }
+
+        return Ok(new
+        {
+            orderId = order.Id,
+            status = OrderStatus.Confirmed.ToString(),
+            message = "Sandbox payment confirmed and tickets issued successfully."
+        });
+    }
 }
+
+
