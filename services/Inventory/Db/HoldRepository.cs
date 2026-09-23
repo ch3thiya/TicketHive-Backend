@@ -390,7 +390,7 @@ public class HoldRepository : IHoldRepository
         const string selectSql = @"
             SELECT show_id
             FROM holds
-            WHERE id = @HoldId AND customer_sub = @CustomerSub AND status = 'Active';
+            WHERE id = @HoldId AND customer_sub = @CustomerSub AND status IN ('Active', 'PaymentPending');
         ";
 
         Guid showId;
@@ -455,6 +455,24 @@ public class HoldRepository : IHoldRepository
         return true;
     }
 
+    public async Task<int> GetActiveHoldCountAsync(Guid showId, DateTimeOffset now)
+    {
+        await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
+
+        const string sql = @"
+            SELECT COUNT(*)
+            FROM holds
+            WHERE show_id = @ShowId AND status IN ('Active', 'PaymentPending') AND expires_at > @Now;
+        ";
+
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("ShowId", showId);
+        command.Parameters.AddWithValue("Now", now);
+
+        var count = await command.ExecuteScalarAsync();
+        return Convert.ToInt32(count);
+    }
+
     public async Task<Hold?> GetActiveHoldForCustomerAsync(Guid showId, string customerSub, DateTimeOffset now)
     {
         await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
@@ -462,7 +480,7 @@ public class HoldRepository : IHoldRepository
         const string selectSql = @"
             SELECT id
             FROM holds
-            WHERE show_id = @ShowId AND customer_sub = @CustomerSub AND status = 'Active' AND expires_at > @Now
+            WHERE show_id = @ShowId AND customer_sub = @CustomerSub AND status IN ('Active', 'PaymentPending') AND expires_at > @Now
             ORDER BY created_at DESC
             LIMIT 1;
         ";
