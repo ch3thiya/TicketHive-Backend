@@ -65,6 +65,7 @@ public class PaymentEventListener : BackgroundService
                     using var scope = _scopeFactory.CreateScope();
                     var orderRepository = scope.ServiceProvider.GetRequiredService<IOrderRepository>();
                     var inventoryClient = scope.ServiceProvider.GetRequiredService<IInventoryClient>();
+                    var ticketService = scope.ServiceProvider.GetRequiredService<ITicketService>();
                     var kafkaProducer = scope.ServiceProvider.GetRequiredService<IKafkaProducer>();
                     var timeProvider = scope.ServiceProvider.GetRequiredService<TimeProvider>();
 
@@ -82,7 +83,9 @@ public class PaymentEventListener : BackgroundService
                                 await orderRepository.UpdateStatusAsync(order.Id, OrderStatus.Confirmed, now);
                                 await inventoryClient.ConvertHoldAsync(order.HoldId);
 
-                                _logger.LogInformation("Order {OrderId} confirmed via Kafka event. Converted hold {HoldId}", order.Id, order.HoldId);
+                                var issuedTickets = await ticketService.IssueTicketsForOrderAsync(order);
+
+                                _logger.LogInformation("Order {OrderId} confirmed via Kafka event. Issued {Count} tickets & converted hold {HoldId}", order.Id, issuedTickets.Count, order.HoldId);
 
                                 await kafkaProducer.PublishOrderConfirmedAsync(new
                                 {
@@ -92,7 +95,8 @@ public class PaymentEventListener : BackgroundService
                                     ShowId = order.ShowId,
                                     TotalAmount = order.TotalAmount,
                                     Currency = order.Currency,
-                                    ConfirmedAt = now
+                                    ConfirmedAt = now,
+                                    TicketCount = issuedTickets.Count
                                 });
                             }
                         }

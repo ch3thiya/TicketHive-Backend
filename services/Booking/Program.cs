@@ -34,9 +34,12 @@ builder.Services.AddOpenApi();
 
 builder.Services.AddSingleton<DbConnectionFactory>();
 builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<ITicketCodeGenerator, TicketCodeGenerator>();
 builder.Services.AddScoped<IOrderRepository, OrderRepository>();
+builder.Services.AddScoped<ITicketRepository, TicketRepository>();
 builder.Services.AddScoped<IPayHereService, PayHereService>();
 builder.Services.AddSingleton<IKafkaProducer, KafkaProducer>();
+builder.Services.AddScoped<ITicketService, TicketService>();
 builder.Services.AddScoped<IOrderService, OrderService>();
 builder.Services.AddHostedService<PaymentEventListener>();
 
