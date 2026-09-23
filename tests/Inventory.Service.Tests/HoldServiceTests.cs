@@ -85,9 +85,10 @@ public class HoldServiceTests
     [Fact]
     public async Task CreateHoldAsync_HighDemandShowWithoutAdmissionToken_ReturnsHighDemandBlockedBeforeTouchingStock()
     {
-        var showRules = ActiveShowRules(highDemand: true);
+        var showRules = ActiveShowRules(highDemand: true, highDemandThreshold: 0);
         var request = new CreateHoldRequest(showRules.ShowId, new List<CreateHoldItemRequest> { new(Guid.NewGuid(), 1) });
         _mockRepo.Setup(r => r.GetShowRulesAsync(showRules.ShowId)).ReturnsAsync(showRules);
+        _mockRepo.Setup(r => r.GetActiveHoldCountAsync(showRules.ShowId, It.IsAny<DateTimeOffset>())).ReturnsAsync(0);
 
         var result = await _service.CreateHoldAsync("sub", "key", hasAdmissionToken: false, request);
 
@@ -96,26 +97,42 @@ public class HoldServiceTests
     }
 
     [Fact]
-    public async Task CreateHoldAsync_HighDemandShowWithZeroActiveHolds_StillRequiresAdmissionToken()
+    public async Task CreateHoldAsync_HighDemandShowWithActiveHoldsAtOrAboveThreshold_RequiresAdmissionToken()
     {
-        // High demand is a scheduled property of the show (ADR-011), not something
-        // derived from current traffic, so a quiet show must still gate on it.
         var showRules = ActiveShowRules(highDemand: true, highDemandThreshold: 500);
         var request = new CreateHoldRequest(showRules.ShowId, new List<CreateHoldItemRequest> { new(Guid.NewGuid(), 1) });
         _mockRepo.Setup(r => r.GetShowRulesAsync(showRules.ShowId)).ReturnsAsync(showRules);
+        _mockRepo.Setup(r => r.GetActiveHoldCountAsync(showRules.ShowId, It.IsAny<DateTimeOffset>())).ReturnsAsync(500);
 
         var result = await _service.CreateHoldAsync("sub", "key", hasAdmissionToken: false, request);
 
         Assert.Equal(CreateHoldStatus.HighDemandBlocked, result.Status);
         _mockRepo.Verify(r => r.CreateAsync(It.IsAny<Hold>(), It.IsAny<int>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateHoldAsync_HighDemandShowWithActiveHoldsBelowThreshold_BypassesAdmissionToken()
+    {
+        var showRules = ActiveShowRules(highDemand: true, highDemandThreshold: 500);
+        var request = new CreateHoldRequest(showRules.ShowId, new List<CreateHoldItemRequest> { new(Guid.NewGuid(), 1) });
+        _mockRepo.Setup(r => r.GetShowRulesAsync(showRules.ShowId)).ReturnsAsync(showRules);
+        _mockRepo.Setup(r => r.GetActiveHoldCountAsync(showRules.ShowId, It.IsAny<DateTimeOffset>())).ReturnsAsync(0);
+        _mockRepo.Setup(r => r.CreateAsync(It.IsAny<Hold>(), showRules.MaxPerCustomer))
+                 .ReturnsAsync(new HoldCreationResult { Outcome = HoldCreationOutcome.Created, Hold = HoldWithItem(showRules.ShowId) });
+
+        var result = await _service.CreateHoldAsync("sub", "key", hasAdmissionToken: false, request);
+
+        Assert.Equal(CreateHoldStatus.Created, result.Status);
+        _mockRepo.Verify(r => r.CreateAsync(It.IsAny<Hold>(), showRules.MaxPerCustomer), Times.Once);
     }
 
     [Fact]
     public async Task CreateHoldAsync_HighDemandShowWithInvalidToken_ReturnsHighDemandBlocked()
     {
-        var showRules = ActiveShowRules(highDemand: true);
+        var showRules = ActiveShowRules(highDemand: true, highDemandThreshold: 0);
         var request = new CreateHoldRequest(showRules.ShowId, new List<CreateHoldItemRequest> { new(Guid.NewGuid(), 1) });
         _mockRepo.Setup(r => r.GetShowRulesAsync(showRules.ShowId)).ReturnsAsync(showRules);
+        _mockRepo.Setup(r => r.GetActiveHoldCountAsync(showRules.ShowId, It.IsAny<DateTimeOffset>())).ReturnsAsync(0);
         _mockVerifier.Setup(v => v.Verify(showRules.ShowId, "sub", "bad-token")).Returns(false);
 
         var result = await _service.CreateHoldAsync("sub", "key", hasAdmissionToken: true, request, admissionToken: "bad-token");
@@ -127,9 +144,10 @@ public class HoldServiceTests
     [Fact]
     public async Task CreateHoldAsync_HighDemandShowWithValidToken_ProceedsToAllocation()
     {
-        var showRules = ActiveShowRules(highDemand: true);
+        var showRules = ActiveShowRules(highDemand: true, highDemandThreshold: 0);
         var request = new CreateHoldRequest(showRules.ShowId, new List<CreateHoldItemRequest> { new(Guid.NewGuid(), 1) });
         _mockRepo.Setup(r => r.GetShowRulesAsync(showRules.ShowId)).ReturnsAsync(showRules);
+        _mockRepo.Setup(r => r.GetActiveHoldCountAsync(showRules.ShowId, It.IsAny<DateTimeOffset>())).ReturnsAsync(0);
         _mockVerifier.Setup(v => v.Verify(showRules.ShowId, "sub", "valid-token")).Returns(true);
         _mockRepo.Setup(r => r.CreateAsync(It.IsAny<Hold>(), showRules.MaxPerCustomer))
                  .ReturnsAsync(new HoldCreationResult { Outcome = HoldCreationOutcome.Created, Hold = HoldWithItem(showRules.ShowId) });

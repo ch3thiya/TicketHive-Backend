@@ -51,16 +51,22 @@ public class HoldService : IHoldService
 
         if (showRules.HighDemand)
         {
-            if (!hasAdmissionToken || string.IsNullOrWhiteSpace(admissionToken))
-            {
-                _logger.LogInformation("Hold rejected for show {ShowId}: high-demand gate active and no admission token provided", request.ShowId);
-                return new CreateHoldResult { Status = CreateHoldStatus.HighDemandBlocked };
-            }
+            var threshold = showRules.HighDemandThreshold ?? 0;
+            var activeHoldCount = await _repository.GetActiveHoldCountAsync(request.ShowId, now);
 
-            if (!_admissionTokenVerifier.Verify(request.ShowId, customerSub, admissionToken))
+            if (activeHoldCount >= threshold)
             {
-                _logger.LogInformation("Hold rejected for show {ShowId}: admission token failed verification", request.ShowId);
-                return new CreateHoldResult { Status = CreateHoldStatus.HighDemandBlocked };
+                if (!hasAdmissionToken || string.IsNullOrWhiteSpace(admissionToken))
+                {
+                    _logger.LogInformation("Hold rejected for show {ShowId}: high-demand gate active ({ActiveCount}/{Threshold}) and no admission token provided", request.ShowId, activeHoldCount, threshold);
+                    return new CreateHoldResult { Status = CreateHoldStatus.HighDemandBlocked };
+                }
+
+                if (!_admissionTokenVerifier.Verify(request.ShowId, customerSub, admissionToken))
+                {
+                    _logger.LogInformation("Hold rejected for show {ShowId}: admission token failed verification", request.ShowId);
+                    return new CreateHoldResult { Status = CreateHoldStatus.HighDemandBlocked };
+                }
             }
         }
         var hold = new Hold

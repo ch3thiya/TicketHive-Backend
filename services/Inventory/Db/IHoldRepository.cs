@@ -57,6 +57,9 @@ public interface IHoldRepository
     // Calculates the total number of currently held or sold tickets for a show.
     Task<int> GetTotalHeldOrSoldAsync(Guid showId);
 
+    // Calculates total count of active/pending holds for a show.
+    Task<int> GetActiveHoldCountAsync(Guid showId, DateTimeOffset now);
+
     // Cancels an active hold for a customer, restoring stock and quota.
     Task<bool> CancelHoldAsync(Guid holdId, string customerSub, DateTimeOffset now);
 
