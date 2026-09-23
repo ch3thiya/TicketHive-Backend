@@ -149,4 +149,23 @@ public class PaymentController : ControllerBase
 
         return Ok();
     }
+
+    [HttpPost("confirm-sandbox/{orderId:guid}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> ConfirmSandboxPayment(Guid orderId)
+    {
+        var transaction = await _repository.GetByOrderIdAsync(orderId);
+        var now = _timeProvider.GetUtcNow();
+        var paymentId = $"SANDBOX_PAY_{Guid.NewGuid().ToString("N")[..8].ToUpper()}";
+
+        var amount = transaction?.Amount ?? 0m;
+        var currency = transaction?.Currency ?? "LKR";
+
+        await _repository.UpdateStatusAsync(orderId, PaymentStatus.Succeeded, paymentId, now);
+        await _kafkaProducer.PublishPaymentSucceededAsync(orderId, paymentId, amount, currency, now);
+
+        return Ok(new { message = "Sandbox payment confirmed successfully.", orderId, paymentId });
+    }
 }
+
