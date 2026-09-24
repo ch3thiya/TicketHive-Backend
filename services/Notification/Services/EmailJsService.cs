@@ -93,25 +93,31 @@ public class EmailJsService : IEmailService
             payload["accessToken"] = _privateKey;
         }
 
+        _logger.LogInformation("[EmailJS Debug] Preparing EmailJS POST request to {Url} (ServiceId: {ServiceId}, TemplateId: {TemplateId}, PublicKey: {PublicKey}, ToEmail: {ToEmail})",
+            _apiUrl, _serviceId, _templateId, _publicKey, toEmail);
+
         try
         {
             var json = JsonSerializer.Serialize(payload);
+            _logger.LogInformation("[EmailJS Debug] Request payload JSON: {Json}", json);
             var content = new StringContent(json, Encoding.UTF8, "application/json");
 
             var response = await _httpClient.PostAsync(_apiUrl, content);
+            var responseBody = await response.Content.ReadAsStringAsync();
+
             if (response.IsSuccessStatusCode)
             {
-                _logger.LogInformation("Successfully sent EmailJS ticket confirmation email to {Email} for Order {OrderId}", toEmail, orderId);
+                _logger.LogInformation("[EmailJS Debug] EmailJS API call SUCCESS (HTTP {StatusCode}). Response: {Body}. Email sent to {Email} for Order {OrderId}",
+                    response.StatusCode, responseBody, toEmail, orderId);
                 return new EmailResult(true, null);
             }
 
-            var responseBody = await response.Content.ReadAsStringAsync();
-            _logger.LogWarning("EmailJS API responded with error status {StatusCode}: {ResponseBody}", response.StatusCode, responseBody);
+            _logger.LogWarning("[EmailJS Debug] EmailJS API FAILED with HTTP {StatusCode}: {ResponseBody}", response.StatusCode, responseBody);
             return new EmailResult(false, $"EmailJS API returned {response.StatusCode}: {responseBody}");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to send email via EmailJS API to {Email} for Order {OrderId}", toEmail, orderId);
+            _logger.LogError(ex, "[EmailJS Debug] Exception while attempting to call EmailJS API to {Email} for Order {OrderId}", toEmail, orderId);
             return new EmailResult(false, ex.Message);
         }
     }

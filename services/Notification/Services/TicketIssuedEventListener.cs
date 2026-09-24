@@ -64,6 +64,9 @@ public class TicketIssuedEventListener : BackgroundService
                     var consumeResult = consumer.Consume(TimeSpan.FromSeconds(1));
                     if (consumeResult == null) continue;
 
+                    _logger.LogInformation("[Kafka Listener Debug] Received message from topic '{Topic}', partition {Partition}, offset {Offset}: {Value}",
+                        consumeResult.Topic, consumeResult.Partition.Value, consumeResult.Offset.Value, consumeResult.Message.Value);
+
                     using var scope = _scopeFactory.CreateScope();
                     var notificationRepo = scope.ServiceProvider.GetRequiredService<INotificationRepository>();
                     var emailService = scope.ServiceProvider.GetRequiredService<IEmailService>();
@@ -81,7 +84,11 @@ public class TicketIssuedEventListener : BackgroundService
                         orderId = parsedOrderId;
                     }
 
-                    if (orderId == Guid.Empty) continue;
+                    if (orderId == Guid.Empty)
+                    {
+                        _logger.LogWarning("[Kafka Listener Debug] Message missing valid OrderId property. Skipping.");
+                        continue;
+                    }
 
                     string rawEmail = root.EnumerateObject()
                         .FirstOrDefault(p => string.Equals(p.Name, "CustomerEmail", StringComparison.OrdinalIgnoreCase)).Value.GetString()
@@ -96,10 +103,12 @@ public class TicketIssuedEventListener : BackgroundService
                     var customerEmail = rawEmail.Contains('@') ? rawEmail : "customer@tickethive.lk";
                     var customerName = string.IsNullOrWhiteSpace(rawName) ? "Valued Customer" : rawName;
 
+                    _logger.LogInformation("[Kafka Listener Debug] Extracted OrderId={OrderId}, Email='{Email}', Name='{Name}'", orderId, customerEmail, customerName);
+
                     var alreadySent = await notificationRepo.ExistsForOrderAndEmailAsync(orderId, customerEmail);
                     if (alreadySent)
                     {
-                        _logger.LogInformation("Notification already sent for Order {OrderId} and Email {Email}. Skipping duplicate.", orderId, customerEmail);
+                        _logger.LogInformation("[Kafka Listener Debug] Notification already sent for Order {OrderId} and Email {Email}. Skipping duplicate.", orderId, customerEmail);
                         continue;
                     }
 

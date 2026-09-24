@@ -69,6 +69,8 @@ public class TicketService : ITicketService
             : (order.CustomerSub.Contains('@') ? order.CustomerSub : "customer@tickethive.lk");
         var customerName = !string.IsNullOrWhiteSpace(order.CustomerName) ? order.CustomerName : "Valued Customer";
 
+        _logger.LogInformation("[TicketService Debug] Publishing tickethive.tickets.issued Kafka event for Order {OrderId}. CustomerEmail: '{Email}', CustomerName: '{Name}'", order.Id, customerEmail, customerName);
+
         await _kafkaProducer.PublishTicketsIssuedAsync(new
         {
             OrderId = order.Id,
