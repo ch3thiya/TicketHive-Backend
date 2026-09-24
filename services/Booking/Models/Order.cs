@@ -8,6 +8,8 @@ public class Order
     public Guid Id { get; set; }
     public Guid HoldId { get; set; }
     public string CustomerSub { get; set; } = string.Empty;
+    public string CustomerEmail { get; set; } = string.Empty;
+    public string CustomerName { get; set; } = string.Empty;
     public Guid ShowId { get; set; }
     public OrderStatus Status { get; set; }
     public decimal TotalAmount { get; set; }

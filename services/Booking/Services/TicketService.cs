@@ -64,12 +64,22 @@ public class TicketService : ITicketService
         await _repository.CreateTicketsAsync(newTickets);
         _logger.LogInformation("Issued {Count} tickets for Order {OrderId} (Customer {CustomerSub})", newTickets.Count, order.Id, order.CustomerSub);
 
+        var customerEmail = !string.IsNullOrWhiteSpace(order.CustomerEmail)
+            ? order.CustomerEmail
+            : (order.CustomerSub.Contains('@') ? order.CustomerSub : "customer@tickethive.lk");
+        var customerName = !string.IsNullOrWhiteSpace(order.CustomerName) ? order.CustomerName : "Valued Customer";
+
         await _kafkaProducer.PublishTicketsIssuedAsync(new
         {
             OrderId = order.Id,
             ShowId = order.ShowId,
             CustomerSub = order.CustomerSub,
+            CustomerEmail = customerEmail,
+            CustomerName = customerName,
+            TotalAmount = order.TotalAmount,
+            Currency = order.Currency,
             TicketCount = newTickets.Count,
+            TicketCodes = newTickets.Select(t => t.UniqueCode).ToList(),
             IssuedAt = now,
             TicketIds = newTickets.Select(t => t.Id).ToList()
         });

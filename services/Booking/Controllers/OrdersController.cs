@@ -11,6 +11,8 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Booking.Service.Controllers;
 
+public record ConfirmSandboxOrderRequest(string? CustomerEmail, string? CustomerName);
+
 [ApiController]
 [Route("api/booking/orders")]
 public class OrdersController : ControllerBase
@@ -153,12 +155,21 @@ public class OrdersController : ControllerBase
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
-    public async Task<IActionResult> ConfirmSandboxOrder(Guid id)
+    public async Task<IActionResult> ConfirmSandboxOrder(Guid id, [FromBody] ConfirmSandboxOrderRequest? request = null)
     {
         var order = await _orderService.GetOrderAsync(id);
         if (order is null)
         {
             return Problem(detail: $"Order '{id}' was not found.", statusCode: StatusCodes.Status404NotFound, title: "Order not found");
+        }
+
+        if (!string.IsNullOrWhiteSpace(request?.CustomerEmail))
+        {
+            order.CustomerEmail = request.CustomerEmail;
+        }
+        if (!string.IsNullOrWhiteSpace(request?.CustomerName))
+        {
+            order.CustomerName = request.CustomerName;
         }
 
         var now = _timeProvider.GetUtcNow();
