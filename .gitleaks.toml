@@ -1,0 +1,9 @@
+title = "TicketHive gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+paths = [
+  '''services/Inventory/appsettings\.json''',
+]
