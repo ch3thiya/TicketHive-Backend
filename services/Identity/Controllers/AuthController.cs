@@ -34,10 +34,15 @@ public class AuthController : ControllerBase
     {
         var subClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
             ?? User.FindFirst("sub")?.Value;
-        var emailClaim = User.FindFirst(ClaimTypes.Email)?.Value
-            ?? User.FindFirst("email")?.Value;
-        var nameClaim = User.FindFirst(ClaimTypes.Name)?.Value
-            ?? User.FindFirst("name")?.Value;
+        var emailClaim = FirstClaimValue(ClaimTypes.Email, "email", ClaimTypes.Upn, "preferred_username", "username");
+        var nameClaim = FirstClaimValue(ClaimTypes.Name, "name", "displayName");
+
+        if (string.IsNullOrWhiteSpace(nameClaim))
+        {
+            var givenName = FirstClaimValue(ClaimTypes.GivenName, "given_name", "givenName");
+            var familyName = FirstClaimValue(ClaimTypes.Surname, "family_name", "familyName");
+            nameClaim = string.Join(" ", new[] { givenName, familyName }.Where(value => !string.IsNullOrWhiteSpace(value)));
+        }
 
         if (string.IsNullOrEmpty(subClaim))
         {
@@ -47,9 +52,10 @@ public class AuthController : ControllerBase
         _logger.LogInformation("Syncing account for sub: {Sub}", subClaim);
 
         // Extract roles from token claims (e.g. groups or roles claims from Asgardeo)
-        var roles = User.FindAll("groups").Select(c => c.Value)
+        var roles = User.FindAll("groups").SelectMany(c => c.Value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
             .Concat(User.FindAll(ClaimTypes.Role).Select(c => c.Value))
             .Concat(User.FindAll("roles").Select(c => c.Value))
+            .Select(role => role.Trim().Trim('[', ']', '"'))
             .ToList();
 
         string tokenRole = "Customer";
@@ -63,28 +69,21 @@ public class AuthController : ControllerBase
         }
 
         var existingAccount = await _repository.GetUserAccountBySubAsync(subClaim);
-        
-        // Verify if user account was deleted from Asgardeo console
-        var existsInAsgardeo = await _scimClient.UserExistsInAsgardeoAsync(subClaim);
-        if (!existsInAsgardeo)
-        {
-            if (existingAccount != null)
-            {
-                _logger.LogWarning("User account for sub {Sub} was deleted from Asgardeo console. Purging local user account ID {Id}.", subClaim, existingAccount.Id);
-                await _repository.DeleteUserAccountAsync(existingAccount.Id);
-            }
-            return Unauthorized(new { message = "User account has been deleted from Asgardeo console." });
-        }
 
         if (existingAccount == null)
         {
-            // First time login - provision user locally using claims-based role
+            if (string.IsNullOrWhiteSpace(emailClaim) || !emailClaim.Contains('@'))
+            {
+                return BadRequest(new { message = "A valid email claim is required to create the local account." });
+            }
+
+            // First login: the validated JWT is sufficient to provision the local account.
             var newAccount = new UserAccount
             {
                 Id = Guid.NewGuid(),
                 Wso2Sub = subClaim,
-                Email = emailClaim ?? "unknown@tickethive.com",
-                FullName = nameClaim ?? "Unknown User",
+                Email = emailClaim.Trim(),
+                FullName = string.IsNullOrWhiteSpace(nameClaim) ? emailClaim.Trim() : nameClaim.Trim(),
                 Role = tokenRole,
                 ApprovalStatus = "approved",
                 CreatedAt = _timeProvider.GetUtcNow().UtcDateTime
@@ -92,6 +91,15 @@ public class AuthController : ControllerBase
 
             await _repository.CreateUserAccountAsync(newAccount);
             return Ok(newAccount);
+        }
+
+        // Verify if an existing local account was deleted from Asgardeo.
+        var existsInAsgardeo = await _scimClient.UserExistsInAsgardeoAsync(subClaim);
+        if (!existsInAsgardeo)
+        {
+            _logger.LogWarning("User account for sub {Sub} was deleted from Asgardeo console. Purging local user account ID {Id}.", subClaim, existingAccount.Id);
+            await _repository.DeleteUserAccountAsync(existingAccount.Id);
+            return Unauthorized(new { message = "User account has been deleted from Asgardeo console." });
         }
 
         // If user was assigned elevated role in Asgardeo (e.g. Admin or Organizer), sync database
@@ -103,6 +111,20 @@ public class AuthController : ControllerBase
         }
 
         return Ok(existingAccount);
+    }
+
+    private string? FirstClaimValue(params string[] claimTypes)
+    {
+        foreach (var claimType in claimTypes)
+        {
+            var value = User.FindFirst(claimType)?.Value;
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                return value;
+            }
+        }
+
+        return null;
     }
 
     /// <summary>

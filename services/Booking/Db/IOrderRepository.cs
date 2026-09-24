@@ -21,5 +21,6 @@ public interface IOrderRepository
     Task<OrderCreationResult> CreateAsync(Order order);
     Task<Order?> GetByIdAsync(Guid orderId);
     Task<Order?> FindByIdempotencyKeyAsync(string customerSub, string idempotencyKey);
+    Task<bool> UpdateCustomerContactAsync(Guid orderId, string customerEmail, string customerName);
     Task<bool> UpdateStatusAsync(Guid orderId, OrderStatus newStatus, DateTimeOffset updatedAt);
 }

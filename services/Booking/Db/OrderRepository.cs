@@ -21,8 +21,8 @@ public class OrderRepository : IOrderRepository
         await using var transaction = await connection.BeginTransactionAsync();
 
         const string orderInsertSql = @"
-            INSERT INTO orders (id, hold_id, customer_sub, show_id, status, total_amount, currency, idempotency_key, created_at, updated_at)
-            VALUES (@Id, @HoldId, @CustomerSub, @ShowId, @Status, @TotalAmount, @Currency, @IdempotencyKey, @CreatedAt, @UpdatedAt);
+            INSERT INTO orders (id, hold_id, customer_sub, customer_email, customer_name, show_id, status, total_amount, currency, idempotency_key, created_at, updated_at)
+            VALUES (@Id, @HoldId, @CustomerSub, @CustomerEmail, @CustomerName, @ShowId, @Status, @TotalAmount, @Currency, @IdempotencyKey, @CreatedAt, @UpdatedAt);
         ";
 
         const string itemInsertSql = @"
@@ -37,6 +37,8 @@ public class OrderRepository : IOrderRepository
                 command.Parameters.AddWithValue("Id", order.Id);
                 command.Parameters.AddWithValue("HoldId", order.HoldId);
                 command.Parameters.AddWithValue("CustomerSub", order.CustomerSub);
+                command.Parameters.AddWithValue("CustomerEmail", order.CustomerEmail);
+                command.Parameters.AddWithValue("CustomerName", order.CustomerName);
                 command.Parameters.AddWithValue("ShowId", order.ShowId);
                 command.Parameters.AddWithValue("Status", order.Status.ToString());
                 command.Parameters.AddWithValue("TotalAmount", order.TotalAmount);
@@ -73,7 +75,7 @@ public class OrderRepository : IOrderRepository
         await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
 
         const string sql = @"
-            SELECT o.id, o.hold_id, o.customer_sub, o.show_id, o.status, o.total_amount, o.currency, o.idempotency_key, o.created_at, o.updated_at,
+            SELECT o.id, o.hold_id, o.customer_sub, o.customer_email, o.customer_name, o.show_id, o.status, o.total_amount, o.currency, o.idempotency_key, o.created_at, o.updated_at,
                    oi.category_id, oi.quantity, oi.unit_price
             FROM orders o
             LEFT JOIN order_items oi ON oi.order_id = o.id
@@ -93,23 +95,25 @@ public class OrderRepository : IOrderRepository
                 Id = reader.GetGuid(0),
                 HoldId = reader.GetGuid(1),
                 CustomerSub = reader.GetString(2),
-                ShowId = reader.GetGuid(3),
-                Status = Enum.Parse<OrderStatus>(reader.GetString(4)),
-                TotalAmount = reader.GetDecimal(5),
-                Currency = reader.GetString(6).Trim(),
-                IdempotencyKey = reader.GetString(7),
-                CreatedAt = reader.GetFieldValue<DateTimeOffset>(8),
-                UpdatedAt = reader.GetFieldValue<DateTimeOffset>(9)
+                CustomerEmail = reader.IsDBNull(3) ? string.Empty : reader.GetString(3),
+                CustomerName = reader.IsDBNull(4) ? string.Empty : reader.GetString(4),
+                ShowId = reader.GetGuid(5),
+                Status = Enum.Parse<OrderStatus>(reader.GetString(6)),
+                TotalAmount = reader.GetDecimal(7),
+                Currency = reader.GetString(8).Trim(),
+                IdempotencyKey = reader.GetString(9),
+                CreatedAt = reader.GetFieldValue<DateTimeOffset>(10),
+                UpdatedAt = reader.GetFieldValue<DateTimeOffset>(11)
             };
 
-            if (!reader.IsDBNull(10))
+            if (!reader.IsDBNull(12))
             {
                 order.Items.Add(new OrderItem
                 {
                     OrderId = order.Id,
-                    CategoryId = reader.GetGuid(10),
-                    Quantity = reader.GetInt32(11),
-                    UnitPrice = reader.GetDecimal(12)
+                    CategoryId = reader.GetGuid(12),
+                    Quantity = reader.GetInt32(13),
+                    UnitPrice = reader.GetDecimal(14)
                 });
             }
         }
@@ -147,5 +151,23 @@ public class OrderRepository : IOrderRepository
 
         var rows = await command.ExecuteNonQueryAsync();
         return rows > 0;
+    }
+
+    public async Task<bool> UpdateCustomerContactAsync(Guid orderId, string customerEmail, string customerName)
+    {
+        await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
+
+        const string sql = @"
+            UPDATE orders
+            SET customer_email = @CustomerEmail, customer_name = @CustomerName, updated_at = CURRENT_TIMESTAMP
+            WHERE id = @OrderId AND status = 'PaymentPending';
+        ";
+
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("CustomerEmail", customerEmail);
+        command.Parameters.AddWithValue("CustomerName", customerName);
+        command.Parameters.AddWithValue("OrderId", orderId);
+
+        return await command.ExecuteNonQueryAsync() > 0;
     }
 }
