@@ -2,6 +2,8 @@ CREATE TABLE IF NOT EXISTS orders (
     id UUID PRIMARY KEY,
     hold_id UUID NOT NULL,
     customer_sub TEXT NOT NULL,
+    customer_email TEXT NULL,
+    customer_name TEXT NULL,
     show_id UUID NOT NULL,
     status TEXT NOT NULL,
     total_amount NUMERIC(12, 2) NOT NULL,
@@ -11,6 +13,9 @@ CREATE TABLE IF NOT EXISTS orders (
     updated_at TIMESTAMPTZ NOT NULL,
     UNIQUE (customer_sub, idempotency_key)
 );
+
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS customer_email TEXT NULL;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS customer_name TEXT NULL;
 
 CREATE INDEX IF NOT EXISTS ix_orders_hold_id ON orders (hold_id);
 CREATE INDEX IF NOT EXISTS ix_orders_customer_sub ON orders (customer_sub);

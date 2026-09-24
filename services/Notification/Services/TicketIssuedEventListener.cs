@@ -18,6 +18,7 @@ public class TicketIssuedEventListener : BackgroundService
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<TicketIssuedEventListener> _logger;
     private readonly string _bootstrapServers;
+    private readonly string _groupId;
 
     public TicketIssuedEventListener(
         IServiceScopeFactory scopeFactory,
@@ -27,6 +28,7 @@ public class TicketIssuedEventListener : BackgroundService
         _scopeFactory = scopeFactory;
         _logger = logger;
         _bootstrapServers = configuration["Kafka:BootstrapServers"] ?? "localhost:9092";
+        _groupId = configuration["Kafka:GroupId"] ?? "notification-service-group-v2";
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -34,10 +36,9 @@ public class TicketIssuedEventListener : BackgroundService
         var config = new ConsumerConfig
         {
             BootstrapServers = _bootstrapServers,
-            GroupId = "notification-service-ticket-issued-group",
+            GroupId = _groupId,
             AutoOffsetReset = AutoOffsetReset.Earliest,
-            EnableAutoCommit = true,
-            SocketTimeoutMs = 3000
+            EnableAutoCommit = true
         };
 
         await Task.Yield();
@@ -62,7 +63,10 @@ public class TicketIssuedEventListener : BackgroundService
                 try
                 {
                     var consumeResult = consumer.Consume(TimeSpan.FromSeconds(1));
-                    if (consumeResult == null) continue;
+                    if (consumeResult == null)
+                    {
+                        continue;
+                    }
 
                     _logger.LogInformation("[Kafka Listener Debug] Received message from topic '{Topic}', partition {Partition}, offset {Offset}: {Value}",
                         consumeResult.Topic, consumeResult.Partition.Value, consumeResult.Offset.Value, consumeResult.Message.Value);
@@ -76,12 +80,12 @@ public class TicketIssuedEventListener : BackgroundService
                     var root = doc.RootElement;
 
                     Guid orderId = Guid.Empty;
-                    var orderIdProp = root.EnumerateObject()
-                        .FirstOrDefault(p => string.Equals(p.Name, "OrderId", StringComparison.OrdinalIgnoreCase)).Value;
-
-                    if (orderIdProp.ValueKind == JsonValueKind.String && Guid.TryParse(orderIdProp.GetString(), out var parsedOrderId))
+                    if (root.TryGetProperty("OrderId", out var orderIdProp) && orderIdProp.ValueKind == JsonValueKind.String)
                     {
-                        orderId = parsedOrderId;
+                        if (Guid.TryParse(orderIdProp.GetString(), out var parsedOrderId))
+                        {
+                            orderId = parsedOrderId;
+                        }
                     }
 
                     if (orderId == Guid.Empty)
@@ -90,15 +94,21 @@ public class TicketIssuedEventListener : BackgroundService
                         continue;
                     }
 
-                    string rawEmail = root.EnumerateObject()
-                        .FirstOrDefault(p => string.Equals(p.Name, "CustomerEmail", StringComparison.OrdinalIgnoreCase)).Value.GetString()
-                        ?? root.EnumerateObject()
-                        .FirstOrDefault(p => string.Equals(p.Name, "CustomerSub", StringComparison.OrdinalIgnoreCase)).Value.GetString()
-                        ?? "customer@tickethive.lk";
+                    string rawEmail = "customer@tickethive.lk";
+                    if (root.TryGetProperty("CustomerEmail", out var emailProp) && emailProp.ValueKind == JsonValueKind.String)
+                    {
+                        rawEmail = emailProp.GetString() ?? rawEmail;
+                    }
+                    else if (root.TryGetProperty("CustomerSub", out var subProp) && subProp.ValueKind == JsonValueKind.String)
+                    {
+                        rawEmail = subProp.GetString() ?? rawEmail;
+                    }
 
-                    string rawName = root.EnumerateObject()
-                        .FirstOrDefault(p => string.Equals(p.Name, "CustomerName", StringComparison.OrdinalIgnoreCase)).Value.GetString()
-                        ?? "Valued Customer";
+                    string rawName = "Valued Customer";
+                    if (root.TryGetProperty("CustomerName", out var nameProp) && nameProp.ValueKind == JsonValueKind.String)
+                    {
+                        rawName = nameProp.GetString() ?? rawName;
+                    }
 
                     var customerEmail = rawEmail.Contains('@') ? rawEmail : "customer@tickethive.lk";
                     var customerName = string.IsNullOrWhiteSpace(rawName) ? "Valued Customer" : rawName;
@@ -150,10 +160,7 @@ public class TicketIssuedEventListener : BackgroundService
                 }
                 catch (ConsumeException ex)
                 {
-                    if (ex.Error.Code != ErrorCode.UnknownTopicOrPart)
-                    {
-                        _logger.LogWarning("Kafka consume exception in TicketIssuedEventListener: {Reason}", ex.Error.Reason);
-                    }
+                    _logger.LogWarning("Kafka consume exception in TicketIssuedEventListener: Code={Code}, Reason={Reason}", ex.Error.Code, ex.Error.Reason);
                 }
                 catch (Exception ex)
                 {

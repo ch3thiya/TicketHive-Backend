@@ -35,7 +35,30 @@ public class TicketService : ITicketService
         var existingTickets = await _repository.GetByOrderIdAsync(order.Id);
         if (existingTickets.Count > 0)
         {
-            _logger.LogInformation("Order {OrderId} already has {Count} tickets issued. Returning existing tickets (Idempotent)", order.Id, existingTickets.Count);
+            _logger.LogInformation("Order {OrderId} already has {Count} tickets issued. (Idempotent check)", order.Id, existingTickets.Count);
+
+            var emailToUse = !string.IsNullOrWhiteSpace(order.CustomerEmail) ? order.CustomerEmail : "";
+            if (emailToUse.Contains('@'))
+            {
+                var nameToUse = !string.IsNullOrWhiteSpace(order.CustomerName) ? order.CustomerName : "Valued Customer";
+                _logger.LogInformation("[TicketService Debug] Publishing tickethive.tickets.issued Kafka event for existing order {OrderId}. CustomerEmail: '{Email}', CustomerName: '{Name}'", order.Id, emailToUse, nameToUse);
+
+                await _kafkaProducer.PublishTicketsIssuedAsync(new
+                {
+                    OrderId = order.Id,
+                    ShowId = order.ShowId,
+                    CustomerSub = order.CustomerSub,
+                    CustomerEmail = emailToUse,
+                    CustomerName = nameToUse,
+                    TotalAmount = order.TotalAmount,
+                    Currency = order.Currency,
+                    TicketCount = existingTickets.Count,
+                    TicketCodes = existingTickets.Select(t => t.UniqueCode).ToList(),
+                    IssuedAt = _timeProvider.GetUtcNow(),
+                    TicketIds = existingTickets.Select(t => t.Id).ToList()
+                });
+            }
+
             return existingTickets.Select(ToResponse).ToList();
         }
 

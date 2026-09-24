@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace Booking.Service.Controllers;
 
 public record ConfirmSandboxOrderRequest(string? CustomerEmail, string? CustomerName);
+public record UpdateOrderContactRequest(string CustomerEmail, string CustomerName);
 
 [ApiController]
 [Route("api/booking/orders")]
@@ -95,6 +96,30 @@ public class OrdersController : ControllerBase
         }
 
         return Ok(_orderService.ToResponse(order));
+    }
+
+    [HttpPut("{id}/contact")]
+    [Authorize]
+    public async Task<IActionResult> UpdateContact(Guid id, [FromBody] UpdateOrderContactRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.CustomerEmail) || !request.CustomerEmail.Contains('@'))
+        {
+            return BadRequest("A valid customer email is required.");
+        }
+
+        var order = await _orderService.GetOrderAsync(id);
+        var customerSub = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+            ?? User.FindFirst("sub")?.Value;
+        if (order is null || !string.Equals(order.CustomerSub, customerSub, StringComparison.OrdinalIgnoreCase))
+        {
+            return NotFound();
+        }
+
+        var updated = await _orderRepository.UpdateCustomerContactAsync(
+            id,
+            request.CustomerEmail.Trim(),
+            request.CustomerName?.Trim() ?? string.Empty);
+        return updated ? NoContent() : Conflict("Order is no longer awaiting payment.");
     }
 
     [HttpGet("{id}/status")]
