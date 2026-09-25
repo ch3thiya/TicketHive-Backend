@@ -201,7 +201,7 @@ fi
 
 for svc in "${SERVICES[@]}"; do
   db="tickethive_${svc}"
-  az postgres flexible-server db create -g "$RG" -s "$PG" -d "$db" -o none 2>/dev/null || true
+  az postgres flexible-server db create -g "$RG" --server-name "$PG" --name "$db" -o none || note "could not create $db"
   az keyvault secret set --vault-name "$KV" -n "connstr-${svc}" \
     --value "Host=${PG_FQDN};Database=${db};Username=${PG_ADMIN};Password=${PG_PASSWORD};SSL Mode=Require;Trust Server Certificate=true;Maximum Pool Size=10" -o none
   note "database and connection string: $db"
