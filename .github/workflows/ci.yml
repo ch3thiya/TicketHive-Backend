@@ -42,7 +42,7 @@ jobs:
               echo "::error::${sha} '${subject}' is missing a prefix (feat: fix: test: docs: ci: refactor: chore:)"
               bad=1
             fi
-          done < <(git log --format='%h %s' origin/${{ github.base_ref }}..HEAD)
+          done < <(git log --no-merges --format='%h %s' origin/${{ github.base_ref }}..HEAD)
           exit $bad
 
   secrets:
