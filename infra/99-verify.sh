@@ -87,8 +87,14 @@ else
   admin="$(az acr show -g "$RG" -n tickethiveacr --query adminUserEnabled -o tsv 2>/dev/null)"
   [[ "$admin" == "false" ]] && ok "registry admin user is off" || bad "registry admin user is ON"
 
-  dbs="$(az postgres flexible-server db list -g "$RG" -s tickethive-pg --query "length([?starts_with(name,'tickethive_')])" -o tsv 2>/dev/null)"
-  [[ "$dbs" == "7" ]] && ok "azure databases: 7" || bad "azure databases: ${dbs:-unknown} (expected 7)"
+  pg_state="$(az postgres flexible-server show -g "$RG" -n tickethive-pg --query state -o tsv 2>/dev/null)"
+  if [[ "$pg_state" == "Ready" ]]; then
+    dbs="$(az postgres flexible-server db list -g "$RG" --server-name tickethive-pg \
+           --query "length([?starts_with(name,'tickethive_')])" -o tsv 2>/dev/null)"
+    [[ "$dbs" == "7" ]] && ok "azure databases: 7" || bad "azure databases: ${dbs:-unknown} (expected 7)"
+  else
+    warn "postgres is stopped - cannot list databases (start it to check)"
+  fi
 
   secrets="$(az keyvault secret list --vault-name "$KV" --query "length(@)" -o tsv 2>/dev/null)"
   [[ "${secrets:-0}" -ge 23 ]] && ok "key vault secrets: $secrets" || bad "key vault secrets: ${secrets:-0} (expected 23 or more)"
