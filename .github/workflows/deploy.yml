@@ -1,0 +1,212 @@
+name: Deploy
+
+# Only dev deploys. main is for release tags and deploys nothing, so the two
+# branches can never overwrite each other's revision.
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+    inputs:
+      service:
+        description: 'Single service to deploy, or "all"'
+        required: true
+        default: all
+        type: choice
+        options: [all, identity, catalog, inventory, waitingroom, booking, payment, notification]
+
+permissions:
+  id-token: write      # required for federated login to Azure
+  contents: read
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      services: ${{ steps.detect.outputs.services }}
+      any: ${{ steps.detect.outputs.any }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - id: detect
+        run: |
+          all='["identity","catalog","inventory","waitingroom","booking","payment","notification"]'
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ "${{ inputs.service }}" = "all" ]; then
+              echo "services=$all" >> "$GITHUB_OUTPUT"
+            else
+              echo 'services=["${{ inputs.service }}"]' >> "$GITHUB_OUTPUT"
+            fi
+            echo "any=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          changed="$(git diff --name-only HEAD~1 HEAD)"
+          echo "changed files:"; echo "$changed"
+
+          # Shared code, the solution file or the workflow itself: deploy everything.
+          if grep -qE '^services/BuildingBlocks/|^TicketHive\.slnx$|^\.github/workflows/deploy\.yml$' <<<"$changed"; then
+            echo "services=$all" >> "$GITHUB_OUTPUT"
+            echo "any=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          list=()
+          for svc in Identity Catalog Inventory WaitingRoom Booking Payment Notification; do
+            grep -q "^services/${svc}/" <<<"$changed" && \
+              list+=("\"$(echo "$svc" | tr '[:upper:]' '[:lower:]')\"")
+          done
+
+          if [ ${#list[@]} -eq 0 ]; then
+            echo "services=[]" >> "$GITHUB_OUTPUT"; echo "any=false" >> "$GITHUB_OUTPUT"
+          else
+            printf -v joined '%s,' "${list[@]}"
+            echo "services=[${joined%,}]" >> "$GITHUB_OUTPUT"; echo "any=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  deploy:
+    needs: changes
+    if: needs.changes.outputs.any == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false          # one service failing must not block the others
+      max-parallel: 2           # the student subscription throttles above this
+      matrix:
+        service: ${{ fromJson(needs.changes.outputs.services) }}
+
+    concurrency:
+      group: deploy-${{ matrix.service }}
+      cancel-in-progress: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve names
+        id: names
+        run: |
+          case "${{ matrix.service }}" in
+            waitingroom) folder=WaitingRoom ;;
+            identity) folder=Identity ;;
+            catalog) folder=Catalog ;;
+            inventory) folder=Inventory ;;
+            booking) folder=Booking ;;
+            payment) folder=Payment ;;
+            notification) folder=Notification ;;
+          esac
+          echo "folder=$folder" >> "$GITHUB_OUTPUT"
+          echo "app=tickethive-${{ matrix.service }}" >> "$GITHUB_OUTPUT"
+          echo "job=tickethive-${{ matrix.service }}-migrate" >> "$GITHUB_OUTPUT"
+          echo "image=${{ vars.ACR_LOGIN_SERVER }}/tickethive-${{ matrix.service }}:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: Sign in to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # Built in ACR rather than on the runner: no registry password needed,
+      # and the image never leaves Azure.
+      - name: Build and push image
+        run: |
+          set -euo pipefail
+          login_server="${{ vars.ACR_LOGIN_SERVER }}"
+          az acr login --name "${login_server%%.*}"
+          docker build \
+            -f "services/${{ steps.names.outputs.folder }}/Dockerfile" \
+            -t "${{ steps.names.outputs.image }}" \
+            -t "${login_server}/tickethive-${{ matrix.service }}:latest" \
+            .
+          docker push "${{ steps.names.outputs.image }}"
+          docker push "${login_server}/tickethive-${{ matrix.service }}:latest"
+
+      # Migrations run before the new code does. A failure here stops the
+      # deploy, so the old revision keeps serving.
+      - name: Run migrations
+        run: |
+          set -euo pipefail
+          az containerapp job update -g "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            -n "${{ steps.names.outputs.job }}" \
+            --image "${{ steps.names.outputs.image }}" -o none
+
+          execution="$(az containerapp job start -g "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            -n "${{ steps.names.outputs.job }}" --query name -o tsv)"
+          echo "execution: $execution"
+
+          for i in $(seq 1 60); do
+            status="$(az containerapp job execution show \
+              -g "${{ vars.AZURE_RESOURCE_GROUP }}" \
+              -n "${{ steps.names.outputs.job }}" \
+              --job-execution-name "$execution" \
+              --query properties.status -o tsv)"
+            echo "  [$i] $status"
+            case "$status" in
+              Succeeded) echo "migrations applied"; exit 0 ;;
+              Failed|Degraded)
+                echo "::error::migration job $status"
+                az containerapp job logs show -g "${{ vars.AZURE_RESOURCE_GROUP }}" \
+                  -n "${{ steps.names.outputs.job }}" --container "${{ steps.names.outputs.job }}" \
+                  --tail 50 || true
+                exit 1 ;;
+            esac
+            sleep 10
+          done
+          echo "::error::migration job did not finish within 10 minutes"
+          exit 1
+
+      - name: Update the app
+        run: |
+          az containerapp update -g "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            -n "${{ steps.names.outputs.app }}" \
+            --image "${{ steps.names.outputs.image }}" -o none
+
+      # A new revision that never becomes healthy is a failed deploy, even
+      # though the update command itself succeeds.
+      - name: Verify the new revision
+        run: |
+          set -euo pipefail
+          revision="$(az containerapp show -g "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            -n "${{ steps.names.outputs.app }}" \
+            --query properties.latestRevisionName -o tsv)"
+          echo "revision: $revision"
+
+          for i in $(seq 1 30); do
+            state="$(az containerapp revision show -g "${{ vars.AZURE_RESOURCE_GROUP }}" \
+              --app "${{ steps.names.outputs.app }}" --revision "$revision" \
+              --query properties.runningState -o tsv)"
+            echo "  [$i] $state"
+            case "$state" in
+              Running|RunningAtMaxScale) echo "revision healthy"; break ;;
+              Failed|Degraded) echo "::error::revision $state"; exit 1 ;;
+            esac
+            if [ "$i" -eq 30 ]; then
+              # Scaled to zero with no traffic is expected, not a failure.
+              echo "revision is not running yet (min-replicas is 0); checking the endpoint instead"
+            fi
+            sleep 10
+          done
+
+          fqdn="$(az containerapp show -g "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            -n "${{ steps.names.outputs.app }}" \
+            --query properties.configuration.ingress.fqdn -o tsv)"
+
+          for i in $(seq 1 10); do
+            code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "https://${fqdn}/health/ready" || echo 000)"
+            echo "  health/ready -> $code"
+            [ "$code" = "200" ] && { echo "deployed: https://${fqdn}"; exit 0; }
+            sleep 15
+          done
+          echo "::error::${{ steps.names.outputs.app }} did not report ready"
+          exit 1
+
+  summary:
+    needs: [changes, deploy]
+    if: always() && needs.changes.outputs.any == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "### Deploy: ${{ needs.deploy.result }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Services: ${{ needs.changes.outputs.services }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Image tag: ${{ github.sha }}" >> "$GITHUB_STEP_SUMMARY"
