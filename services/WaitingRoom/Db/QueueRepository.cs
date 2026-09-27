@@ -279,17 +279,25 @@ public class QueueRepository : IQueueRepository
         // highest number ever issued, a queue that has emptied stops
         // advancing instead of racing ahead of demand — otherwise a later
         // joiner would be admitted instantly and the gate stops working.
+        // The interval check is what holds the admission rate (ADR-011): the
+        // advisory lock releases at commit, so a second instance arriving
+        // just after would otherwise take the lock and advance again.
         const string advanceSql = @"
             update queues
-            set serving_number = least(serving_number + admit_batch, next_number)
+            set serving_number = least(serving_number + admit_batch, next_number),
+                last_advanced_at = @Now
             where show_id = @ShowId and status = @OpenStatus and serving_number < next_number
+              and (last_advanced_at is null
+                   or last_advanced_at <= @Now - make_interval(secs => admit_interval_seconds))
             returning serving_number;
         ";
+        var now = _timeProvider.GetUtcNow();
         long? newServingNumber = null;
         await using (var advanceCommand = new NpgsqlCommand(advanceSql, connection, transaction))
         {
             advanceCommand.Parameters.AddWithValue("ShowId", showId);
             advanceCommand.Parameters.AddWithValue("OpenStatus", nameof(QueueStatus.Open));
+            advanceCommand.Parameters.AddWithValue("Now", now);
             var result = await advanceCommand.ExecuteScalarAsync(cancellationToken);
             if (result is not null)
             {
@@ -312,7 +320,7 @@ public class QueueRepository : IQueueRepository
         {
             admitCommand.Parameters.AddWithValue("ShowId", showId);
             admitCommand.Parameters.AddWithValue("ServingNumber", newServingNumber.Value);
-            admitCommand.Parameters.AddWithValue("Now", _timeProvider.GetUtcNow());
+            admitCommand.Parameters.AddWithValue("Now", now);
             await admitCommand.ExecuteNonQueryAsync(cancellationToken);
         }
 

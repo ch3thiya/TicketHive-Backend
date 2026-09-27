@@ -6,9 +6,10 @@ using WaitingRoom.Service.Db;
 
 namespace WaitingRoom.Service.Services;
 
-// A singleton job: pg_try_advisory_xact_lock inside TryAdvanceServingNumberAsync
-// means any number of instances can run this loop and only one ever advances
-// a given queue on a given tick (concurrency.md).
+// A singleton job: inside TryAdvanceServingNumberAsync the advisory lock
+// serializes instances and the last_advanced_at interval check means any
+// number of instances can run this loop and a given queue still advances at
+// most once per admit interval (concurrency.md).
 public class QueueAdmissionScheduler : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
