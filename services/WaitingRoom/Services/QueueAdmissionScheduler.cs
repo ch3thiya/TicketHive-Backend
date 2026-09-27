@@ -9,7 +9,8 @@ namespace WaitingRoom.Service.Services;
 // A singleton job: inside TryAdvanceServingNumberAsync the advisory lock
 // serializes instances and the last_advanced_at interval check means any
 // number of instances can run this loop and a given queue still advances at
-// most once per admit interval (concurrency.md).
+// most once per admit interval (concurrency.md). The loop polls more often
+// than that interval so admission does not drift a cycle late.
 public class QueueAdmissionScheduler : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
@@ -19,12 +20,12 @@ public class QueueAdmissionScheduler : BackgroundService
     public QueueAdmissionScheduler(
         IServiceScopeFactory scopeFactory,
         ILogger<QueueAdmissionScheduler> logger,
-        IOptions<QueueDefaultsOptions> options,
+        IOptions<QueueAdmissionSchedulerOptions> options,
         TimeSpan? periodOverride = null)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
-        _period = periodOverride ?? TimeSpan.FromSeconds(options.Value.AdmitIntervalSeconds);
+        _period = periodOverride ?? TimeSpan.FromSeconds(options.Value.TickIntervalSeconds);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
