@@ -10,6 +10,7 @@
   <ItemGroup>
     <PackageReference Include="Confluent.Kafka" Version="2.8.0" />
     <PackageReference Include="dbup-postgresql" Version="7.0.1" />
+    <PackageReference Include="DotNetEnv" Version="3.2.0" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.11" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.11" />
     <PackageReference Include="Npgsql" Version="10.0.3" />

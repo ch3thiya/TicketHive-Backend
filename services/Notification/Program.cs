@@ -8,6 +8,9 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Notification.Service.Db;
 using Notification.Service.Services;
+// Load root .env file if available; a real environment variable already set
+// (docker-compose, Container Apps) always wins over the .env file.
+DotNetEnv.Env.TraversePath().NoClobber().Load();
 
 var builder = WebApplication.CreateBuilder(args);
 
