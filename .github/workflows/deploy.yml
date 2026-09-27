@@ -174,7 +174,7 @@ jobs:
 
           for i in $(seq 1 30); do
             state="$(az containerapp revision show -g "${{ vars.AZURE_RESOURCE_GROUP }}" \
-              --app "${{ steps.names.outputs.app }}" --revision "$revision" \
+              --name "${{ steps.names.outputs.app }}" --revision "$revision" \
               --query properties.runningState -o tsv)"
             echo "  [$i] $state"
             case "$state" in
