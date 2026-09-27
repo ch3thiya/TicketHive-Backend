@@ -39,8 +39,8 @@ public class WaitingRoomApiFactory : WebApplicationFactory<Program>
                 ["AdmissionToken:PrivateKeyPem"] = rsa.ExportPkcs8PrivateKeyPem(),
                 // The real QueueAdmissionScheduler runs as a real hosted
                 // service in this factory; a short period lets a scheduler
-                // test observe a real tick without a 30-second wait.
-                ["QueueDefaults:AdmitIntervalSeconds"] = "1"
+                // test observe a real tick without waiting a full poll.
+                ["QueueAdmissionScheduler:TickIntervalSeconds"] = "1"
             });
         });
 
