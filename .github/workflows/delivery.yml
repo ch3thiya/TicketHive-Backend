@@ -21,12 +21,12 @@ permissions:
 
 jobs:
   changes:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       services: ${{ steps.detect.outputs.services }}
       any: ${{ steps.detect.outputs.any }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 2
 
@@ -69,7 +69,7 @@ jobs:
   publish:
     needs: changes
     if: needs.changes.outputs.any == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       max-parallel: 4
@@ -77,7 +77,7 @@ jobs:
         service: ${{ fromJson(needs.changes.outputs.services) }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Resolve names
         id: names
@@ -124,7 +124,7 @@ jobs:
   summary:
     needs: [changes, publish]
     if: always() && needs.changes.outputs.any == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - run: |
           {

@@ -17,7 +17,7 @@ jobs:
   # need Enterprise, so this job enforces them instead.
   conventions:
     if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Branch name
         run: |
@@ -28,7 +28,7 @@ jobs:
           fi
           echo "Branch name OK: $branch"
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -44,9 +44,9 @@ jobs:
           exit $bad
 
   secrets:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: gitleaks
@@ -56,9 +56,9 @@ jobs:
             --log-opts "origin/${{ github.base_ref || 'dev' }}..HEAD"
 
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: actions/setup-dotnet@v4
         with:
@@ -100,12 +100,12 @@ jobs:
 
   # Which services changed. A BuildingBlocks change counts as all of them.
   changes:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       services: ${{ steps.detect.outputs.services }}
       any: ${{ steps.detect.outputs.any }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -144,13 +144,13 @@ jobs:
   images:
     needs: changes
     if: needs.changes.outputs.any == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
         service: ${{ fromJson(needs.changes.outputs.services) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Resolve project folder
         id: folder
         run: |
