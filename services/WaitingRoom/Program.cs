@@ -52,6 +52,7 @@ builder.Services.AddOptions<AdmissionTokenOptions>()
     .Bind(builder.Configuration.GetSection(AdmissionTokenOptions.SectionName))
     .ValidateOnStart();
 
+builder.Services.Configure<QueueAdmissionSchedulerOptions>(builder.Configuration.GetSection(QueueAdmissionSchedulerOptions.SectionName));
 builder.Services.AddHostedService<QueueAdmissionScheduler>();
 
 // Register the internal-token client (client-credentials M2M token, cached)
