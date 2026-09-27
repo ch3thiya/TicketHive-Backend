@@ -31,13 +31,13 @@ permissions:
 
 jobs:
   plan:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       services: ${{ steps.detect.outputs.services }}
       any: ${{ steps.detect.outputs.any }}
       tag: ${{ steps.detect.outputs.tag }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0     # both parents of the merge commit must be present
 
@@ -92,7 +92,7 @@ jobs:
   deploy:
     needs: plan
     if: needs.plan.outputs.any == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       max-parallel: 4
@@ -211,7 +211,7 @@ jobs:
   summary:
     needs: [plan, deploy]
     if: always() && needs.plan.outputs.any == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - run: |
           {

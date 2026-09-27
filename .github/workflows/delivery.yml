@@ -7,6 +7,13 @@ on:
   push:
     branches: [dev]
   workflow_dispatch:
+    inputs:
+      service:
+        description: 'Single service to build, or "all"'
+        required: true
+        default: all
+        type: choice
+        options: [all, identity, catalog, inventory, waitingroom, booking, payment, notification]
 
 permissions:
   id-token: write      # federated login to Azure, for the registry push
@@ -14,18 +21,29 @@ permissions:
 
 jobs:
   changes:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       services: ${{ steps.detect.outputs.services }}
       any: ${{ steps.detect.outputs.any }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 2
 
       - id: detect
         run: |
           all='["identity","catalog","inventory","waitingroom","booking","payment","notification"]'
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ "${{ inputs.service }}" = "all" ]; then
+              echo "services=$all" >> "$GITHUB_OUTPUT"
+            else
+              echo 'services=["${{ inputs.service }}"]' >> "$GITHUB_OUTPUT"
+            fi
+            echo "any=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           changed="$(git diff --name-only HEAD~1 HEAD)"
           echo "changed files:"; echo "$changed"
 
@@ -51,7 +69,7 @@ jobs:
   publish:
     needs: changes
     if: needs.changes.outputs.any == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       max-parallel: 4
@@ -59,7 +77,7 @@ jobs:
         service: ${{ fromJson(needs.changes.outputs.services) }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Resolve names
         id: names
@@ -106,7 +124,7 @@ jobs:
   summary:
     needs: [changes, publish]
     if: always() && needs.changes.outputs.any == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - run: |
           {
