@@ -49,6 +49,7 @@ builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 
 var app = builder.Build();
+app.UseServiceDefaults();
 
 // Development only: migrate the database at startup before the host starts.
 DatabaseMigrator.MigrateIfDevelopment(app.Environment, app.Configuration, connectionString =>
@@ -60,6 +61,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseRouting();
+app.MapDefaultEndpoints();
 app.MapControllers();
 
 app.Run();
