@@ -1,0 +1,163 @@
+name: CI
+
+# Every pull request and every push to dev. No deployment happens here.
+on:
+  pull_request:
+    branches: [dev, main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # Branch and commit conventions from ADR-016. GitHub's own branch-name rules
+  # need Enterprise, so this job enforces them instead.
+  conventions:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Branch name
+        run: |
+          branch="${{ github.head_ref }}"
+          if [[ ! "$branch" =~ ^(feature|fix)/[a-z0-9]+(-[a-z0-9]+)*$ ]]; then
+            echo "::error::Branch '$branch' must match feature/<description> or fix/<description>, lowercase and hyphenated."
+            exit 1
+          fi
+          echo "Branch name OK: $branch"
+
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Commit message prefixes
+        run: |
+          bad=0
+          while read -r sha subject; do
+            if [[ ! "$subject" =~ ^(feat|fix|test|docs|ci|refactor|chore): ]]; then
+              echo "::error::${sha} '${subject}' is missing a prefix (feat: fix: test: docs: ci: refactor: chore:)"
+              bad=1
+            fi
+          done < <(git log --no-merges --format='%h %s' \
+            "origin/${{ github.base_ref }}..HEAD" --not origin/main)
+          exit $bad
+
+  secrets:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: gitleaks
+        run: |
+          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest \
+            detect --source /repo --config /repo/.gitleaks.toml --redact --verbose \
+            --log-opts "origin/${{ github.base_ref || 'dev' }}..HEAD"
+
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Cache NuGet
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: nuget-
+
+      - run: dotnet restore TicketHive.slnx
+
+      - name: Format check
+        run: dotnet format TicketHive.slnx --verify-no-changes --no-restore
+
+      - run: dotnet build TicketHive.slnx --configuration Release --no-restore
+
+      # Unit and architecture tests. Integration tests are a separate job so a
+      # Testcontainers failure is distinguishable from a logic failure.
+      - name: Unit and architecture tests
+        run: |
+          dotnet test TicketHive.slnx --configuration Release --no-build \
+            --filter "FullyQualifiedName!~Integration" \
+            --logger "trx;LogFileName=unit.trx" --results-directory ./test-results
+
+      - name: Integration tests (Testcontainers)
+        run: |
+          dotnet test TicketHive.slnx --configuration Release --no-build \
+            --filter "FullyQualifiedName~Integration" \
+            --logger "trx;LogFileName=integration.trx" --results-directory ./test-results
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: ./test-results
+
+  # Which services changed. A BuildingBlocks change counts as all of them.
+  changes:
+    runs-on: ubuntu-24.04
+    outputs:
+      services: ${{ steps.detect.outputs.services }}
+      any: ${{ steps.detect.outputs.any }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - id: detect
+        run: |
+          base="origin/${{ github.base_ref || 'dev' }}"
+          git fetch origin "${{ github.base_ref || 'dev' }}" --depth=50 || true
+          changed="$(git diff --name-only "$base"...HEAD || git diff --name-only HEAD~1)"
+          echo "changed files:"; echo "$changed"
+
+          all='["identity","catalog","inventory","waitingroom","booking","payment","notification"]'
+
+          if grep -qE '^services/BuildingBlocks/|^TicketHive\.slnx$|^Directory\.' <<<"$changed"; then
+            echo "services=$all" >> "$GITHUB_OUTPUT"
+            echo "any=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          list=()
+          for svc in Identity Catalog Inventory WaitingRoom Booking Payment Notification; do
+            if grep -q "^services/${svc}/" <<<"$changed"; then
+              list+=("\"$(echo "$svc" | tr '[:upper:]' '[:lower:]')\"")
+            fi
+          done
+
+          if [ ${#list[@]} -eq 0 ]; then
+            echo "services=[]" >> "$GITHUB_OUTPUT"
+            echo "any=false" >> "$GITHUB_OUTPUT"
+          else
+            printf -v joined '%s,' "${list[@]}"
+            echo "services=[${joined%,}]" >> "$GITHUB_OUTPUT"
+            echo "any=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  # Build the image without pushing: proves the Dockerfile still works.
+  images:
+    needs: changes
+    if: needs.changes.outputs.any == 'true'
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        service: ${{ fromJson(needs.changes.outputs.services) }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Resolve project folder
+        id: folder
+        run: |
+          case "${{ matrix.service }}" in
+            waitingroom) echo "name=WaitingRoom" >> "$GITHUB_OUTPUT" ;;
+            *) echo "name=$(python3 -c "print('${{ matrix.service }}'.capitalize())")" >> "$GITHUB_OUTPUT" ;;
+          esac
+      - name: Docker build
+        run: docker build -f "services/${{ steps.folder.outputs.name }}/Dockerfile" .

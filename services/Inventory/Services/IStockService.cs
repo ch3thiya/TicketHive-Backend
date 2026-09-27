@@ -18,7 +18,8 @@ public record InitializeStockRequest(
     int MaxPerCustomer,
     int HoldMinutes,
     bool HighDemand,
-    List<InitializeStockCategoryRequest> Categories
+    List<InitializeStockCategoryRequest> Categories,
+    int? HighDemandThreshold = null
 );
 
 public record StockItemResponse(

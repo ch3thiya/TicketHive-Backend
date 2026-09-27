@@ -19,7 +19,8 @@ public record InitializeShowStockRequest(
     int MaxPerCustomer,
     int HoldMinutes,
     bool HighDemand,
-    List<InitializeShowStockCategory> Categories
+    List<InitializeShowStockCategory> Categories,
+    int? HighDemandThreshold = null
 );
 
 public interface IInventoryClient

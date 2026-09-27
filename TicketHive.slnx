@@ -1,5 +1,8 @@
 <Solution>
   <Folder Name="/services/" />
+  <Folder Name="/services/Booking/">
+    <Project Path="services/Booking/Booking.Service.csproj" />
+  </Folder>
   <Folder Name="/services/BuildingBlocks/">
     <Project Path="services/BuildingBlocks/BuildingBlocks.csproj" />
   </Folder>
@@ -12,11 +15,24 @@
   <Folder Name="/services/Inventory/">
     <Project Path="services/Inventory/Inventory.Service.csproj" />
   </Folder>
+  <Folder Name="/services/Notification/">
+    <Project Path="services/Notification/Notification.Service.csproj" />
+  </Folder>
+  <Folder Name="/services/Payment/">
+    <Project Path="services/Payment/Payment.Service.csproj" />
+  </Folder>
+  <Folder Name="/services/WaitingRoom/">
+    <Project Path="services/WaitingRoom/WaitingRoom.Service.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Architecture.Tests/Architecture.Tests.csproj" />
+    <Project Path="tests/Booking.Service.Tests/Booking.Service.Tests.csproj" />
     <Project Path="tests/BuildingBlocks.Tests/BuildingBlocks.Tests.csproj" />
     <Project Path="tests/Catalog.Service.Tests/Catalog.Service.Tests.csproj" />
     <Project Path="tests/Identity.Service.Tests/Identity.Service.Tests.csproj" />
     <Project Path="tests/Inventory.Service.Tests/Inventory.Service.Tests.csproj" />
+    <Project Path="tests/Notification.Service.Tests/Notification.Service.Tests.csproj" />
+    <Project Path="tests/Payment.Service.Tests/Payment.Service.Tests.csproj" />
+    <Project Path="tests/WaitingRoom.Service.Tests/WaitingRoom.Service.Tests.csproj" />
   </Folder>
 </Solution>

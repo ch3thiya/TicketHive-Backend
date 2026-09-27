@@ -26,31 +26,45 @@ public static class DatabaseMigrator
     {
         var normalizedConnectionString = PostgresConnectionString.Normalize(connectionString);
 
-        EnsureDatabase.For.PostgresqlDatabase(normalizedConnectionString);
-
-        var builder = DeployChanges.To
-            .PostgresqlDatabase(normalizedConnectionString);
-
-        var engineBuilder = scriptFilter is null
-            ? builder.WithScriptsEmbeddedInAssembly(assembly)
-            : builder.WithScriptsEmbeddedInAssembly(assembly, scriptFilter);
-
-        var upgrader = engineBuilder
-            .JournalToPostgresqlTable("public", "schemaversions")
-            .WithTransactionPerScript()
-            .LogTo(logger)
-            .Build();
-
-        var result = upgrader.PerformUpgrade();
-
-        if (!result.Successful)
+        int maxRetries = 5;
+        for (int i = 0; i < maxRetries; i++)
         {
-            throw new InvalidOperationException("Database migration failed.", result.Error);
-        }
+            try
+            {
+                EnsureDatabase.For.PostgresqlDatabase(normalizedConnectionString);
 
-        foreach (var script in result.Scripts)
-        {
-            logger.LogInformation("Migration script {Script} applied", script.Name);
+                var builder = DeployChanges.To
+                    .PostgresqlDatabase(normalizedConnectionString);
+
+                var engineBuilder = scriptFilter is null
+                    ? builder.WithScriptsEmbeddedInAssembly(assembly)
+                    : builder.WithScriptsEmbeddedInAssembly(assembly, scriptFilter);
+
+                var upgrader = engineBuilder
+                    .JournalToPostgresqlTable("public", "schemaversions")
+                    .WithTransactionPerScript()
+                    .LogTo(logger)
+                    .Build();
+
+                var result = upgrader.PerformUpgrade();
+
+                if (!result.Successful)
+                {
+                    throw new InvalidOperationException("Database migration failed.", result.Error);
+                }
+
+                foreach (var script in result.Scripts)
+                {
+                    logger.LogInformation("Migration script {Script} applied", script.Name);
+                }
+
+                break;
+            }
+            catch (Exception ex) when (i < maxRetries - 1)
+            {
+                logger.LogWarning(ex, "Database migration attempt {Attempt} failed, retrying in 1s...", i + 1);
+                System.Threading.Thread.Sleep(1000);
+            }
         }
     }
 }

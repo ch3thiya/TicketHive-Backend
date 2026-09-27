@@ -38,13 +38,22 @@ public class InternalShowsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> InitializeStock(Guid showId, [FromBody] InitializeStockRequest request)
     {
-        if (!_environment.IsDevelopment())
+        var isDevelopmentPlaceholderRequest = _environment.IsDevelopment()
+            && HttpContext.Request.Headers.Authorization == "Bearer dev-internal-token";
+
+        var authResult = isDevelopmentPlaceholderRequest
+            ? AuthenticateResult.Success(new AuthenticationTicket(new System.Security.Claims.ClaimsPrincipal(), "Internal"))
+            : await HttpContext.AuthenticateAsync("Internal");
+        if (!authResult.Succeeded)
         {
-            var authResult = await HttpContext.AuthenticateAsync("Internal");
-            if (!authResult.Succeeded)
-            {
-                return Unauthorized();
-            }
+            return Unauthorized();
+        }
+
+        var scopeClaim = authResult.Principal?.FindFirst("scope")?.Value;
+        if (!isDevelopmentPlaceholderRequest
+            && (scopeClaim == null || !scopeClaim.Split(' ').Contains("inventory:write")))
+        {
+            return Forbid();
         }
 
         try

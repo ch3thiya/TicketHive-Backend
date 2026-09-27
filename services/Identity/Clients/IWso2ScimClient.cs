@@ -8,4 +8,5 @@ public interface IWso2ScimClient
     Task UpdateApprovalStatusAsync(string wso2UserId, string newStatus);
     Task DeleteUserAsync(string wso2UserId);
     Task AssignUserToGroupAsync(string wso2UserId, string username, string groupName);
+    Task<bool> UserExistsInAsgardeoAsync(string wso2UserIdOrSub);
 }

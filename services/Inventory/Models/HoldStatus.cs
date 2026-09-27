@@ -4,5 +4,7 @@ public enum HoldStatus
 {
     Active,
     Expired,
-    Converted
+    Converted,
+    PaymentPending,
+    Cancelled
 }
