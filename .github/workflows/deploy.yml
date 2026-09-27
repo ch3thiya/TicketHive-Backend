@@ -1,10 +1,17 @@
 name: Deploy
 
-# Only dev deploys. main is for release tags and deploys nothing, so the two
-# branches can never overwrite each other's revision.
+# Continuous deployment: merging dev into main releases into Azure.
+#
+# Nothing is built here. delivery.yml already built and pushed an image for
+# each service, tagged with the dev commit. A merge commit's second parent IS
+# that dev commit, so this workflow promotes the exact image CI tested rather
+# than rebuilding from the same source and hoping it matches.
+#
+# This requires main to be updated by a merge commit, never a squash or a
+# direct push (ADR-016 already requires merge commits).
 on:
   push:
-    branches: [dev]
+    branches: [main]
   workflow_dispatch:
     inputs:
       service:
@@ -13,27 +20,34 @@ on:
         default: all
         type: choice
         options: [all, identity, catalog, inventory, waitingroom, booking, payment, notification]
+      image_tag:
+        description: 'Image tag to promote (a dev commit SHA, or dev-latest)'
+        required: false
+        default: dev-latest
 
 permissions:
-  id-token: write      # required for federated login to Azure
+  id-token: write
   contents: read
 
 jobs:
-  changes:
+  plan:
     runs-on: ubuntu-latest
     outputs:
       services: ${{ steps.detect.outputs.services }}
       any: ${{ steps.detect.outputs.any }}
+      tag: ${{ steps.detect.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          fetch-depth: 0     # both parents of the merge commit must be present
 
       - id: detect
         run: |
+          set -euo pipefail
           all='["identity","catalog","inventory","waitingroom","booking","payment","notification"]'
 
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ inputs.image_tag }}" >> "$GITHUB_OUTPUT"
             if [ "${{ inputs.service }}" = "all" ]; then
               echo "services=$all" >> "$GITHUB_OUTPUT"
             else
@@ -43,10 +57,19 @@ jobs:
             exit 0
           fi
 
-          changed="$(git diff --name-only HEAD~1 HEAD)"
-          echo "changed files:"; echo "$changed"
+          # The dev commit this merge brought in. Its image was built by
+          # delivery.yml and tested by CI.
+          if ! dev_sha="$(git rev-parse --verify --quiet HEAD^2)"; then
+            echo "::error::main was not updated by a merge commit, so there is no delivered image to promote. Merge dev into main with a merge commit."
+            exit 1
+          fi
+          echo "promoting images built from dev commit ${dev_sha}"
+          echo "tag=${dev_sha}" >> "$GITHUB_OUTPUT"
 
-          # Shared code, the solution file or the workflow itself: deploy everything.
+          # Everything that accumulated on dev since the last release.
+          changed="$(git diff --name-only HEAD~1 HEAD)"
+          echo "changed since the last release:"; echo "$changed"
+
           if grep -qE '^services/BuildingBlocks/|^TicketHive\.slnx$|^\.github/workflows/deploy\.yml$' <<<"$changed"; then
             echo "services=$all" >> "$GITHUB_OUTPUT"
             echo "any=true" >> "$GITHUB_OUTPUT"
@@ -67,38 +90,26 @@ jobs:
           fi
 
   deploy:
-    needs: changes
-    if: needs.changes.outputs.any == 'true'
+    needs: plan
+    if: needs.plan.outputs.any == 'true'
     runs-on: ubuntu-latest
     strategy:
-      fail-fast: false          # one service failing must not block the others
-      max-parallel: 2           # the student subscription throttles above this
+      fail-fast: false
+      max-parallel: 4
       matrix:
-        service: ${{ fromJson(needs.changes.outputs.services) }}
+        service: ${{ fromJson(needs.plan.outputs.services) }}
 
     concurrency:
       group: deploy-${{ matrix.service }}
       cancel-in-progress: false
 
     steps:
-      - uses: actions/checkout@v4
-
       - name: Resolve names
         id: names
         run: |
-          case "${{ matrix.service }}" in
-            waitingroom) folder=WaitingRoom ;;
-            identity) folder=Identity ;;
-            catalog) folder=Catalog ;;
-            inventory) folder=Inventory ;;
-            booking) folder=Booking ;;
-            payment) folder=Payment ;;
-            notification) folder=Notification ;;
-          esac
-          echo "folder=$folder" >> "$GITHUB_OUTPUT"
           echo "app=tickethive-${{ matrix.service }}" >> "$GITHUB_OUTPUT"
           echo "job=tickethive-${{ matrix.service }}-migrate" >> "$GITHUB_OUTPUT"
-          echo "image=${{ vars.ACR_LOGIN_SERVER }}/tickethive-${{ matrix.service }}:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          echo "image=${{ vars.ACR_LOGIN_SERVER }}/tickethive-${{ matrix.service }}:${{ needs.plan.outputs.tag }}" >> "$GITHUB_OUTPUT"
 
       - name: Sign in to Azure
         uses: azure/login@v2
@@ -107,20 +118,20 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
-      # Built in ACR rather than on the runner: no registry password needed,
-      # and the image never leaves Azure.
-      - name: Build and push image
+      # Fail here rather than halfway through a deploy if delivery never ran
+      # for this service, or its image has been cleaned up.
+      - name: Confirm the image exists
         run: |
           set -euo pipefail
           login_server="${{ vars.ACR_LOGIN_SERVER }}"
-          az acr login --name "${login_server%%.*}"
-          docker build \
-            -f "services/${{ steps.names.outputs.folder }}/Dockerfile" \
-            -t "${{ steps.names.outputs.image }}" \
-            -t "${login_server}/tickethive-${{ matrix.service }}:latest" \
-            .
-          docker push "${{ steps.names.outputs.image }}"
-          docker push "${login_server}/tickethive-${{ matrix.service }}:latest"
+          if ! az acr repository show-tags \
+                --name "${login_server%%.*}" \
+                --repository "tickethive-${{ matrix.service }}" \
+                --query "[?@=='${{ needs.plan.outputs.tag }}'] | [0]" -o tsv | grep -q .; then
+            echo "::error::${{ steps.names.outputs.image }} is not in the registry. Did delivery.yml run for this service on dev?"
+            exit 1
+          fi
+          echo "promoting ${{ steps.names.outputs.image }}"
 
       # Migrations run before the new code does. A failure here stops the
       # deploy, so the old revision keeps serving.
@@ -147,8 +158,8 @@ jobs:
               Failed|Degraded)
                 echo "::error::migration job $status"
                 az containerapp job logs show -g "${{ vars.AZURE_RESOURCE_GROUP }}" \
-                  -n "${{ steps.names.outputs.job }}" --container "${{ steps.names.outputs.job }}" \
-                  --tail 50 || true
+                  -n "${{ steps.names.outputs.job }}" \
+                  --container "${{ steps.names.outputs.job }}" --tail 50 || true
                 exit 1 ;;
             esac
             sleep 10
@@ -162,8 +173,8 @@ jobs:
             -n "${{ steps.names.outputs.app }}" \
             --image "${{ steps.names.outputs.image }}" -o none
 
-      # A new revision that never becomes healthy is a failed deploy, even
-      # though the update command itself succeeds.
+      # The update command succeeding is not the same as the new revision
+      # working, so the deploy is only green once the service answers.
       - name: Verify the new revision
         run: |
           set -euo pipefail
@@ -181,10 +192,6 @@ jobs:
               Running|RunningAtMaxScale) echo "revision healthy"; break ;;
               Failed|Degraded) echo "::error::revision $state"; exit 1 ;;
             esac
-            if [ "$i" -eq 30 ]; then
-              # Scaled to zero with no traffic is expected, not a failure.
-              echo "revision is not running yet (min-replicas is 0); checking the endpoint instead"
-            fi
             sleep 10
           done
 
@@ -195,18 +202,20 @@ jobs:
           for i in $(seq 1 10); do
             code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "https://${fqdn}/health/ready" || echo 000)"
             echo "  health/ready -> $code"
-            [ "$code" = "200" ] && { echo "deployed: https://${fqdn}"; exit 0; }
+            [ "$code" = "200" ] && { echo "released: https://${fqdn}"; exit 0; }
             sleep 15
           done
           echo "::error::${{ steps.names.outputs.app }} did not report ready"
           exit 1
 
   summary:
-    needs: [changes, deploy]
-    if: always() && needs.changes.outputs.any == 'true'
+    needs: [plan, deploy]
+    if: always() && needs.plan.outputs.any == 'true'
     runs-on: ubuntu-latest
     steps:
       - run: |
-          echo "### Deploy: ${{ needs.deploy.result }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "Services: ${{ needs.changes.outputs.services }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "Image tag: ${{ github.sha }}" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "### Release: ${{ needs.deploy.result }}"
+            echo "Services: ${{ needs.plan.outputs.services }}"
+            echo "Promoted image tag: ${{ needs.plan.outputs.tag }}"
+          } >> "$GITHUB_STEP_SUMMARY"

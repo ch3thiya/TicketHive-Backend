@@ -1,0 +1,118 @@
+name: Delivery
+
+# Continuous delivery: every merge to dev produces a tested, pushed image that
+# is ready to deploy. Nothing in Azure changes here - promoting an image into
+# the environment is deploy.yml's job, and that runs on main.
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+permissions:
+  id-token: write      # federated login to Azure, for the registry push
+  contents: read
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      services: ${{ steps.detect.outputs.services }}
+      any: ${{ steps.detect.outputs.any }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - id: detect
+        run: |
+          all='["identity","catalog","inventory","waitingroom","booking","payment","notification"]'
+          changed="$(git diff --name-only HEAD~1 HEAD)"
+          echo "changed files:"; echo "$changed"
+
+          if grep -qE '^services/BuildingBlocks/|^TicketHive\.slnx$|^\.github/workflows/delivery\.yml$' <<<"$changed"; then
+            echo "services=$all" >> "$GITHUB_OUTPUT"
+            echo "any=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          list=()
+          for svc in Identity Catalog Inventory WaitingRoom Booking Payment Notification; do
+            grep -q "^services/${svc}/" <<<"$changed" && \
+              list+=("\"$(echo "$svc" | tr '[:upper:]' '[:lower:]')\"")
+          done
+
+          if [ ${#list[@]} -eq 0 ]; then
+            echo "services=[]" >> "$GITHUB_OUTPUT"; echo "any=false" >> "$GITHUB_OUTPUT"
+          else
+            printf -v joined '%s,' "${list[@]}"
+            echo "services=[${joined%,}]" >> "$GITHUB_OUTPUT"; echo "any=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  publish:
+    needs: changes
+    if: needs.changes.outputs.any == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        service: ${{ fromJson(needs.changes.outputs.services) }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve names
+        id: names
+        run: |
+          case "${{ matrix.service }}" in
+            waitingroom) folder=WaitingRoom ;;
+            identity) folder=Identity ;;
+            catalog) folder=Catalog ;;
+            inventory) folder=Inventory ;;
+            booking) folder=Booking ;;
+            payment) folder=Payment ;;
+            notification) folder=Notification ;;
+          esac
+          echo "folder=$folder" >> "$GITHUB_OUTPUT"
+
+      - name: Sign in to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # Tagged with the dev commit so a deployed image can always be traced
+      # back to the commit it was built from, and with dev-latest so a human
+      # can find the newest candidate without looking up a SHA.
+      - name: Build and push the candidate image
+        run: |
+          set -euo pipefail
+          login_server="${{ vars.ACR_LOGIN_SERVER }}"
+          az acr login --name "${login_server%%.*}"
+
+          sha_tag="${login_server}/tickethive-${{ matrix.service }}:${{ github.sha }}"
+          dev_tag="${login_server}/tickethive-${{ matrix.service }}:dev-latest"
+
+          docker build \
+            -f "services/${{ steps.names.outputs.folder }}/Dockerfile" \
+            -t "$sha_tag" -t "$dev_tag" .
+
+          docker push "$sha_tag"
+          docker push "$dev_tag"
+
+          echo "published $sha_tag" >> "$GITHUB_STEP_SUMMARY"
+
+  summary:
+    needs: [changes, publish]
+    if: always() && needs.changes.outputs.any == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          {
+            echo "### Delivery: ${{ needs.publish.result }}"
+            echo "Services: ${{ needs.changes.outputs.services }}"
+            echo "Commit: ${{ github.sha }}"
+            echo ""
+            echo "These images are ready to deploy. Merge dev into main to release them."
+          } >> "$GITHUB_STEP_SUMMARY"
