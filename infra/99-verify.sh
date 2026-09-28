@@ -100,7 +100,7 @@ else
   [[ "${secrets:-0}" -ge 23 ]] && ok "key vault secrets: $secrets" || bad "key vault secrets: ${secrets:-0} (expected 23 or more)"
 
   creds="$(az identity federated-credential list --identity-name tickethive-github-mi -g "$RG" --query "length(@)" -o tsv 2>/dev/null)"
-  [[ "${creds:-0}" == "4" ]] && ok "github federated credentials: 4" || bad "github federated credentials: ${creds:-0} (expected 4)"
+  [[ "${creds:-0}" == "8" ]] && ok "github federated credentials: 8" || bad "github federated credentials: ${creds:-0} (expected 8)"
 
   # --------------------------------------------------------------- phase 4 --
   head "Phase 4 - Kafka broker"
