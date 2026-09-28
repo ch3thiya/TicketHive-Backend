@@ -1,0 +1,12 @@
+# PayHere, EmailJS, WSO2 and RSA credentials committed 2026-09-20 and removed in
+# fix/remove-committed-secrets. All rotated; the current tree holds none of them.
+# These entries acknowledge the historical commits so a future red `secrets` job means something new.
+21531a98fefedbb0c0e5b6e2841dee59ff228727:services/Payment/appsettings.json:generic-api-key:21
+454286f8ec443e9cd3d66468b8d8d092b04dd121:.env.example:generic-api-key:16
+646a288de9f9b88cfde05fb4b67cc91b8af4602b:services/Notification/appsettings.json:generic-api-key:20
+652b7d75601c1023169ba3a0154e1994066cdc47:services/Booking/appsettings.json:generic-api-key:21
+652b7d75601c1023169ba3a0154e1994066cdc47:services/Payment/appsettings.json:generic-api-key:21
+652b7d75601c1023169ba3a0154e1994066cdc47:services/Payment/appsettings.json:generic-api-key:23
+99e5964f14db803449e93d783c29e2ba39d4a65f:services/Notification/appsettings.Development.json:generic-api-key:20
+e13923395921f7d2cc0eb15b5cb7391f0ddab78d:services/Booking/appsettings.json:generic-api-key:21
+f388e9ab6a03d2796a1cddf52e0579c192ab136a:services/WaitingRoom/appsettings.json:private-key:41
