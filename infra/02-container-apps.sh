@@ -183,6 +183,9 @@ for svc in "${SERVICES[@]}"; do
       --set-env-vars "${ENVVARS[@]}" \
       --cpu "$CPU" --memory "$MEMORY" \
       --min-replicas 0 --max-replicas "$MAX_REPLICAS" -o none
+    # Backends are reachable only inside the environment; the gateway is the
+    # single public entry. Re-asserted on every run so drift is corrected.
+    az containerapp ingress update -g "$RG" -n "$app" --type internal -o none
     note "updated: $app"
   else
     az containerapp create -g "$RG" -n "$app" \
@@ -192,7 +195,7 @@ for svc in "${SERVICES[@]}"; do
       --registry-server "$ACR_SERVER" --registry-identity "$MI_ID" \
       --secrets "${SECRETS[@]}" \
       --env-vars "${ENVVARS[@]}" \
-      --ingress external --target-port 8080 \
+      --ingress internal --target-port 8080 \
       --cpu "$CPU" --memory "$MEMORY" \
       --min-replicas 0 --max-replicas "$MAX_REPLICAS" -o none
     note "created: $app"
