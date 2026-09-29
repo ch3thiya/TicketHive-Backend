@@ -9,6 +9,9 @@
   <Folder Name="/services/Catalog/">
     <Project Path="services/Catalog/Catalog.Service.csproj" />
   </Folder>
+  <Folder Name="/services/Gateway/">
+    <Project Path="services/Gateway/Gateway.csproj" />
+  </Folder>
   <Folder Name="/services/Identity/">
     <Project Path="services/Identity/Identity.Service.csproj" />
   </Folder>
