@@ -10,3 +10,4 @@
 99e5964f14db803449e93d783c29e2ba39d4a65f:services/Notification/appsettings.Development.json:generic-api-key:20
 e13923395921f7d2cc0eb15b5cb7391f0ddab78d:services/Booking/appsettings.json:generic-api-key:21
 f388e9ab6a03d2796a1cddf52e0579c192ab136a:services/WaitingRoom/appsettings.json:private-key:41
+7bbddccea498b2afeaacaaa465d57fafa1890a8e:services/Identity/appsettings.json:generic-api-key:17
