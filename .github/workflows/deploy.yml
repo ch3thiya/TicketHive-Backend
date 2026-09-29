@@ -183,34 +183,46 @@ jobs:
       - name: Verify the new revision
         run: |
           set -euo pipefail
-          revision="$(az containerapp show -g "${{ vars.AZURE_RESOURCE_GROUP }}" \
-            -n "${{ steps.names.outputs.app }}" \
+          app="${{ steps.names.outputs.app }}"
+          rg="${{ vars.AZURE_RESOURCE_GROUP }}"
+          revision="$(az containerapp show -g "$rg" -n "$app" \
             --query properties.latestRevisionName -o tsv)"
           echo "revision: $revision"
 
+          # Only the gateway is public. Backends use internal ingress, which
+          # the runner cannot reach, so for them the revision state is the
+          # check. ScaledToZero is accepted: with min-replicas 0 an idle
+          # revision is healthy but not running, and provisioning has
+          # to have finished for it to be reported at all.
           for i in $(seq 1 30); do
-            state="$(az containerapp revision show -g "${{ vars.AZURE_RESOURCE_GROUP }}" \
-              --name "${{ steps.names.outputs.app }}" --revision "$revision" \
-              --query properties.runningState -o tsv 2>/dev/null || echo Unknown)"
-            echo "  [$i] $state"
-            case "$state" in
-              Running|RunningAtMaxScale) echo "revision healthy"; break ;;
-              Failed|Degraded) echo "::error::revision $state"; exit 1 ;;
+            read -r prov state < <(az containerapp revision show -g "$rg" \
+              --name "$app" --revision "$revision" \
+              --query "[properties.provisioningState, properties.runningState]" -o tsv 2>/dev/null \
+              || echo "Unknown Unknown")
+            echo "  [$i] provisioning=$prov state=$state"
+            case "$prov/$state" in
+              */Failed|*/Degraded|Failed/*) echo "::error::revision $prov/$state"; exit 1 ;;
+              Provisioned/Running|Provisioned/RunningAtMaxScale|Provisioned/ScaledToZero)
+                echo "revision healthy"; break ;;
             esac
             sleep 10
           done
 
-          fqdn="$(az containerapp show -g "${{ vars.AZURE_RESOURCE_GROUP }}" \
-            -n "${{ steps.names.outputs.app }}" \
-            --query properties.configuration.ingress.fqdn -o tsv)"
+          if [ "${{ matrix.service }}" != "gateway" ]; then
+            [ "$prov" = "Provisioned" ] || { echo "::error::$app did not finish provisioning"; exit 1; }
+            echo "released: $app (internal ingress, not probed from the runner)"
+            exit 0
+          fi
 
+          fqdn="$(az containerapp show -g "$rg" -n "$app" \
+            --query properties.configuration.ingress.fqdn -o tsv)"
           for i in $(seq 1 10); do
             code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "https://${fqdn}/health/ready" || echo 000)"
             echo "  health/ready -> $code"
             [ "$code" = "200" ] && { echo "released: https://${fqdn}"; exit 0; }
             sleep 15
           done
-          echo "::error::${{ steps.names.outputs.app }} did not report ready"
+          echo "::error::$app did not report ready"
           exit 1
 
   summary:
