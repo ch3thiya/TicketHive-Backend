@@ -13,10 +13,11 @@ RG="TicketHive-RG"
 PG="tickethive-pg"
 VM="tickethive-kafka"
 
-# Services that must actually be running to behave correctly: the hold expiry
-# sweeper, the queue admission scheduler and the Kafka consumers.
+# Apps that must actually be running to behave correctly: the hold expiry
+# sweeper, the queue admission scheduler, the Kafka consumers, and the
+# gateway, so PayHere's callback and the demo never wait on a cold start.
 ALWAYS_ON=(tickethive-inventory tickethive-waitingroom tickethive-booking \
-           tickethive-payment tickethive-notification)
+           tickethive-payment tickethive-notification tickethive-gateway)
 
 WITH_UI=false
 [[ "${1:-}" == "--with-ui" ]] && WITH_UI=true
