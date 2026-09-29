@@ -282,6 +282,8 @@ Secrets still to add, from your .env — values never go in the repo:
   az keyvault secret set --vault-name ${KV} -n wso2-admin-password     --value '...'
   az keyvault secret set --vault-name ${KV} -n wso2-m2m-client-id      --value '...'
   az keyvault secret set --vault-name ${KV} -n wso2-m2m-client-secret  --value '...'
+  az keyvault secret set --vault-name ${KV} -n wso2-internal-client-id     --value '...'
+  az keyvault secret set --vault-name ${KV} -n wso2-internal-client-secret --value '...'
   az keyvault secret set --vault-name ${KV} -n payhere-merchant-id     --value '...'
   az keyvault secret set --vault-name ${KV} -n payhere-merchant-secret --value '...'
   az keyvault secret set --vault-name ${KV} -n payhere-app-id          --value '...'

@@ -43,11 +43,15 @@ builder.Services.AddScoped<ITicketService, TicketService>();
 builder.Services.AddScoped<IOrderService, OrderService>();
 builder.Services.AddHostedService<PaymentEventListener>();
 
+// Inventory's internal hold endpoints require a client-credentials token with
+// inventory:write, so the Inventory client attaches one on every call.
+builder.Services.AddInternalServiceTokenClient(builder.Configuration);
 var inventoryBaseUrl = builder.Configuration["InventoryService:BaseUrl"] ?? "http://localhost:5219/";
 builder.Services.AddHttpClient<IInventoryClient, InventoryClient>(client =>
 {
     client.BaseAddress = new Uri(inventoryBaseUrl);
-});
+})
+.AddHttpMessageHandler<InternalServiceAuthenticationHandler>();
 
 var allowedFrontendOrigins = builder.Configuration["Cors:AllowedOrigins"]?
     .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
