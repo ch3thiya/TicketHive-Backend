@@ -133,6 +133,18 @@ else
     bad "gateway app does not exist"
   fi
 
+  for svc in identity catalog inventory waitingroom booking payment notification; do
+    ext="$(az containerapp show -g "$RG" -n "tickethive-$svc" \
+      --query properties.configuration.ingress.external -o tsv 2>/dev/null)"
+    if [[ -z "$ext" ]]; then
+      bad "$svc app not found"
+    elif [[ "$ext" == "false" ]]; then
+      ok "$svc ingress is internal"
+    else
+      bad "$svc ingress is public - only the gateway may be"
+    fi
+  done
+
   head "Cost check - anything running right now"
   pg="$(az postgres flexible-server show -g "$RG" -n tickethive-pg --query state -o tsv 2>/dev/null)"
   vm="$(az vm get-instance-view -g "$RG" -n tickethive-kafka \
