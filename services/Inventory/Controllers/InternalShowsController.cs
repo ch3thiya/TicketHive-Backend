@@ -12,6 +12,7 @@ using Inventory.Service.Services;
 namespace Inventory.Service.Controllers;
 
 [ApiController]
+[Authorize(Policy = "InternalService")]
 [Route("internal/inventory/shows")]
 public class InternalShowsController : ControllerBase
 {
