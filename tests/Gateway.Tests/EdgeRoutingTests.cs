@@ -56,6 +56,14 @@ public class EdgeRoutingTests : IClassFixture<GatewayFactory>
     }
 
     [Fact]
+    public async Task My_events_route_requires_token()
+    {
+        var response = await _client.GetAsync("/api/catalog/events/my-events");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
     public async Task Payment_notify_callback_is_forwarded_without_token()
     {
         var response = await _client.PostAsync("/api/payment/notify", new FormUrlEncodedContent([]));
