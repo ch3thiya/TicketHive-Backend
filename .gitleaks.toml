@@ -7,3 +7,7 @@ useDefault = true
 paths = [
   '''services/Inventory/appsettings\.json''',
 ]
+# EmailJS PublicKey: public by design (embedded in browser JavaScript).
+regexes = [
+  '''^GIdFy8NxO7KvvVrEq$''',
+]

@@ -64,7 +64,8 @@ builder.Services.AddHttpClient<IOrganizerStatusClient, OrganizerStatusClient>((s
     {
         client.BaseAddress = new Uri(options.BaseUrl);
     }
-});
+})
+.AddHttpMessageHandler<InternalServiceAuthenticationHandler>();
 
 // Register the internal-token client (client-credentials M2M token, cached)
 // and the Inventory client that attaches it to outgoing calls. The standard

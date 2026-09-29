@@ -6,11 +6,12 @@ namespace Identity.Service.Controllers;
 
 public record OrganizerLookupResponse(Guid OrganizerId);
 
-// TODO: require an Asgardeo client-credentials (machine-to-machine) token once
-// feature/internal-service-auth lands. Left open in Development until then.
+// Service-to-service only: requires an Asgardeo client-credentials token whose
+// scope matches Wso2:InternalApi:RequiredScope (see the InternalService policy
+// in Program.cs). Development bypasses the policy, as in Catalog and Inventory.
 [ApiController]
 [Route("internal/identity/organizers")]
-[AllowAnonymous]
+[Authorize(Policy = "InternalService")]
 public class InternalOrganizersController : ControllerBase
 {
     private readonly IAccountRepository _repository;

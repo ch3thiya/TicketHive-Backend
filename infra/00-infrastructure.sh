@@ -46,6 +46,9 @@ MI_GITHUB="tickethive-github-mi"    # GitHub Actions: build and deploy
 
 BACKEND_REPO="ch3thiya/TicketHive-Backend"
 FRONTEND_REPO="ch3thiya/TicketHive-Frontend"
+# Immutable subjects (owner@ownerId/repo@repoId) that GitHub issues for new repos
+BACKEND_REPO_IMMUTABLE="ch3thiya@121000739/TicketHive-Backend@1340388630"
+FRONTEND_REPO_IMMUTABLE="ch3thiya@121000739/TicketHive-Frontend@1340388564"
 DEPLOY_BRANCH="dev"
 GH_ENVIRONMENT="azure-dev"
 
@@ -140,6 +143,10 @@ add_federated backend-branch  "repo:${BACKEND_REPO}:ref:refs/heads/${DEPLOY_BRAN
 add_federated backend-env     "repo:${BACKEND_REPO}:environment:${GH_ENVIRONMENT}"
 add_federated frontend-branch "repo:${FRONTEND_REPO}:ref:refs/heads/${DEPLOY_BRANCH}"
 add_federated frontend-env    "repo:${FRONTEND_REPO}:environment:${GH_ENVIRONMENT}"
+add_federated backend-dev-immutable  "repo:${BACKEND_REPO_IMMUTABLE}:ref:refs/heads/dev"
+add_federated backend-main           "repo:${BACKEND_REPO}:ref:refs/heads/main"
+add_federated backend-main-immutable "repo:${BACKEND_REPO_IMMUTABLE}:ref:refs/heads/main"
+add_federated frontend-dev-immutable "repo:${FRONTEND_REPO_IMMUTABLE}:ref:refs/heads/dev"
 
 say "Role assignments"
 assign() {  # $1 = principal id, $2 = role, $3 = scope
@@ -275,6 +282,8 @@ Secrets still to add, from your .env — values never go in the repo:
   az keyvault secret set --vault-name ${KV} -n wso2-admin-password     --value '...'
   az keyvault secret set --vault-name ${KV} -n wso2-m2m-client-id      --value '...'
   az keyvault secret set --vault-name ${KV} -n wso2-m2m-client-secret  --value '...'
+  az keyvault secret set --vault-name ${KV} -n wso2-internal-client-id     --value '...'
+  az keyvault secret set --vault-name ${KV} -n wso2-internal-client-secret --value '...'
   az keyvault secret set --vault-name ${KV} -n payhere-merchant-id     --value '...'
   az keyvault secret set --vault-name ${KV} -n payhere-merchant-secret --value '...'
   az keyvault secret set --vault-name ${KV} -n payhere-app-id          --value '...'
