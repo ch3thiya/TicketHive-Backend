@@ -9,6 +9,8 @@ internal static class ServiceAssemblies
 
     public static Assembly BuildingBlocks { get; }
 
+    public static Assembly Gateway { get; }
+
     static ServiceAssemblies()
     {
         var baseDirectory = AppContext.BaseDirectory;
@@ -19,5 +21,6 @@ internal static class ServiceAssemblies
             .ToList();
 
         BuildingBlocks = Assembly.LoadFrom(Path.Combine(baseDirectory, "BuildingBlocks.dll"));
+        Gateway = Assembly.LoadFrom(Path.Combine(baseDirectory, "Gateway.dll"));
     }
 }
