@@ -57,6 +57,8 @@ secret_args() {  # $1 = service
     "wso2-admin-pass=${KV_URI}/wso2-admin-password"
     "wso2-m2m-id=${KV_URI}/wso2-m2m-client-id"
     "wso2-m2m-secret=${KV_URI}/wso2-m2m-client-secret"
+    "wso2-int-id=${KV_URI}/wso2-internal-client-id"
+    "wso2-int-secret=${KV_URI}/wso2-internal-client-secret"
     "payhere-merchant-id=${KV_URI}/payhere-merchant-id"
     "payhere-merchant-secret=${KV_URI}/payhere-merchant-secret"
     "payhere-app-id=${KV_URI}/payhere-app-id"
@@ -101,8 +103,8 @@ service_env() {  # $1 = service
       printf '%s\n' \
         "Jwt__Authority=${JWT_AUTHORITY}" "Jwt__Audience=${JWT_AUDIENCE}" \
         "Wso2__InternalApi__TokenEndpoint=${WSO2_TOKEN}" \
-        "Wso2__InternalApi__ClientId=secretref:wso2-m2m-id" \
-        "Wso2__InternalApi__ClientSecret=secretref:wso2-m2m-secret" \
+        "Wso2__InternalApi__ClientId=secretref:wso2-int-id" \
+        "Wso2__InternalApi__ClientSecret=secretref:wso2-int-secret" \
         "Wso2__InternalApi__Scope=inventory:write identity:read" \
         "Wso2__InternalApi__RequiredScope=catalog:read"
       ;;
@@ -125,14 +127,18 @@ service_env() {  # $1 = service
         "AdmissionToken__ExpiryMinutes=15" \
         "AdmissionToken__PrivateKeyPem=secretref:admission-private" \
         "Wso2__InternalApi__TokenEndpoint=${WSO2_TOKEN}" \
-        "Wso2__InternalApi__ClientId=secretref:wso2-m2m-id" \
-        "Wso2__InternalApi__ClientSecret=secretref:wso2-m2m-secret" \
+        "Wso2__InternalApi__ClientId=secretref:wso2-int-id" \
+        "Wso2__InternalApi__ClientSecret=secretref:wso2-int-secret" \
         "Wso2__InternalApi__Scope=catalog:read"
       ;;
     booking)
       printf '%s\n' \
         "Jwt__Authority=${JWT_AUTHORITY}" "Jwt__Audience=${JWT_AUDIENCE}" \
         "Kafka__BootstrapServers=${KAFKA}" \
+        "Wso2__InternalApi__TokenEndpoint=${WSO2_TOKEN}" \
+        "Wso2__InternalApi__ClientId=secretref:wso2-int-id" \
+        "Wso2__InternalApi__ClientSecret=secretref:wso2-int-secret" \
+        "Wso2__InternalApi__Scope=inventory:write" \
         "PayHere__MerchantId=secretref:payhere-merchant-id" \
         "PayHere__MerchantSecret=secretref:payhere-merchant-secret"
       ;;
