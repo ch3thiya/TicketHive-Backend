@@ -9,9 +9,11 @@
 # current image is preserved.
 #
 # Decisions:
-#   - Ingress is EXTERNAL in Sprint 3 so each service can be smoke-tested and
-#     QA can reach it. Phase 6 switches every backend app to internal once the
-#     gateway is the only public entry point.
+#   - Backend ingress stays EXTERNAL until the Phase 6 cutover so each service
+#     can be smoke-tested and QA can reach it. Phase 6 switches every backend
+#     app to internal once the gateway is the only public entry point.
+#   - The gateway (tickethive-gateway) is external and holds no secrets: it
+#     only validates tokens and forwards to the backend addresses.
 #   - min-replicas 0 everywhere: pinning five services at one replica costs
 #     more than the whole student credit. infra/10-start.sh pins them for a
 #     work or demo session.
@@ -32,6 +34,10 @@ MEMORY="0.5Gi"
 MAX_REPLICAS="2"
 
 SERVICES=(identity catalog inventory waitingroom booking payment notification)
+
+# Browser origins the gateway answers CORS for. Phase 6 sets this to the
+# Static Web App address.
+FRONTEND_ORIGINS="${FRONTEND_ORIGINS:-http://localhost:5173}"
 
 say()  { printf '\n\033[1m==> %s\033[0m\n' "$1"; }
 note() { printf '    %s\n' "$1"; }
@@ -217,6 +223,48 @@ az containerapp update -g "$RG" -n tickethive-booking --set-env-vars \
   "Services__Inventory__BaseUrl=${URL[inventory]}" \
   "Services__Payment__BaseUrl=${URL[payment]}" -o none
 
+# ------------------------------------------------------------------ gateway --
+# Not in SERVICES: it has no database, no connection-string secret and no
+# migration job. Done after "Service addresses" because it routes to URL[...].
+say "Gateway"
+GATEWAY_APP="tickethive-gateway"
+GATEWAY_ENV=(
+  "Jwt__Authority=${JWT_AUTHORITY}" "Jwt__Audience=${JWT_AUDIENCE}"
+  "Cors__AllowedOrigins=${FRONTEND_ORIGINS}"
+)
+for svc in identity catalog inventory waitingroom booking payment; do
+  GATEWAY_ENV+=("ReverseProxy__Clusters__${svc}__Destinations__primary__Address=${URL[$svc]}")
+done
+
+if az containerapp show -g "$RG" -n "$GATEWAY_APP" -o none 2>/dev/null; then
+  az containerapp update -g "$RG" -n "$GATEWAY_APP" \
+    --set-env-vars "${GATEWAY_ENV[@]}" \
+    --cpu "$CPU" --memory "$MEMORY" \
+    --min-replicas 0 --max-replicas "$MAX_REPLICAS" -o none
+  note "updated: $GATEWAY_APP"
+else
+  az containerapp create -g "$RG" -n "$GATEWAY_APP" \
+    --environment "$ENVIRONMENT" \
+    --image "$PLACEHOLDER" \
+    --user-assigned "$MI_ID" \
+    --registry-server "$ACR_SERVER" --registry-identity "$MI_ID" \
+    --env-vars "${GATEWAY_ENV[@]}" \
+    --ingress external --target-port 8080 \
+    --cpu "$CPU" --memory "$MEMORY" \
+    --min-replicas 0 --max-replicas "$MAX_REPLICAS" -o none
+  note "created: $GATEWAY_APP"
+fi
+
+GATEWAY_URL="https://$(az containerapp show -g "$RG" -n "$GATEWAY_APP" \
+  --query properties.configuration.ingress.fqdn -o tsv)"
+note "gateway: ${GATEWAY_URL}"
+
+# PayHere calls back through the gateway. Payment is the live checkout: the
+# frontend calls /api/payment/checkout, which builds notify_url from this.
+az containerapp update -g "$RG" -n tickethive-payment --set-env-vars \
+  "PayHere__NotifyUrl=${GATEWAY_URL}/api/payment/notify" -o none
+note "payment notify_url: ${GATEWAY_URL}/api/payment/notify"
+
 # --------------------------------------------------------- migration jobs --
 say "Migration jobs"
 for svc in "${SERVICES[@]}"; do
@@ -244,16 +292,25 @@ done
 say "Done"
 cat <<SUMMARY
 
-Seven apps and seven migration jobs exist, all on a placeholder image and
-scaled to zero. The first deploy from 'dev' replaces the images.
+Seven service apps, seven migration jobs and the gateway exist, all on a
+placeholder image and scaled to zero. The first deploy from 'dev' replaces
+the images.
 
-Public addresses (Sprint 3 only - Phase 6 makes these internal):
+Gateway (the public entry point):
+
+SUMMARY
+printf '  %-14s %s\n' "gateway" "$GATEWAY_URL"
+cat <<SUMMARY
+
+Backend addresses (Sprint 3 only - Phase 6 makes these internal):
 
 SUMMARY
 for svc in "${SERVICES[@]}"; do printf '  %-14s %s\n' "$svc" "${URL[$svc]}"; done
 cat <<'SUMMARY'
 
 Not set yet, and needed before the checkout path works end to end:
-  - Cors__AllowedOrigins on every service (Phase 6, once the frontend is up)
-  - PayHere__ReturnUrl / CancelUrl / NotifyUrl on Booking and Payment
+  - Cors__AllowedOrigins on every service, and FRONTEND_ORIGINS for the
+    gateway (Phase 6, once the frontend is up)
+  - PayHere__ReturnUrl / CancelUrl on Booking and Payment
+  - PayHere__NotifyUrl on Booking (Payment's points at the gateway)
 SUMMARY

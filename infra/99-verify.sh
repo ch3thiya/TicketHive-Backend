@@ -121,6 +121,18 @@ else
     bad "kafka vm does not exist"
   fi
 
+  # ----------------------------------------------------------- gateway --
+  head "Gateway"
+
+  if az containerapp show -g "$RG" -n tickethive-gateway >/dev/null 2>&1; then
+    ok "gateway app exists"
+    external="$(az containerapp show -g "$RG" -n tickethive-gateway \
+      --query properties.configuration.ingress.external -o tsv 2>/dev/null)"
+    [[ "$external" == "true" ]] && ok "gateway ingress is external" || bad "gateway ingress is not external"
+  else
+    bad "gateway app does not exist"
+  fi
+
   head "Cost check - anything running right now"
   pg="$(az postgres flexible-server show -g "$RG" -n tickethive-pg --query state -o tsv 2>/dev/null)"
   vm="$(az vm get-instance-view -g "$RG" -n tickethive-kafka \
