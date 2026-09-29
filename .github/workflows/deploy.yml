@@ -19,7 +19,7 @@ on:
         required: true
         default: all
         type: choice
-        options: [all, identity, catalog, inventory, waitingroom, booking, payment, notification]
+        options: [all, identity, catalog, inventory, waitingroom, booking, payment, notification, gateway]
       image_tag:
         description: 'Image tag to promote (a dev commit SHA, or dev-latest)'
         required: false
@@ -44,7 +44,7 @@ jobs:
       - id: detect
         run: |
           set -euo pipefail
-          all='["identity","catalog","inventory","waitingroom","booking","payment","notification"]'
+          all='["identity","catalog","inventory","waitingroom","booking","payment","notification","gateway"]'
 
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "tag=${{ inputs.image_tag }}" >> "$GITHUB_OUTPUT"
@@ -77,7 +77,7 @@ jobs:
           fi
 
           list=()
-          for svc in Identity Catalog Inventory WaitingRoom Booking Payment Notification; do
+          for svc in Identity Catalog Inventory WaitingRoom Booking Payment Notification Gateway; do
             grep -q "^services/${svc}/" <<<"$changed" && \
               list+=("\"$(echo "$svc" | tr '[:upper:]' '[:lower:]')\"")
           done
@@ -134,8 +134,10 @@ jobs:
           echo "promoting ${{ steps.names.outputs.image }}"
 
       # Migrations run before the new code does. A failure here stops the
-      # deploy, so the old revision keeps serving.
+      # deploy, so the old revision keeps serving. The gateway has no
+      # database and therefore no migration job, so it skips this step.
       - name: Run migrations
+        if: matrix.service != 'gateway'
         run: |
           set -euo pipefail
           az containerapp job update -g "${{ vars.AZURE_RESOURCE_GROUP }}" \

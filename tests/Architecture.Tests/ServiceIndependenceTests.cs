@@ -55,4 +55,40 @@ public class ServiceIndependenceTests
             "any service (ADR-015, ADR-020). Offending types: " +
             string.Join(", ", offendingTypes));
     }
+
+    [Fact]
+    public void Gateway_depends_on_no_service_assembly()
+    {
+        var serviceNames = ServiceAssemblies.All
+            .Select(assembly => assembly.GetName().Name!)
+            .ToArray();
+
+        var result = Types.InAssembly(ServiceAssemblies.Gateway)
+            .ShouldNot()
+            .HaveDependencyOnAny(serviceNames)
+            .GetResult();
+
+        var offendingTypes = result.FailingTypeNames ?? [];
+
+        Assert.True(result.IsSuccessful,
+            "The gateway only routes and guards requests, so it must not depend on any " +
+            "service (ADR-020). Offending types: " +
+            string.Join(", ", offendingTypes));
+    }
+
+    [Fact]
+    public void Gateway_references_no_service_assembly()
+    {
+        // Checked by reference as well as by type, because the test project only
+        // loads the service assemblies it references itself.
+        var serviceReferences = ServiceAssemblies.Gateway.GetReferencedAssemblies()
+            .Select(reference => reference.Name!)
+            .Where(name => name.EndsWith(".Service", StringComparison.Ordinal))
+            .ToList();
+
+        Assert.True(serviceReferences.Count == 0,
+            "The gateway may reference only BuildingBlocks and framework or YARP " +
+            "assemblies, never a service (ADR-020). Service references: " +
+            string.Join(", ", serviceReferences));
+    }
 }

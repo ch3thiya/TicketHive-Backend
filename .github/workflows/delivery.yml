@@ -13,7 +13,7 @@ on:
         required: true
         default: all
         type: choice
-        options: [all, identity, catalog, inventory, waitingroom, booking, payment, notification]
+        options: [all, identity, catalog, inventory, waitingroom, booking, payment, notification, gateway]
 
 permissions:
   id-token: write      # federated login to Azure, for the registry push
@@ -32,7 +32,7 @@ jobs:
 
       - id: detect
         run: |
-          all='["identity","catalog","inventory","waitingroom","booking","payment","notification"]'
+          all='["identity","catalog","inventory","waitingroom","booking","payment","notification","gateway"]'
 
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             if [ "${{ inputs.service }}" = "all" ]; then
@@ -54,7 +54,7 @@ jobs:
           fi
 
           list=()
-          for svc in Identity Catalog Inventory WaitingRoom Booking Payment Notification; do
+          for svc in Identity Catalog Inventory WaitingRoom Booking Payment Notification Gateway; do
             grep -q "^services/${svc}/" <<<"$changed" && \
               list+=("\"$(echo "$svc" | tr '[:upper:]' '[:lower:]')\"")
           done
@@ -90,6 +90,7 @@ jobs:
             booking) folder=Booking ;;
             payment) folder=Payment ;;
             notification) folder=Notification ;;
+            gateway) folder=Gateway ;;
           esac
           echo "folder=$folder" >> "$GITHUB_OUTPUT"
 

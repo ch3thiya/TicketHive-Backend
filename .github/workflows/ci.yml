@@ -121,7 +121,7 @@ jobs:
           changed="$(git diff --name-only "$base"...HEAD || git diff --name-only HEAD~1)"
           echo "changed files:"; echo "$changed"
 
-          all='["identity","catalog","inventory","waitingroom","booking","payment","notification"]'
+          all='["identity","catalog","inventory","waitingroom","booking","payment","notification","gateway"]'
 
           if grep -qE '^services/BuildingBlocks/|^TicketHive\.slnx$|^Directory\.' <<<"$changed"; then
             echo "services=$all" >> "$GITHUB_OUTPUT"
@@ -130,7 +130,7 @@ jobs:
           fi
 
           list=()
-          for svc in Identity Catalog Inventory WaitingRoom Booking Payment Notification; do
+          for svc in Identity Catalog Inventory WaitingRoom Booking Payment Notification Gateway; do
             if grep -q "^services/${svc}/" <<<"$changed"; then
               list+=("\"$(echo "$svc" | tr '[:upper:]' '[:lower:]')\"")
             fi
