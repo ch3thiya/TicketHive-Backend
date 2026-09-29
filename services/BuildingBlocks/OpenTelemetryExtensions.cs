@@ -50,7 +50,7 @@ internal static class OpenTelemetryExtensions
         {
             builder.Services.AddOpenTelemetry().UseOtlpExporter();
         }
-        
+
         // Application Insights: only when the connection string is present,
         // so local runs and tests are unaffected.
         var appInsights = builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"];
