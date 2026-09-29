@@ -94,7 +94,8 @@ service_env() {  # $1 = service
         "Wso2__AdminPassword=secretref:wso2-admin-pass" \
         "Wso2__M2mClientId=secretref:wso2-m2m-id" \
         "Wso2__M2mClientSecret=secretref:wso2-m2m-secret" \
-        "Wso2__CustomSchemaUrn=urn:scim:schemas:extension:tickethive:2.0:User"
+        "Wso2__CustomSchemaUrn=urn:scim:schemas:extension:tickethive:2.0:User" \
+        "Wso2__InternalApi__RequiredScope=identity:read"
       ;;
     catalog)
       printf '%s\n' \
@@ -102,7 +103,7 @@ service_env() {  # $1 = service
         "Wso2__InternalApi__TokenEndpoint=${WSO2_TOKEN}" \
         "Wso2__InternalApi__ClientId=secretref:wso2-m2m-id" \
         "Wso2__InternalApi__ClientSecret=secretref:wso2-m2m-secret" \
-        "Wso2__InternalApi__Scope=inventory:write" \
+        "Wso2__InternalApi__Scope=inventory:write identity:read" \
         "Wso2__InternalApi__RequiredScope=catalog:read"
       ;;
     inventory)
