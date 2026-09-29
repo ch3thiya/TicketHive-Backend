@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.IdentityModel.Tokens;
 using BuildingBlocks;
+using Gateway.Proxy;
+using Yarp.ReverseProxy.Transforms;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.AddServiceDefaults();
@@ -44,12 +46,32 @@ builder.Services.AddAuthorization(options =>
 // Routes and clusters live in the "ReverseProxy" config section so Azure can
 // override each destination with ReverseProxy__Clusters__<name>__Destinations__primary__Address.
 builder.Services.AddReverseProxy()
-    .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"));
+    .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"))
+    .AddTransforms(context => context.AddResponseTransform(UpstreamCorsHeaderRemover.RemoveAsync));
+
+// CORS is answered here for every path, including preflight requests,
+// which the middleware completes before authentication runs.
+const string FrontendCorsPolicy = "frontend";
+var allowedOrigins = builder.Configuration["Cors:AllowedOrigins"]?
+    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+    ?? [];
+
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy(FrontendCorsPolicy, policy =>
+    {
+        policy.WithOrigins(allowedOrigins)
+              .AllowAnyHeader()
+              .AllowAnyMethod()
+              .AllowCredentials();
+    });
+});
 
 var app = builder.Build();
 app.UseServiceDefaults();
 app.UseRouting();
 
+app.UseCors(FrontendCorsPolicy);
 app.UseAuthentication();
 app.UseAuthorization();
 
