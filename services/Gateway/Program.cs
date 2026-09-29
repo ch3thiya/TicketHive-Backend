@@ -1,5 +1,8 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using BuildingBlocks;
 using Gateway.Proxy;
@@ -67,11 +70,49 @@ builder.Services.AddCors(options =>
     });
 });
 
+// Container Apps ingress is the only hop in front of the gateway, so trust
+// exactly one X-Forwarded-For entry from it.
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.KnownIPNetworks.Clear();
+    options.KnownProxies.Clear();
+    options.ForwardLimit = 1;
+});
+
+builder.Services.AddOptions<ClientRateLimitOptions>()
+    .Bind(builder.Configuration.GetSection(ClientRateLimitOptions.SectionName))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
+builder.Services.AddRateLimiter(_ => { });
+builder.Services.AddOptions<RateLimiterOptions>()
+    .Configure<IOptions<ClientRateLimitOptions>>((options, clientLimits) =>
+    {
+        options.GlobalLimiter = ClientRateLimiter.Create(clientLimits.Value);
+        options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+        options.OnRejected = async (context, cancellationToken) =>
+        {
+            var httpContext = context.HttpContext;
+            httpContext.RequestServices.GetRequiredService<ILogger<Program>>()
+                .LogWarning("Rate limit rejected {Method} {Path}", httpContext.Request.Method, httpContext.Request.Path);
+
+            await httpContext.RequestServices.GetRequiredService<IProblemDetailsService>()
+                .TryWriteAsync(new ProblemDetailsContext
+                {
+                    HttpContext = httpContext,
+                    ProblemDetails = { Status = StatusCodes.Status429TooManyRequests, Title = "Too many requests" }
+                });
+        };
+    });
+
 var app = builder.Build();
+app.UseForwardedHeaders();
 app.UseServiceDefaults();
 app.UseRouting();
 
 app.UseCors(FrontendCorsPolicy);
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 
