@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Reflection;
+using System.Security.Claims;
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.Options;
@@ -97,9 +98,12 @@ builder.Services.AddHttpClient<IWso2ScimClient, Wso2ScimClient>((sp, client) =>
     return handler;
 });
 
+var requiredInternalScope = builder.Configuration["Wso2:InternalApi:RequiredScope"]
+    ?? throw new InvalidOperationException("Configuration 'Wso2:InternalApi:RequiredScope' is missing.");
+
 // Configure JWT Bearer Authentication pointing to WSO2 Identity Server
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
+    .AddJwtBearer(JwtBearerDefaults.AuthenticationScheme, options =>
     {
         options.Authority = builder.Configuration["Jwt:Authority"];
         options.Audience = builder.Configuration["Jwt:Audience"];
@@ -135,9 +139,76 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
             };
         }
+    })
+    .AddJwtBearer("Internal", options =>
+    {
+        // Asgardeo issues client-credentials tokens with `aud` set to the
+        // calling application's own client ID, not an API resource
+        // identifier, so audience validation is deliberately off here.
+        // Authorization instead comes from the `scope` claim, enforced by
+        // the InternalService policy below. Mirrors Catalog and Inventory.
+        options.Authority = builder.Configuration["Jwt:Authority"];
+        options.RequireHttpsMetadata = !builder.Environment.IsDevelopment();
+
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidIssuer = builder.Configuration["Jwt:Authority"],
+            ValidateAudience = false,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+        };
+
+        options.Events = new JwtBearerEvents
+        {
+            // Asgardeo carries scopes as one space-separated `scope` claim;
+            // split it so RequireClaim can match a single scope value.
+            OnTokenValidated = context =>
+            {
+                if (context.Principal?.Identity is ClaimsIdentity identity)
+                {
+                    var scopeClaim = context.Principal.FindFirst("scope")?.Value;
+                    if (!string.IsNullOrWhiteSpace(scopeClaim))
+                    {
+                        foreach (var scope in scopeClaim.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                        {
+                            identity.AddClaim(new Claim("scope", scope));
+                        }
+                    }
+                }
+
+                return Task.CompletedTask;
+            }
+        };
+
+        // Bypass SSL validation for JWKS key discovery during local development
+        if (builder.Environment.IsDevelopment())
+        {
+            options.BackchannelHttpHandler = new HttpClientHandler
+            {
+                ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
+            };
+        }
     });
 
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    // The `aut` claim is APPLICATION for Asgardeo service tokens; requiring it
+    // alongside the scope narrows this policy to machine-to-machine callers.
+    options.AddPolicy("InternalService", policy =>
+    {
+        if (builder.Environment.IsDevelopment())
+        {
+            policy.RequireAssertion(_ => true);
+        }
+        else
+        {
+            policy.AddAuthenticationSchemes("Internal")
+                .RequireClaim("scope", requiredInternalScope)
+                .RequireClaim("aut", "APPLICATION");
+        }
+    });
+});
 
 var app = builder.Build();
 app.UseServiceDefaults();
