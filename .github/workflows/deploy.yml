@@ -153,7 +153,7 @@ jobs:
               -g "${{ vars.AZURE_RESOURCE_GROUP }}" \
               -n "${{ steps.names.outputs.job }}" \
               --job-execution-name "$execution" \
-              --query properties.status -o tsv)"
+              --query properties.status -o tsv 2>/dev/null || echo Unknown)"
             echo "  [$i] $status"
             case "$status" in
               Succeeded) echo "migrations applied"; exit 0 ;;
@@ -177,6 +177,9 @@ jobs:
 
       # The update command succeeding is not the same as the new revision
       # working, so the deploy is only green once the service answers.
+      # Azure's control plane occasionally returns GatewayTimeout while a
+      # revision is activating; a failed poll is treated as "Unknown" and
+      # retried, because only the /health/ready result decides the outcome.
       - name: Verify the new revision
         run: |
           set -euo pipefail
@@ -188,7 +191,7 @@ jobs:
           for i in $(seq 1 30); do
             state="$(az containerapp revision show -g "${{ vars.AZURE_RESOURCE_GROUP }}" \
               --name "${{ steps.names.outputs.app }}" --revision "$revision" \
-              --query properties.runningState -o tsv)"
+              --query properties.runningState -o tsv 2>/dev/null || echo Unknown)"
             echo "  [$i] $state"
             case "$state" in
               Running|RunningAtMaxScale) echo "revision healthy"; break ;;
