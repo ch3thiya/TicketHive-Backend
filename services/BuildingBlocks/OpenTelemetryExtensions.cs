@@ -11,6 +11,7 @@ using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
+using Azure.Monitor.OpenTelemetry.AspNetCore;
 
 namespace BuildingBlocks;
 
@@ -48,6 +49,15 @@ internal static class OpenTelemetryExtensions
         if (!string.IsNullOrWhiteSpace(otlpEndpoint))
         {
             builder.Services.AddOpenTelemetry().UseOtlpExporter();
+        }
+        
+        // Application Insights: only when the connection string is present,
+        // so local runs and tests are unaffected.
+        var appInsights = builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"];
+        if (!string.IsNullOrWhiteSpace(appInsights))
+        {
+            builder.Services.AddOpenTelemetry()
+                .UseAzureMonitor(options => options.ConnectionString = appInsights);
         }
 
         return builder;
