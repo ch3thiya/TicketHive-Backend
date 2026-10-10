@@ -13,7 +13,8 @@ public enum OrganizerStatusChangeOutcome
     Changed,
     Unchanged,
     NotFound,
-    InvalidTransition
+    InvalidTransition,
+    InvalidReason
 }
 
 public static class OrganizerStatuses
