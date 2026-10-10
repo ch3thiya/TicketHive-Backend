@@ -244,4 +244,26 @@ public class OrganizerStatusClientTests
         Assert.Equal(OrganizerLookupStatus.Unavailable, second[id]);
         VerifyCalls(handler, 2);
     }
+
+    [Fact]
+    public async Task GetOrganizerStatusAsync_ResiliencePipelineTimeoutOrOpenCircuit_ReturnsUnavailable()
+    {
+        // Arrange: Polly's timeout and open-circuit exceptions are not HttpRequestException.
+        var handler = new Mock<HttpMessageHandler>();
+        handler
+            .Protected()
+            .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+            .ThrowsAsync(new TimeoutException("circuit open"));
+        var client = CreateClient(handler, new FakeTimeProvider());
+
+        // Act
+        var bySub = await client.GetOrganizerStatusAsync("sub-1");
+        var byId = await client.GetOrganizerStatusByIdAsync(Guid.NewGuid());
+        var batch = await client.GetOrganizerStatusesAsync([Guid.NewGuid()]);
+
+        // Assert
+        Assert.Equal(OrganizerLookupStatus.Unavailable, bySub.Status);
+        Assert.Equal(OrganizerLookupStatus.Unavailable, byId.Status);
+        Assert.Equal(OrganizerLookupStatus.Unavailable, Assert.Single(batch).Value);
+    }
 }

@@ -50,19 +50,12 @@ public class SalesEligibilityClient : ISalesEligibilityClient
                     ? SalesEligibilityStatus.OrganizerSuspended
                     : SalesEligibilityStatus.NotOnSale);
         }
-        catch (HttpRequestException ex)
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
+            // Covers network errors, timeouts, unreadable bodies and the resilience pipeline's own
+            // timeout and open-circuit exceptions, none of which derive from HttpRequestException.
+            // The caller must always get a refusal it can map to 503, never an unhandled exception.
             _logger.LogWarning(ex, "Catalog sales eligibility check for show {ShowId} failed", showId);
-            return new SalesEligibilityDecision(SalesEligibilityStatus.Unavailable);
-        }
-        catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
-        {
-            _logger.LogWarning(ex, "Catalog sales eligibility check for show {ShowId} timed out", showId);
-            return new SalesEligibilityDecision(SalesEligibilityStatus.Unavailable);
-        }
-        catch (System.Text.Json.JsonException ex)
-        {
-            _logger.LogWarning(ex, "Catalog returned an unreadable sales eligibility response for show {ShowId}", showId);
             return new SalesEligibilityDecision(SalesEligibilityStatus.Unavailable);
         }
     }

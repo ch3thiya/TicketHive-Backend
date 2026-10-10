@@ -148,4 +148,37 @@ public class SalesEligibilityClientTests
         // Assert
         handler.Protected().Verify("SendAsync", Times.Exactly(2), ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>());
     }
+
+    [Fact]
+    public async Task CheckAsync_ResiliencePipelineTimeoutOrOpenCircuit_FailsClosedAsUnavailable()
+    {
+        // Arrange: the resilience handler throws its own exception types (not HttpRequestException)
+        // when an attempt times out or the circuit is open.
+        var handler = new Mock<HttpMessageHandler>();
+        handler.Protected()
+            .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+            .ThrowsAsync(new TimeoutException("circuit open"));
+        var client = CreateClient(handler);
+
+        // Act
+        var decision = await client.CheckAsync(Guid.NewGuid());
+
+        // Assert
+        Assert.Equal(SalesEligibilityStatus.Unavailable, decision.Status);
+    }
+
+    [Fact]
+    public async Task CheckAsync_CallerCancels_StillPropagatesTheCancellation()
+    {
+        // Arrange
+        using var cts = new CancellationTokenSource();
+        var handler = new Mock<HttpMessageHandler>();
+        handler.Protected()
+            .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+            .Returns<HttpRequestMessage, CancellationToken>((_, token) => { cts.Cancel(); token.ThrowIfCancellationRequested(); return Task.FromResult(new HttpResponseMessage()); });
+        var client = CreateClient(handler);
+
+        // Act & Assert
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => client.CheckAsync(Guid.NewGuid(), cts.Token));
+    }
 }

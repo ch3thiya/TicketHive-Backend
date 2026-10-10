@@ -96,14 +96,10 @@ public class OrganizerStatusClient : IOrganizerStatusClient
             var body = await response.Content.ReadFromJsonAsync<List<OrganizerLookupResponseDto>>(cancellationToken);
             return body?.ToDictionary(b => b.OrganizerId, b => MapStatus(b.Status));
         }
-        catch (HttpRequestException ex)
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
+            // Includes the resilience pipeline's timeout and open-circuit exceptions.
             _logger.LogWarning(ex, "Identity organizer batch lookup failed");
-            return null;
-        }
-        catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
-        {
-            _logger.LogWarning(ex, "Identity organizer batch lookup timed out");
             return null;
         }
     }
@@ -135,14 +131,11 @@ public class OrganizerStatusClient : IOrganizerStatusClient
             var status = MapStatus(body.Status);
             return new OrganizerLookupResult(status, status == OrganizerLookupStatus.Unavailable ? null : body.OrganizerId);
         }
-        catch (HttpRequestException ex)
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
+            // Includes the resilience pipeline's timeout and open-circuit exceptions, which are
+            // not HttpRequestException. An outage is Unavailable, never NotFound or Active.
             _logger.LogWarning(ex, "Identity organizer lookup failed");
-            return new OrganizerLookupResult(OrganizerLookupStatus.Unavailable, null);
-        }
-        catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
-        {
-            _logger.LogWarning(ex, "Identity organizer lookup timed out");
             return new OrganizerLookupResult(OrganizerLookupStatus.Unavailable, null);
         }
     }
