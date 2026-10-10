@@ -56,4 +56,21 @@ public class SalesEligibilityService : ISalesEligibilityService
 
         return new SalesEligibilityResult(showId, outcome);
     }
+
+    public async Task<IReadOnlySet<Guid>> GetSuspendedOrganizerIdsAsync(IEnumerable<Guid> organizerIds, CancellationToken cancellationToken = default)
+    {
+        var ids = organizerIds.Distinct().ToList();
+        if (ids.Count == 0)
+        {
+            return new HashSet<Guid>();
+        }
+
+        var statuses = await _organizerStatusClient.GetOrganizerStatusesAsync(ids, cancellationToken);
+        if (statuses is null)
+        {
+            return new HashSet<Guid>();
+        }
+
+        return statuses.Where(s => s.Value == OrganizerLookupStatus.Suspended).Select(s => s.Key).ToHashSet();
+    }
 }
