@@ -222,4 +222,18 @@ public class CancellationTests(PostgresFixture fixture)
             Assert.True(stored is null || stored.Status == OrderStatus.Cancelled);
         }
     }
+
+    [Fact]
+    public async Task Notification_reconciliation_is_terminal_and_not_polled_again()
+    {
+        var (order, _) = await SeedAsync();
+        var repo = new CancellationRepository(Factory, TimeProvider.System);
+        await repo.CancelAsync(order.Id, "owner", DateTimeOffset.MaxValue, false);
+        await using var db = (NpgsqlConnection)await Factory.CreateConnectionAsync();
+        await using var finish = new NpgsqlCommand("UPDATE order_cancellations SET inventory_returned=true,refund_status='Simulated',notification_status='NeedsReconciliation' WHERE order_id=@id", db);
+        finish.Parameters.AddWithValue("id", order.Id);
+        await finish.ExecuteNonQueryAsync();
+
+        Assert.DoesNotContain(await repo.ReadyEmailsAsync(), email => email.OrderIds.Contains(order.Id));
+    }
 }

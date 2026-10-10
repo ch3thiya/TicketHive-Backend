@@ -43,4 +43,12 @@ public class CancellationEmailRepository(DbConnectionFactory factory, TimeProvid
         cmd.Parameters.AddWithValue("now", clock.GetUtcNow());
         await cmd.ExecuteNonQueryAsync();
     }
+
+    public async Task<string?> GetStatusAsync(string key)
+    {
+        await using var db = (NpgsqlConnection)await factory.CreateConnectionAsync();
+        await using var cmd = new NpgsqlCommand("SELECT status FROM cancellation_emails WHERE operation_key=@key", db);
+        cmd.Parameters.AddWithValue("key", key);
+        return await cmd.ExecuteScalarAsync() as string;
+    }
 }

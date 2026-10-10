@@ -12,14 +12,15 @@ public class CancellationRepository(DbConnectionFactory factory, TimeProvider cl
             SELECT COUNT(*),COUNT(*) FILTER(WHERE c.refund_status='Succeeded'),
               COUNT(*) FILTER(WHERE c.refund_status='Simulated'),
               COUNT(*) FILTER(WHERE c.order_id IS NULL OR c.refund_status='Pending' OR NOT c.inventory_returned),
-              COUNT(*) FILTER(WHERE c.notification_status NOT IN ('Sent','Simulated'))
+              COUNT(*) FILTER(WHERE c.notification_status IN ('Pending','Sending')),
+              COUNT(*) FILTER(WHERE c.notification_status IN ('NeedsReconciliation','MissingRecipient'))
             FROM orders o LEFT JOIN order_cancellations c ON c.order_id=o.id
             WHERE o.show_id=@show AND (o.status IN ('Confirmed','PaymentPending') OR c.reason='Show')
             """, db);
         cmd.Parameters.AddWithValue("show", showId);
         await using var r = await cmd.ExecuteReaderAsync();
         await r.ReadAsync();
-        return new { TotalOrders = r.GetInt64(0), Refunded = r.GetInt64(1), Simulated = r.GetInt64(2), Processing = r.GetInt64(3), NotificationsPending = r.GetInt64(4) };
+        return new { TotalOrders = r.GetInt64(0), Refunded = r.GetInt64(1), Simulated = r.GetInt64(2), Processing = r.GetInt64(3), NotificationsPending = r.GetInt64(4), NotificationsNeedAction = r.GetInt64(5) };
     }
 
     public async Task<(Guid Id, Guid Token)?> ClaimAsync()
@@ -65,7 +66,7 @@ public class CancellationRepository(DbConnectionFactory factory, TimeProvider cl
               SUM(CASE WHEN c.refund_status='NotRequired' THEN 0 ELSE o.total_amount END),MIN(o.currency),
               bool_or(c.refund_status='Simulated'),c.reason
             FROM order_cancellations c JOIN orders o ON o.id=c.order_id
-            WHERE c.notification_status NOT IN ('Sent','Simulated')
+            WHERE c.notification_status IN ('Pending','Sending')
               AND NOT EXISTS(SELECT 1 FROM orders pending WHERE pending.show_id=o.show_id AND c.reason='Show' AND pending.status IN ('Confirmed','PaymentPending'))
             GROUP BY key,o.show_id,c.reason
             HAVING bool_and(c.inventory_returned AND c.refund_status<>'Pending')
