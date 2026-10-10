@@ -199,23 +199,39 @@ Keep a full `load` run's report open as a fallback.
   (≈ 530 ms vs ≈ 20 ms for `queue_join` in CI). Compare `WARMUP_REQUESTS=0` with
   the default to show it; readiness probes or a warm-up step after deployment
   would hide it from customers.
-- **A 500-customer burst exhausts Postgres connections (finding).** `oversell`
-  fails its "Clean refusals" invariant and its error-rate and p95 thresholds:
-  192 and 212 unexpected HTTP 500s out of 500 locally (gateway and `TARGET=direct`
-  runs), 74 in CI. Every one is `Npgsql.PostgresException 53300: sorry, too many
-  clients already`, thrown when Inventory opens a connection for the first
-  query of `CreateHoldAsync`. Postgres allows 100 connections
-  (`SHOW max_connections`), shared by every service. `pg_stat_activity` showed
-  64 connections already open before the burst (53 idle in Inventory's pool)
-  and a peak of 105 during it. Inventory sets no pool size, so Npgsql's
-  default maximum (100) equals the server's limit, and the server refuses
-  connections before the pool ever queues anyone. Nobody is oversold (the
-  correctness invariants pass); roughly 15-40 % of customers just get a 500
-  instead of a clean 201 or 409. Fix (service configuration, on a `fix/`
-  branch): give Inventory an explicit `Maximum Pool Size` (e.g. 20) and
-  `Timeout`, so excess requests queue in the pool instead of failing, and keep
-  (instances x pool size) across services below `max_connections`. The thresholds
-  stay strict so CI shows the problem until it is fixed.
+- **Inventory exhausts Postgres connections (finding).** Every failure is
+  `Npgsql.PostgresException 53300: sorry, too many clients already`, thrown
+  when Inventory opens a connection (the first query of `CreateHoldAsync`).
+  Postgres allows 100 connections (`SHOW max_connections`), shared by every
+  service. Inventory sets no pool size, so Npgsql's default maximum (100)
+  equals the server's limit and the server refuses connections before the
+  pool ever queues anyone. Nobody is oversold (the correctness invariants
+  pass); customers just get a 500 instead of a clean 201 or 409.
+  - *500-customer burst (`oversell`):* 192, 212, 54 and 43 of 500 requests
+    returned 500 in four local runs, 74 in CI, with Postgres at 97-99
+    connections. The count varies with how many connections were already open.
+  - *ADR-014 target load (`holds`, 1,000 users):* the default configuration
+    fails the error-rate and p95 thresholds: 50.9 % and 19.2 % errors in two
+    clean runs, p95 about 8 s, Postgres at 99 connections.
+  - *Bounded pool:* `INVENTORY_MAX_POOL=n ./scripts/start-stack.sh` starts
+    Inventory with `Maximum Pool Size=n;Timeout=30`. All 18 `holds` load runs
+    (pool 20: 11, pool 30: 5, pool 40: 2) and all 9 `oversell` runs (pool 10,
+    20 and 40) had 0 errors, with about 27 (pool 20) and 37 (pool 30) Postgres
+    connections at peak instead of 97-99. `oversell` p95 stayed between 0.3 and
+    1.1 s (limit 2 s); `holds` p95 was 40-230 ms in all but one run.
+  - *Outlier:* one pool-20 run had p95 1,242 ms (limit 500 ms) and was not
+    reproduced in 10 further pool-20 runs or in 5 pool-30 runs. Seconds with
+    slow requests coincide with bursts of 79-215 requests queued for a
+    connection (`db.client.connection.npgsql.pending_requests` from
+    `dotnet-counters`, per-second correlation 0.82-0.89), seen in 3 of 10
+    alternating runs, at pool 20 and pool 30. What stalls the connections in
+    those moments was not determined (checkpoints and autovacuum do not line
+    up with them), so a pool-wait metric would help.
+  - *Fix* (service configuration, on a `fix/` branch): give Inventory an
+    explicit `Maximum Pool Size` and `Timeout`, so excess requests queue in the
+    pool instead of failing. Pool 20 is the provisional choice; keep
+    (instances x pool size) plus the other services below `max_connections`.
+    The thresholds stay strict so CI shows the problem until it is fixed.
 - **The hold-expiry sweeper cannot keep up with a high hold rate (finding).**
   Inventory releases expired holds in batches of 200 every 10 s
   (`HoldExpirySweep` `BatchSize` and `IntervalSeconds`). Measured from the
