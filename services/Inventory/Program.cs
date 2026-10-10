@@ -9,6 +9,7 @@ using BuildingBlocks;
 using Inventory.Service.Db;
 using Inventory.Service.Models;
 using Inventory.Service.Services;
+using Inventory.Service.Clients;
 
 if (args.Contains("--migrate"))
 {
@@ -45,6 +46,12 @@ builder.Services.AddScoped<IStockService, StockService>();
 builder.Services.AddScoped<IAllocationStrategy, GeneralAdmissionAllocationStrategy>();
 builder.Services.AddScoped<IHoldRepository, HoldRepository>();
 builder.Services.AddScoped<IHoldService, HoldService>();
+builder.Services.AddInternalServiceTokenClient(builder.Configuration);
+// Sales eligibility comes from Catalog over an authenticated service call (resilience defaults
+// apply). Needs catalog:read in Wso2:InternalApi:Scope.
+builder.Services.AddHttpClient<ISalesEligibilityClient, SalesEligibilityClient>(client =>
+    client.BaseAddress = new Uri(builder.Configuration["CatalogService:BaseUrl"] ?? "http://catalog:8080/"))
+    .AddHttpMessageHandler<InternalServiceAuthenticationHandler>();
 builder.Services.Configure<HoldExpirySweepOptions>(builder.Configuration.GetSection(HoldExpirySweepOptions.SectionName));
 builder.Services.AddSingleton<HoldExpiryMetrics>();
 builder.Services.AddHostedService<ExpiredHoldReleaseWorker>();
