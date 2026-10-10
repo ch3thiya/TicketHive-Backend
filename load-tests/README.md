@@ -161,6 +161,7 @@ Both are configured through settings only.
 | `WARMUP_REQUESTS` | 5 | Untimed requests before measuring; `0` measures a cold system |
 | `OTEL` | 0 | `1` on `start-stack.sh` sends traces to the Aspire dashboard (http://localhost:18888) to find bottlenecks |
 | `SERVICES` | Catalog Inventory WaitingRoom Gateway | Services `start-stack.sh` starts |
+| `INVENTORY_MAX_POOL` | unset | `start-stack.sh` only: starts Inventory with `Maximum Pool Size=<n>;Timeout=30` added to its connection string, to test a bounded pool without changing the service. Unset keeps the service's own configuration |
 
 ---
 

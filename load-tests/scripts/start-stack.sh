@@ -8,6 +8,8 @@
 # Env:    SERVICES="Catalog Inventory WaitingRoom Gateway"   services to start
 #         OTEL=1          export traces/metrics to the Aspire dashboard (localhost:18888)
 #         SKIP_BUILD=1    reuse the last Release build
+#         INVENTORY_MAX_POOL=20   start Inventory with "Maximum Pool Size=20;Timeout=30" appended
+#                         to its connection string (experiment; unset = the service's own config)
 #
 # Stop with ./scripts/stop-stack.sh
 set -euo pipefail
@@ -111,7 +113,15 @@ for svc in $SERVICES; do
   [[ -n "$port" ]] || fail "Unknown service '$svc'"
   case "$svc" in
     Inventory)
-      start_service "$svc" "$port" "AdmissionToken__PublicKeyPem=$(cat "$SECRETS_DIR/admission-public.pem")" ;;
+      inventory_env=("AdmissionToken__PublicKeyPem=$(cat "$SECRETS_DIR/admission-public.pem")")
+      if [[ -n "${INVENTORY_MAX_POOL:-}" ]]; then
+        [[ "$INVENTORY_MAX_POOL" =~ ^[1-9][0-9]*$ ]] || fail "INVENTORY_MAX_POOL must be a positive integer"
+        # Same connection string as the service's appsettings.json, plus the pool settings.
+        inventory_conn="$(node -e "process.stdout.write(require(process.argv[1]).ConnectionStrings.DefaultConnection)" "$REPO_ROOT/services/Inventory/appsettings.json")"
+        inventory_env+=("ConnectionStrings__DefaultConnection=${inventory_conn%;};Maximum Pool Size=${INVENTORY_MAX_POOL};Timeout=30")
+        log "Inventory pool limited to $INVENTORY_MAX_POOL connections (Timeout=30)"
+      fi
+      start_service "$svc" "$port" "${inventory_env[@]}" ;;
     WaitingRoom)
       start_service "$svc" "$port" "AdmissionToken__PrivateKeyPem=$(cat "$SECRETS_DIR/admission-private.pem")" ;;
     Gateway)
