@@ -32,7 +32,12 @@ public class HoldServiceSalesEligibilityTests
 
     private ShowRules Rules(bool highDemand = false, int threshold = 0) => new()
     {
-        ShowId = _showId, OrganizerId = Guid.NewGuid(), MaxPerCustomer = 6, HoldMinutes = 10, HighDemand = highDemand, HighDemandThreshold = threshold
+        ShowId = _showId,
+        OrganizerId = Guid.NewGuid(),
+        MaxPerCustomer = 6,
+        HoldMinutes = 10,
+        HighDemand = highDemand,
+        HighDemandThreshold = threshold
     };
 
     private void Eligibility(SalesEligibilityStatus status) =>
@@ -77,8 +82,13 @@ public class HoldServiceSalesEligibilityTests
         Eligibility(SalesEligibilityStatus.OrganizerSuspended);
         var existing = new Hold
         {
-            Id = Guid.NewGuid(), ShowId = _showId, CustomerSub = "customer", Status = HoldStatus.Active, IdempotencyKey = "key",
-            ExpiresAt = new DateTimeOffset(2026, 10, 10, 9, 0, 0, TimeSpan.Zero), Items = new List<HoldItem>()
+            Id = Guid.NewGuid(),
+            ShowId = _showId,
+            CustomerSub = "customer",
+            Status = HoldStatus.Active,
+            IdempotencyKey = "key",
+            ExpiresAt = new DateTimeOffset(2026, 10, 10, 9, 0, 0, TimeSpan.Zero),
+            Items = new List<HoldItem>()
         };
         _repository.Setup(r => r.GetByIdempotencyKeyAsync("customer", "key")).ReturnsAsync(existing);
 
