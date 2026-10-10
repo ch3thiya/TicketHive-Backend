@@ -1,5 +1,6 @@
 using System;
 using System.Security.Claims;
+using System.Globalization;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -124,14 +125,21 @@ public class PaymentController : ControllerBase
 
         if (status_code == "2") // 2 = Success in PayHere
         {
+            var transaction = await _repository.GetByOrderIdAsync(orderGuid);
+            if (transaction is null ||
+                !decimal.TryParse(payhere_amount, NumberStyles.Number, CultureInfo.InvariantCulture, out var amount) ||
+                amount != transaction.Amount ||
+                !string.Equals(payhere_currency, transaction.Currency, StringComparison.OrdinalIgnoreCase))
+            {
+                return BadRequest("Verified payment amount or currency does not match checkout.");
+            }
             await _repository.UpdateStatusAsync(orderGuid, PaymentStatus.Succeeded, payment_id, now);
-            decimal.TryParse(payhere_amount, out var amount);
 
             await _kafkaProducer.PublishPaymentSucceededAsync(
                 orderGuid,
                 payment_id,
                 amount,
-                payhere_currency ?? "LKR",
+                transaction.Currency,
                 now
             );
         }
