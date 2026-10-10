@@ -1,6 +1,6 @@
 # Cancellation implementation and review guide
 
-References: SCRUM-169 / US-10 and US-15. Target branch: `dev`.
+References: SCRUM-169 / US-10 and US-15. Implementation branch: `feature/order-cancellation`.
 
 ## Proposed PR description
 
@@ -18,7 +18,7 @@ outbox, including event cascading. Its dispatcher delivers events using authenti
 idempotent HTTP PUTs, independently of Kafka availability. Leases expire after two
 minutes; failed work retries after fifteen seconds; workers poll every five seconds.
 
-Cancellation requests stop Inventory sales before returning an accepted response.
+Cancellation requests install both Inventory and Booking show tombstones before returning an accepted response.
 If that call fails, the durable cancellation remains recorded and recovery continues;
 the request does not report successful completion. Existing pending orders are
 cancelled by the dispatcher, and new orders are fenced by Booking show tombstones.
@@ -49,6 +49,7 @@ Controllers are included in each service's generated `/openapi/v1.json` document
 | `GET /internal/booking/cancellations/shows/{id}/progress` | `booking:write`; counts |
 | `PUT /internal/payment/refunds/{orderId}` | `payment:refund`; `{amount,currency}`; mismatched replay is 409 |
 | `PUT /internal/notification/cancellations` | `notification:write`; durable deduplicated message |
+| `GET /internal/notification/cancellations/status?key=...` | `notification:write`; terminal delivery/reconciliation status; never resends |
 
 The order ID is the canonical cancellation/refund operation key; a changed client
 `Idempotency-Key` never creates a second operation. Notification keys are `order:{id}`
@@ -73,7 +74,8 @@ needs `inventory:write booking:write` in addition to its existing Identity scope
 Provision these grants in Asgardeo. Configure Notification's `Jwt:Authority` to the
 same trusted issuer used by the other services. No credentials are added here.
 
-Refunds always record `Simulated`: the DevOps sandbox refund endpoint/configuration
+Refunds require a successful Payment record and an exact match with its verified
+amount and currency. They always record `Simulated`: the DevOps sandbox refund endpoint/configuration
 has not been supplied. No refund HTTP call is made and no money moves. Do not
 describe `Simulated` as an actual provider refund.
 
@@ -97,10 +99,22 @@ provider settlement boundary that is not present in the existing payment flow.
 
 ## Acceptance and outstanding decisions
 
-Customer AC1–AC6 are implemented for GA orders. Show cancellation AC1–AC3,
-AC5–AC7 are implemented for GA orders, with simulated refunds counted separately.
-Both notification criteria have durable processing and explicit simulation, but
-real delivery and exactly-once delivery remain constrained as described above.
+| Story / criterion | Status | Review result |
+|---|---|---|
+| Customer AC1 | Complete | Owner-only future-show cancellation transactionally cancels the order and voids unused tickets. |
+| Customer AC2 | Simulated | Full verified paid amount is recorded as a sandbox refund; no money moves. |
+| Customer AC3 | Blocked | GA stock is returned idempotently. Seat return awaits a seating model. |
+| Customer AC4 | Complete | Voided tickets are displayed as cancelled and fail locked entry validation. |
+| Customer AC5 | Complete | Non-owner, used-ticket, and started-show attempts do not mutate state. |
+| Customer AC6 | Complete | Durable unique work, stock return, and refund operation keys make retries safe. |
+| Customer AC7 | Simulated | Delivery work runs after effects, but default email delivery is simulated. |
+| Show AC1 | Complete | Acknowledgement waits for Inventory and Booking tombstones; post-ack holds and orders are rejected. |
+| Show AC2 | Complete | Unpaid orders and their reservations are cancelled without refund. |
+| Show AC3 | Simulated | Paid orders are cancelled and voided; verified full refunds are simulated. |
+| Show AC4 | Simulated | One customer/show notification record is produced; default delivery is simulated. |
+| Show AC5 | Complete | Event cancellation transactionally cascades to every show. |
+| Show AC6 | Complete | Automated retries do not duplicate refund or notification records. Ambiguous email delivery becomes terminal reconciliation work and is never blindly resent. |
+| Show AC7 | Complete | Organizer progress distinguishes refunded, simulated, processing, pending notification, and reconciliation counts. |
 
 Seated shows are not implemented in this repository: no seat schema or identifiers
 exist. The seated return part of customer AC3 remains blocked by that dependency.
