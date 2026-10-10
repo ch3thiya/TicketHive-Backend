@@ -32,7 +32,9 @@ SEED_CATALOG="${SEED_CATALOG:-1}"
 uuid() { cat /proc/sys/kernel/random/uuid; }
 log() { printf '\033[1;34m[seed]\033[0m %s\n' "$*"; }
 
-ORGANIZER_ID="$(uuid)"
+# shellcheck source=common.sh
+source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
+ORGANIZER_ID="$LOAD_TEST_ORGANIZER_ID"  # fixed, so cleanup.sh can find load-test rows
 EVENT_ID="$(uuid)"
 CAPACITY_SHOW="$(uuid)";   CAPACITY_CATEGORY="$(uuid)"
 CONTENTION_SHOW="$(uuid)"; CONTENTION_CATEGORY="$(uuid)"
