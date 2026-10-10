@@ -229,7 +229,7 @@ Keep a full `load` run's report open as a fallback.
     up with them), so a pool-wait metric would help.
   - *Fix* (service configuration, on a `fix/` branch): give Inventory an
     explicit `Maximum Pool Size` and `Timeout`, so excess requests queue in the
-    pool instead of failing. Pool 20 is the provisional choice; keep
+    pool instead of failing. Pool 20 is the chosen size; keep
     (instances x pool size) plus the other services below `max_connections`.
     The thresholds stay strict so CI shows the problem until it is fixed.
 - **The hold-expiry sweeper cannot keep up with a high hold rate (finding).**
