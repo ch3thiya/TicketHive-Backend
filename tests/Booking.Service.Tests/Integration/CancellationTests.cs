@@ -194,9 +194,16 @@ public class CancellationTests(PostgresFixture fixture)
 
         var order = new Order
         {
-            Id = Guid.CreateVersion7(), HoldId = Guid.CreateVersion7(), CustomerSub = "customer", ShowId = show,
-            Status = OrderStatus.PaymentPending, TotalAmount = 100, Currency = "LKR", IdempotencyKey = Guid.CreateVersion7().ToString(),
-            CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow
+            Id = Guid.CreateVersion7(),
+            HoldId = Guid.CreateVersion7(),
+            CustomerSub = "customer",
+            ShowId = show,
+            Status = OrderStatus.PaymentPending,
+            TotalAmount = 100,
+            Currency = "LKR",
+            IdempotencyKey = Guid.CreateVersion7().ToString(),
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow
         };
         await Assert.ThrowsAsync<PostgresException>(() => new OrderRepository(Factory).CreateAsync(order));
     }
@@ -209,9 +216,16 @@ public class CancellationTests(PostgresFixture fixture)
             var show = Guid.CreateVersion7();
             var order = new Order
             {
-                Id = Guid.CreateVersion7(), HoldId = Guid.CreateVersion7(), CustomerSub = "customer", ShowId = show,
-                Status = OrderStatus.PaymentPending, TotalAmount = 100, Currency = "LKR", IdempotencyKey = Guid.CreateVersion7().ToString(),
-                CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow
+                Id = Guid.CreateVersion7(),
+                HoldId = Guid.CreateVersion7(),
+                CustomerSub = "customer",
+                ShowId = show,
+                Status = OrderStatus.PaymentPending,
+                TotalAmount = 100,
+                Currency = "LKR",
+                IdempotencyKey = Guid.CreateVersion7().ToString(),
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow
             };
             var create = new OrderRepository(Factory).CreateAsync(order);
             var cancel = new CancellationRepository(Factory, TimeProvider.System).CancelShowAsync(show);

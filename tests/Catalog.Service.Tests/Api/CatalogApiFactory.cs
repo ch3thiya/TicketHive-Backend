@@ -71,6 +71,7 @@ public class CatalogApiFactory : WebApplicationFactory<Program>
         EventRepositoryMock.Setup(r => r.CreateEventAsync(It.IsAny<Event>())).ReturnsAsync((Event e) => e);
         EventRepositoryMock.Setup(r => r.GetAllPublishedEventsAsync()).ReturnsAsync(new List<Event>());
         EventRepositoryMock.Setup(r => r.GetEventsByOrganizerIdAsync(It.IsAny<Guid>())).ReturnsAsync(new List<Event>());
+        EventRepositoryMock.Setup(r => r.GetShowsByEventIdAsync(It.IsAny<Guid>())).ReturnsAsync(new List<Show>());
 
         VenueRepositoryMock.Reset();
         VenueRepositoryMock.Setup(r => r.GetAllVenuesAsync()).ReturnsAsync(new List<Venue>());

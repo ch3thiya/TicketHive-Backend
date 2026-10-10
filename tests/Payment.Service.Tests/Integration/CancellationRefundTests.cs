@@ -17,8 +17,14 @@ public class CancellationRefundTests(PostgresFixture fixture)
         var id = Guid.CreateVersion7();
         await new PaymentRepository(factory).CreateAsync(new PaymentTransaction
         {
-            Id = Guid.CreateVersion7(), OrderId = id, CustomerSub = "customer", Amount = 300, Currency = "LKR",
-            Status = PaymentStatus.Succeeded, CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow
+            Id = Guid.CreateVersion7(),
+            OrderId = id,
+            CustomerSub = "customer",
+            Amount = 300,
+            Currency = "LKR",
+            Status = PaymentStatus.Succeeded,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow
         });
         var results = await Task.WhenAll(Enumerable.Range(0, 12).Select(_ => repo.RefundAsync(id, new RefundRequest(300, "LKR"))));
         Assert.All(results, r => Assert.Equal("Simulated", r.Status));
@@ -37,8 +43,14 @@ public class CancellationRefundTests(PostgresFixture fixture)
         var id = Guid.CreateVersion7();
         await new PaymentRepository(factory).CreateAsync(new PaymentTransaction
         {
-            Id = Guid.CreateVersion7(), OrderId = id, CustomerSub = "customer", Amount = 275, Currency = "LKR",
-            Status = PaymentStatus.Succeeded, CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow
+            Id = Guid.CreateVersion7(),
+            OrderId = id,
+            CustomerSub = "customer",
+            Amount = 275,
+            Currency = "LKR",
+            Status = PaymentStatus.Succeeded,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow
         });
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => repo.RefundAsync(id, new RefundRequest(300, "LKR")));
