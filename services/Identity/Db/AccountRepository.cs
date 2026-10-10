@@ -358,41 +358,6 @@ public class AccountRepository : IAccountRepository
         return entries;
     }
 
-    public async Task<string> ChangeOrganizerStatusAsync(Guid organizerId, string targetStatus, string actorSub, string reason, DateTimeOffset occurredAt)
-    {
-        await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
-        await using var transaction = await connection.BeginTransactionAsync();
-        await using var read = new NpgsqlCommand("SELECT role,approval_status FROM user_accounts WHERE id=@id FOR UPDATE", connection, transaction);
-        read.Parameters.AddWithValue("id", organizerId);
-        string role;
-        string current;
-        await using (var reader = await read.ExecuteReaderAsync())
-        {
-            if (!await reader.ReadAsync()) return "NotFound";
-            role = reader.GetString(0);
-            current = reader.GetString(1);
-        }
-        if (role != "Organizer") return "NotFound";
-        if (current == targetStatus) return "Unchanged";
-        if (targetStatus == "suspended" && current != "approved") return "InvalidTransition";
-        if (targetStatus == "approved" && current != "suspended") return "InvalidTransition";
-
-        await using var update = new NpgsqlCommand("UPDATE user_accounts SET approval_status=@status WHERE id=@id", connection, transaction);
-        update.Parameters.AddWithValue("id", organizerId);
-        update.Parameters.AddWithValue("status", targetStatus);
-        await update.ExecuteNonQueryAsync();
-        await using var audit = new NpgsqlCommand("INSERT INTO organizer_status_audit VALUES(@audit,@id,@action,@reason,@actor,@at)", connection, transaction);
-        audit.Parameters.AddWithValue("audit", Guid.CreateVersion7());
-        audit.Parameters.AddWithValue("id", organizerId);
-        audit.Parameters.AddWithValue("action", targetStatus == "suspended" ? "Suspended" : "Reinstated");
-        audit.Parameters.AddWithValue("reason", reason);
-        audit.Parameters.AddWithValue("actor", actorSub);
-        audit.Parameters.AddWithValue("at", occurredAt);
-        await audit.ExecuteNonQueryAsync();
-        await transaction.CommitAsync();
-        return "Changed";
-    }
-
     public async Task<UserAccount?> GetUserAccountByEmailAsync(string email)
     {
         using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
