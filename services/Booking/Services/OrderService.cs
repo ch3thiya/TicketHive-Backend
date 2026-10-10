@@ -133,11 +133,17 @@ public class OrderService : IOrderService
             return true;
         }
 
+        if (order.Status != OrderStatus.PaymentPending)
+        {
+            if (statusCode == "2") await _repository.UpdateStatusAsync(order.Id, OrderStatus.Confirmed, _timeProvider.GetUtcNow());
+            return true;
+        }
+
         var now = _timeProvider.GetUtcNow();
 
         if (statusCode == "2") // 2 = Success in PayHere
         {
-            await _repository.UpdateStatusAsync(order.Id, OrderStatus.Confirmed, now);
+            if (!await _repository.UpdateStatusAsync(order.Id, OrderStatus.Confirmed, now)) return true;
             await _inventoryClient.ConvertHoldAsync(order.HoldId);
 
             _logger.LogInformation("Order {OrderId} marked Confirmed. Converting hold {HoldId}", order.Id, order.HoldId);

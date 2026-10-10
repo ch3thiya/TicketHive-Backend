@@ -51,7 +51,7 @@ public class TicketRepository : ITicketRepository
         await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
 
         const string sql = @"
-            SELECT id, order_id, category_id, show_id, customer_sub, unique_code, price, issued_at, used_at, used_by
+            SELECT id, order_id, category_id, show_id, customer_sub, unique_code, price, issued_at, used_at, used_by, voided_at
             FROM tickets
             WHERE order_id = @OrderId
             ORDER BY issued_at ASC;
@@ -75,7 +75,7 @@ public class TicketRepository : ITicketRepository
         await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
 
         const string sql = @"
-            SELECT id, order_id, category_id, show_id, customer_sub, unique_code, price, issued_at, used_at, used_by
+            SELECT id, order_id, category_id, show_id, customer_sub, unique_code, price, issued_at, used_at, used_by, voided_at
             FROM tickets
             WHERE customer_sub = @CustomerSub
             ORDER BY issued_at DESC;
@@ -99,7 +99,7 @@ public class TicketRepository : ITicketRepository
         await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
 
         const string sql = @"
-            SELECT id, order_id, category_id, show_id, customer_sub, unique_code, price, issued_at, used_at, used_by
+            SELECT id, order_id, category_id, show_id, customer_sub, unique_code, price, issued_at, used_at, used_by, voided_at
             FROM tickets
             WHERE id = @TicketId AND customer_sub = @CustomerSub;
         ";
@@ -122,7 +122,7 @@ public class TicketRepository : ITicketRepository
         await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
 
         const string sql = @"
-            SELECT id, order_id, category_id, show_id, customer_sub, unique_code, price, issued_at, used_at, used_by
+            SELECT id, order_id, category_id, show_id, customer_sub, unique_code, price, issued_at, used_at, used_by, voided_at
             FROM tickets
             WHERE unique_code = @UniqueCode;
         ";
@@ -144,9 +144,7 @@ public class TicketRepository : ITicketRepository
         await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
 
         const string sql = @"
-            UPDATE tickets
-            SET used_at = @UsedAt, used_by = @UsedBy
-            WHERE unique_code = @UniqueCode AND used_at IS NULL;
+            SELECT validate_ticket(@UniqueCode, @UsedBy, @UsedAt);
         ";
 
         await using var command = new NpgsqlCommand(sql, connection);
@@ -154,8 +152,7 @@ public class TicketRepository : ITicketRepository
         command.Parameters.AddWithValue("UsedBy", organizerSub);
         command.Parameters.AddWithValue("UsedAt", usedAt);
 
-        var affected = await command.ExecuteNonQueryAsync();
-        return affected > 0;
+        return (bool)(await command.ExecuteScalarAsync())!;
     }
 
     private static Ticket ReadTicket(NpgsqlDataReader reader) => new()
@@ -169,6 +166,7 @@ public class TicketRepository : ITicketRepository
         Price = reader.GetDecimal(6),
         IssuedAt = reader.GetFieldValue<DateTimeOffset>(7),
         UsedAt = reader.IsDBNull(8) ? null : reader.GetFieldValue<DateTimeOffset>(8),
-        UsedBy = reader.IsDBNull(9) ? null : reader.GetString(9)
+        UsedBy = reader.IsDBNull(9) ? null : reader.GetString(9),
+        VoidedAt = reader.IsDBNull(10) ? null : reader.GetFieldValue<DateTimeOffset>(10)
     };
 }

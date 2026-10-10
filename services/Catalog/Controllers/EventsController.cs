@@ -280,7 +280,7 @@ public class EventsController : ControllerBase
         {
             var organizerId = GetCurrentOrganizerId();
             await _eventService.CancelEventAsync(organizerId, eventId);
-            return Ok(new { message = "Event cancelled successfully.", eventId, status = "Cancelled" });
+            return Accepted(new { message = "Sales stopped. Order cancellation and refunds are processing.", eventId, status = "Cancelled" });
         }
         catch (KeyNotFoundException ex)
         {
@@ -380,7 +380,7 @@ public class EventsController : ControllerBase
         {
             var organizerId = GetCurrentOrganizerId();
             await _eventService.CancelShowAsync(organizerId, showId);
-            return Ok(new { message = "Show cancelled successfully.", showId, status = "Cancelled" });
+            return Accepted(new { message = "Sales stopped. Order cancellation and refunds are processing.", showId, status = "Cancelled" });
         }
         catch (KeyNotFoundException ex)
         {

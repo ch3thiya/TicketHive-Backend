@@ -206,6 +206,16 @@ builder.Services.AddAuthorization(options =>
     });
 });
 
+builder.Services.AddScoped<CancellationRepository>();
+builder.Services.AddScoped<CancellationClient>();
+builder.Services.AddHostedService<CancellationWorker>();
+builder.Services.AddCancellationInternalAuthorization("catalog:read");
+foreach (var service in new[] { "Inventory", "Booking" })
+{
+    var endpoint = builder.Configuration[$"{service}Service:BaseUrl"] ?? $"http://{service.ToLowerInvariant()}:8080/";
+    builder.Services.AddHttpClient($"Cancellation{service}", client => client.BaseAddress = new Uri(endpoint))
+        .AddHttpMessageHandler<InternalServiceAuthenticationHandler>();
+}
 var app = builder.Build();
 app.UseServiceDefaults();
 

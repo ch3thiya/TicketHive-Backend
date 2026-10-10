@@ -85,6 +85,8 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
 builder.Services.AddAuthorization();
 
+builder.Services.AddScoped<RefundRepository>();
+builder.Services.AddCancellationInternalAuthorization("payment:refund");
 var app = builder.Build();
 app.UseServiceDefaults();
 

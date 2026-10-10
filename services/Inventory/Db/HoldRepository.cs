@@ -71,6 +71,15 @@ public class HoldRepository : IHoldRepository
         await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
         await using var transaction = await connection.BeginTransactionAsync();
 
+        await using (var admission = new NpgsqlCommand("SELECT pg_advisory_xact_lock_shared(hashtextextended(@show::text,169)); SELECT EXISTS(SELECT 1 FROM cancelled_shows WHERE show_id=@show)", connection, transaction))
+        {
+            admission.Parameters.AddWithValue("show", hold.ShowId);
+            await using var reader = await admission.ExecuteReaderAsync();
+            await reader.NextResultAsync();
+            await reader.ReadAsync();
+            if (reader.GetBoolean(0)) return new HoldCreationResult { Outcome = HoldCreationOutcome.StockUnavailable };
+        }
+
         // Existence only, never availability — categories are never deleted
         // once a show is initialized (ADR-004), so this carries none of the
         // race the stock allocation below guards against.
@@ -390,7 +399,7 @@ public class HoldRepository : IHoldRepository
         const string selectSql = @"
             SELECT show_id
             FROM holds
-            WHERE id = @HoldId AND customer_sub = @CustomerSub AND status IN ('Active', 'PaymentPending');
+            WHERE id = @HoldId AND customer_sub = @CustomerSub AND status IN ('Active', 'PaymentPending') FOR UPDATE;
         ";
 
         Guid showId;

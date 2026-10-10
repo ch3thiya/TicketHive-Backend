@@ -212,6 +212,8 @@ builder.Services.AddRateLimiter(options =>
     };
 });
 
+builder.Services.AddScoped<CancellationRepository>();
+builder.Services.AddCancellationInternalAuthorization("inventory:write");
 var app = builder.Build();
 app.UseServiceDefaults();
 

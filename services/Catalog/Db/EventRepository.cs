@@ -377,7 +377,7 @@ public class EventRepository : IEventRepository
         const string sql = @"
             SELECT id, event_id, show_date, show_time, venue_id, on_sale_at, high_demand_threshold, reminder_minutes_before, status, created_at
             FROM shows
-            WHERE event_id = @EventId AND status != 'Cancelled'
+            WHERE event_id = @EventId
             ORDER BY show_date ASC, show_time ASC;
         ";
 
@@ -407,7 +407,7 @@ public class EventRepository : IEventRepository
         const string sql = @"
             SELECT id, event_id, show_date, show_time, venue_id, on_sale_at, high_demand_threshold, reminder_minutes_before, status, created_at
             FROM shows
-            WHERE event_id = ANY(@EventIds) AND status != 'Cancelled'
+            WHERE event_id = ANY(@EventIds)
             ORDER BY show_date ASC, show_time ASC;
         ";
 

@@ -139,9 +139,7 @@ public class OrderRepository : IOrderRepository
         await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
 
         const string sql = @"
-            UPDATE orders
-            SET status = @Status, updated_at = @UpdatedAt
-            WHERE id = @OrderId;
+            SELECT apply_order_status(@OrderId, @Status, @UpdatedAt);
         ";
 
         await using var command = new NpgsqlCommand(sql, connection);
@@ -149,8 +147,7 @@ public class OrderRepository : IOrderRepository
         command.Parameters.AddWithValue("UpdatedAt", updatedAt);
         command.Parameters.AddWithValue("OrderId", orderId);
 
-        var rows = await command.ExecuteNonQueryAsync();
-        return rows > 0;
+        return (bool)(await command.ExecuteScalarAsync())!;
     }
 
     public async Task<bool> UpdateCustomerContactAsync(Guid orderId, string customerEmail, string customerName)

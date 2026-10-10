@@ -103,6 +103,9 @@ public class TicketsController : ControllerBase
             return Problem(detail: $"Ticket code '{code}' was not recognised.", statusCode: StatusCodes.Status404NotFound, title: "Ticket not recognised");
         }
 
+        if (ticket.VoidedAt is not null)
+            return Problem(statusCode: 409, title: "Ticket cancelled", detail: "This ticket has been voided and cannot be used.");
+
         if (ticket.UsedAt is not null)
         {
             return Problem(
@@ -115,7 +118,7 @@ public class TicketsController : ControllerBase
         var success = await _ticketRepository.ValidateAndUseTicketAsync(code, organizerSub, now);
         if (!success)
         {
-            return Problem(detail: "Ticket was already used.", statusCode: StatusCodes.Status409Conflict, title: "Ticket already used");
+            return Problem(detail: "Ticket is used, cancelled, or its order is not confirmed.", statusCode: StatusCodes.Status409Conflict, title: "Ticket is not valid");
         }
 
         return Ok(new

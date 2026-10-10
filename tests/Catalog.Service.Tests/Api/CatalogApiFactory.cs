@@ -36,6 +36,8 @@ public class CatalogApiFactory : WebApplicationFactory<Program>
 
         builder.ConfigureServices(services =>
         {
+            services.RemoveAll<CancellationClient>();
+            services.RemoveAll<Microsoft.Extensions.Hosting.IHostedService>();
             services.RemoveAll<IOrganizerStatusClient>();
             services.TryAddSingleton(OrganizerStatusClientMock.Object);
 
