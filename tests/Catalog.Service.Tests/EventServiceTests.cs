@@ -1120,7 +1120,7 @@ public class EventServiceTests
     }
 
     [Fact]
-    public async Task CancelEvent_AlreadyCancelledEvent_ThrowsInvalidOperationException()
+    public async Task CancelEvent_AlreadyCancelledEvent_IsIdempotent()
     {
         // Arrange
         var organizerId = Guid.NewGuid();
@@ -1130,7 +1130,7 @@ public class EventServiceTests
                  .ReturnsAsync(new Event { Id = eventId, OrganizerId = organizerId, Status = "Cancelled" });
 
         // Act & Assert
-        await Assert.ThrowsAsync<InvalidOperationException>(() => _service.CancelEventAsync(organizerId, eventId));
+        await _service.CancelEventAsync(organizerId, eventId);
         _mockRepo.Verify(r => r.UpdateEventStatusAsync(It.IsAny<Guid>(), It.IsAny<string>()), Times.Never);
     }
 
@@ -1152,7 +1152,7 @@ public class EventServiceTests
     }
 
     [Fact]
-    public async Task CancelShow_AlreadyCancelledShow_ThrowsInvalidOperationException()
+    public async Task CancelShow_AlreadyCancelledShow_IsIdempotent()
     {
         // Arrange
         var organizerId = Guid.NewGuid();
@@ -1166,7 +1166,7 @@ public class EventServiceTests
                  .ReturnsAsync(new Event { Id = eventId, OrganizerId = organizerId, Status = "Published" });
 
         // Act & Assert
-        await Assert.ThrowsAsync<InvalidOperationException>(() => _service.CancelShowAsync(organizerId, showId));
+        await _service.CancelShowAsync(organizerId, showId);
         _mockRepo.Verify(r => r.UpdateShowStatusAsync(It.IsAny<Guid>(), It.IsAny<string>()), Times.Never);
     }
 

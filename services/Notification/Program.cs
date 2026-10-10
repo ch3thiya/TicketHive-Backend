@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using System;
 using System.Reflection;
 using BuildingBlocks;
@@ -48,6 +49,23 @@ builder.Services.AddHostedService<TicketIssuedEventListener>();
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 
+builder.Services.AddScoped<CancellationEmailRepository>();
+builder.Services.Configure<CancellationEmailOptions>(builder.Configuration.GetSection("CancellationEmail"));
+builder.Services.AddHttpClient<CancellationEmailSender>();
+builder.Services.AddHostedService<CancellationEmailWorker>();
+builder.Services.AddAuthentication("Bearer").AddJwtBearer("Bearer", options =>
+{
+    options.Authority = builder.Configuration["Jwt:Authority"];
+    options.TokenValidationParameters = new Microsoft.IdentityModel.Tokens.TokenValidationParameters
+    {
+        ValidateIssuer = true,
+        ValidIssuer = builder.Configuration["Jwt:Authority"],
+        ValidateAudience = false,
+        ValidateLifetime = true,
+        ValidateIssuerSigningKey = true
+    };
+});
+builder.Services.AddCancellationInternalAuthorization("notification:write");
 var app = builder.Build();
 app.UseServiceDefaults();
 
@@ -61,6 +79,8 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseRouting();
+app.UseAuthentication();
+app.UseAuthorization();
 app.MapDefaultEndpoints();
 app.MapControllers();
 

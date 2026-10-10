@@ -142,6 +142,7 @@ public class TicketService : ITicketService
         ticket.Price,
         ticket.IssuedAt,
         ticket.UsedAt,
-        ticket.UsedBy
+        ticket.UsedBy,
+        ticket.VoidedAt
     );
 }

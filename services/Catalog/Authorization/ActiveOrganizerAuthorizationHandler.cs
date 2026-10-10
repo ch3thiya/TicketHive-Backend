@@ -10,6 +10,7 @@ public class ActiveOrganizerAuthorizationHandler : AuthorizationHandler<ActiveOr
 {
     public const string OrganizerIdItemKey = "ActiveOrganizerId";
     public const string IdentityUnavailableItemKey = "ActiveOrganizerIdentityUnavailable";
+    public const string SuspendedItemKey = "OrganizerSuspended";
 
     private readonly IOrganizerStatusClient _organizerStatusClient;
     private readonly IHttpContextAccessor _httpContextAccessor;
@@ -56,6 +57,23 @@ public class ActiveOrganizerAuthorizationHandler : AuthorizationHandler<ActiveOr
                     httpContext.Items[IdentityUnavailableItemKey] = true;
                 }
                 context.Fail();
+                break;
+
+            case OrganizerLookupStatus.Suspended:
+                if (httpContext is not null)
+                {
+                    httpContext.Items[SuspendedItemKey] = true;
+                    httpContext.Items[OrganizerIdItemKey] = result.OrganizerId;
+                }
+                if (requirement.AllowSuspended)
+                {
+                    context.Succeed(requirement);
+                }
+                else
+                {
+                    _logger.LogInformation("Organizer {OrganizerId} is suspended; management request denied", result.OrganizerId);
+                    context.Fail();
+                }
                 break;
 
             case OrganizerLookupStatus.NotFound:

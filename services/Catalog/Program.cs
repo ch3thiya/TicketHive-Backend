@@ -50,11 +50,12 @@ builder.WebHost.ConfigureKestrel(options =>
 builder.Services.AddSingleton<DbConnectionFactory>();
 builder.Services.AddScoped<IEventRepository, EventRepository>();
 builder.Services.AddScoped<IEventService, EventService>();
+builder.Services.AddScoped<ISalesEligibilityService, SalesEligibilityService>();
 builder.Services.AddScoped<IVenueRepository, VenueRepository>();
 builder.Services.AddScoped<IVenueService, VenueService>();
 
-// Register the Identity organizer-status client, cached briefly so suspension
-// takes effect quickly without a call on every request.
+// Register the Identity organizer-status client. Management and sales checks always ask
+// Identity; only listing flags are cached, for a few seconds (ListingCacheSeconds).
 builder.Services.AddMemoryCache();
 builder.Services.Configure<OrganizerStatusClientOptions>(builder.Configuration.GetSection(OrganizerStatusClientOptions.SectionName));
 builder.Services.AddHttpClient<IOrganizerStatusClient, OrganizerStatusClient>((sp, client) =>
@@ -187,6 +188,8 @@ builder.Services.AddSingleton<IAuthorizationMiddlewareResultHandler, OrganizerAu
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("ActiveOrganizer", policy => policy.Requirements.Add(new ActiveOrganizerRequirement()));
+    // Read-only organizer views stay available while suspended; writes use ActiveOrganizer.
+    options.AddPolicy("OrganizerRead", policy => policy.Requirements.Add(new ActiveOrganizerRequirement(allowSuspended: true)));
 
     // The `aut` claim is APPLICATION for Asgardeo service tokens; requiring
     // it alongside the scope narrows this policy to machine-to-machine
@@ -206,6 +209,16 @@ builder.Services.AddAuthorization(options =>
     });
 });
 
+builder.Services.AddScoped<CancellationRepository>();
+builder.Services.AddScoped<CancellationClient>();
+builder.Services.AddHostedService<CancellationWorker>();
+builder.Services.AddCancellationInternalAuthorization("catalog:read");
+foreach (var service in new[] { "Inventory", "Booking" })
+{
+    var endpoint = builder.Configuration[$"{service}Service:BaseUrl"] ?? $"http://{service.ToLowerInvariant()}:8080/";
+    builder.Services.AddHttpClient($"Cancellation{service}", client => client.BaseAddress = new Uri(endpoint))
+        .AddHttpMessageHandler<InternalServiceAuthenticationHandler>();
+}
 var app = builder.Build();
 app.UseServiceDefaults();
 

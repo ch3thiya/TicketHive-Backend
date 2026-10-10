@@ -25,7 +25,10 @@ public enum CreateHoldStatus
     CategoryNotFound,
     StockUnavailable,
     QuotaExceeded,
-    HighDemandBlocked
+    HighDemandBlocked,
+    OrganizerSuspended,
+    ShowNotOnSale,
+    SalesEligibilityUnavailable
 }
 
 public class CreateHoldResult

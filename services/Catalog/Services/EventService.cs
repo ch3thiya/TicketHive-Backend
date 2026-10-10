@@ -23,6 +23,7 @@ public class EventService : IEventService
     private readonly IOptions<PublishDefaultsOptions> _publishDefaults;
     private readonly ILogger<EventService> _logger;
     private readonly TimeProvider _timeProvider;
+    private readonly CancellationClient? _cancellationClient;
 
     public EventService(
         IEventRepository repository,
@@ -30,7 +31,8 @@ public class EventService : IEventService
         IInventoryClient inventoryClient,
         IOptions<PublishDefaultsOptions> publishDefaults,
         ILogger<EventService> logger,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        CancellationClient? cancellationClient = null)
     {
         _repository = repository;
         _venueService = venueService;
@@ -38,6 +40,7 @@ public class EventService : IEventService
         _publishDefaults = publishDefaults;
         _logger = logger;
         _timeProvider = timeProvider;
+        _cancellationClient = cancellationClient;
     }
 
     public async Task<Event> CreateEventAsync(Guid organizerId, CreateEventDto dto)
@@ -408,13 +411,16 @@ public class EventService : IEventService
             throw new UnauthorizedAccessException("You are not authorized to cancel this event.");
         }
 
-        if (!EventStatusTransitions.CanTransition(evt.Status, "Cancelled", out var transitionReason))
+        if (evt.Status != "Cancelled" && !EventStatusTransitions.CanTransition(evt.Status, "Cancelled", out var transitionReason))
         {
             throw new InvalidOperationException(transitionReason);
         }
 
         _logger.LogInformation("Cancelling Event {EventId} for Organizer {OrganizerId}", eventId, organizerId);
-        await _repository.UpdateEventStatusAsync(eventId, "Cancelled");
+        if (evt.Status != "Cancelled") await _repository.UpdateEventStatusAsync(eventId, "Cancelled");
+        if (_cancellationClient is not null)
+            foreach (var show in await _repository.GetShowsByEventIdAsync(eventId))
+                await _cancellationClient.EstablishCancellationBarrierAsync(show.Id);
     }
 
     public async Task DeleteEventAsync(Guid organizerId, Guid eventId)
@@ -549,13 +555,14 @@ public class EventService : IEventService
             throw new UnauthorizedAccessException("You are not authorized to cancel this show.");
         }
 
-        if (!ShowStatusTransitions.CanTransition(show.Status, "Cancelled", out var transitionReason))
+        if (show.Status != "Cancelled" && !ShowStatusTransitions.CanTransition(show.Status, "Cancelled", out var transitionReason))
         {
             throw new InvalidOperationException(transitionReason);
         }
 
         _logger.LogInformation("Cancelling Show {ShowId} for Organizer {OrganizerId}", showId, organizerId);
-        await _repository.UpdateShowStatusAsync(showId, "Cancelled");
+        if (show.Status != "Cancelled") await _repository.UpdateShowStatusAsync(showId, "Cancelled");
+        if (_cancellationClient is not null) await _cancellationClient.EstablishCancellationBarrierAsync(showId);
     }
 
     public async Task<ShowSalesRulesDto?> GetSalesRulesAsync(Guid showId)

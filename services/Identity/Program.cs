@@ -8,6 +8,7 @@ using Microsoft.IdentityModel.Tokens;
 using BuildingBlocks;
 using Identity.Service.Clients;
 using Identity.Service.Db;
+using Identity.Service.Services;
 // Load root .env file if available; a real environment variable already set
 // (docker-compose, Container Apps) always wins over the .env file.
 DotNetEnv.Env.TraversePath().NoClobber().Load();
@@ -67,6 +68,7 @@ builder.Services.AddCors(options =>
 // Register DB Connection
 builder.Services.AddSingleton<DbConnectionFactory>();
 builder.Services.AddScoped<IAccountRepository, AccountRepository>();
+builder.Services.AddScoped<IOrganizerSuspensionService, OrganizerSuspensionService>();
 
 // The WSO2 admin credentials and M2M client credentials are required: a
 // service that silently starts without them fails later with a confusing

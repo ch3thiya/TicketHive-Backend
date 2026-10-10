@@ -101,6 +101,16 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
 builder.Services.AddAuthorization();
 
+builder.Services.AddScoped<CancellationRepository>();
+builder.Services.AddScoped<CancellationClient>();
+builder.Services.AddHostedService<CancellationWorker>();
+builder.Services.AddCancellationInternalAuthorization("booking:write");
+foreach (var service in new[] { "Catalog", "Inventory", "Payment", "Notification" })
+{
+    var endpoint = builder.Configuration[$"{service}Service:BaseUrl"] ?? $"http://{service.ToLowerInvariant()}:8080/";
+    builder.Services.AddHttpClient($"Cancellation{service}", client => client.BaseAddress = new Uri(endpoint))
+        .AddHttpMessageHandler<InternalServiceAuthenticationHandler>();
+}
 var app = builder.Build();
 app.UseServiceDefaults();
 

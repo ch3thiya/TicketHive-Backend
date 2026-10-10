@@ -86,7 +86,8 @@ public record EventWithShowsDto(
     int? CancellationCutoffHours,
     string Status,
     DateTime CreatedAt,
-    List<ShowDetailsDto> Shows
+    List<ShowDetailsDto> Shows,
+    bool SalesSuspended = false
 );
 
 public record ShowSalesRulesDto(Guid ShowId, DateTimeOffset? OnSaleAt, bool HighDemand);

@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Inventory.Service.Db;
 using Inventory.Service.Models;
+using Inventory.Service.Clients;
 
 namespace Inventory.Service.Services;
 
@@ -13,17 +14,20 @@ public class HoldService : IHoldService
     private readonly IAdmissionTokenVerifier _admissionTokenVerifier;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<HoldService> _logger;
+    private readonly ISalesEligibilityClient _salesEligibility;
 
     public HoldService(
         IHoldRepository repository,
         TimeProvider timeProvider,
         ILogger<HoldService> logger,
-        IAdmissionTokenVerifier admissionTokenVerifier)
+        IAdmissionTokenVerifier admissionTokenVerifier,
+        ISalesEligibilityClient salesEligibility)
     {
         _repository = repository;
         _timeProvider = timeProvider;
         _logger = logger;
         _admissionTokenVerifier = admissionTokenVerifier;
+        _salesEligibility = salesEligibility;
     }
 
     public async Task<CreateHoldResult> CreateHoldAsync(string customerSub, string idempotencyKey, bool hasAdmissionToken, CreateHoldRequest request, string? admissionToken = null)
@@ -68,6 +72,30 @@ public class HoldService : IHoldService
                     return new CreateHoldResult { Status = CreateHoldStatus.HighDemandBlocked };
                 }
             }
+        }
+
+        // Local gates run first so unadmitted traffic never reaches Catalog or Identity. The
+        // eligibility answer is live (never cached), so a suspension applies to the next hold.
+        var eligibility = await _salesEligibility.CheckAsync(request.ShowId);
+        if (!eligibility.IsEligible)
+        {
+            // A retry of a hold that already exists is replayed, not refused (ADR-009).
+            var existing = await _repository.GetByIdempotencyKeyAsync(customerSub, idempotencyKey);
+            if (existing is not null)
+            {
+                return new CreateHoldResult { Status = CreateHoldStatus.Duplicate, Hold = ToResponse(existing) };
+            }
+
+            _logger.LogInformation("Hold rejected for show {ShowId}: sales eligibility {Eligibility}", request.ShowId, eligibility.Status);
+            return new CreateHoldResult
+            {
+                Status = eligibility.Status switch
+                {
+                    SalesEligibilityStatus.OrganizerSuspended => CreateHoldStatus.OrganizerSuspended,
+                    SalesEligibilityStatus.Unavailable => CreateHoldStatus.SalesEligibilityUnavailable,
+                    _ => CreateHoldStatus.ShowNotOnSale
+                }
+            };
         }
         var hold = new Hold
         {

@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 using Moq;
 using Catalog.Service.Clients;
 using Catalog.Service.Db;
@@ -33,9 +34,13 @@ public class CatalogApiFactory : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
+        builder.ConfigureLogging(logging => logging.ClearProviders().AddConsole());
 
         builder.ConfigureServices(services =>
         {
+            services.RemoveAll<CancellationClient>();
+            services.TryAddSingleton(new CancellationClient(new CancellationTestHttpClientFactory()));
+            services.RemoveAll<Microsoft.Extensions.Hosting.IHostedService>();
             services.RemoveAll<IOrganizerStatusClient>();
             services.TryAddSingleton(OrganizerStatusClientMock.Object);
 
@@ -66,6 +71,7 @@ public class CatalogApiFactory : WebApplicationFactory<Program>
         EventRepositoryMock.Setup(r => r.CreateEventAsync(It.IsAny<Event>())).ReturnsAsync((Event e) => e);
         EventRepositoryMock.Setup(r => r.GetAllPublishedEventsAsync()).ReturnsAsync(new List<Event>());
         EventRepositoryMock.Setup(r => r.GetEventsByOrganizerIdAsync(It.IsAny<Guid>())).ReturnsAsync(new List<Event>());
+        EventRepositoryMock.Setup(r => r.GetShowsByEventIdAsync(It.IsAny<Guid>())).ReturnsAsync(new List<Show>());
 
         VenueRepositoryMock.Reset();
         VenueRepositoryMock.Setup(r => r.GetAllVenuesAsync()).ReturnsAsync(new List<Venue>());
@@ -74,5 +80,15 @@ public class CatalogApiFactory : WebApplicationFactory<Program>
         InventoryClientMock
             .Setup(c => c.InitializeShowStockAsync(It.IsAny<Guid>(), It.IsAny<InitializeShowStockRequest>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
+    }
+}
+
+file sealed class CancellationTestHttpClientFactory : IHttpClientFactory
+{
+    public HttpClient CreateClient(string name) => new(new OkHandler()) { BaseAddress = new Uri("http://cancellation.test/") };
+    private sealed class OkHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent("{\"orders\":{}}", System.Text.Encoding.UTF8, "application/json") });
     }
 }

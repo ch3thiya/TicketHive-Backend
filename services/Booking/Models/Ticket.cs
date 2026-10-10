@@ -14,6 +14,7 @@ public class Ticket
     public required DateTimeOffset IssuedAt { get; init; }
     public DateTimeOffset? UsedAt { get; set; }
     public string? UsedBy { get; set; }
+    public DateTimeOffset? VoidedAt { get; set; }
 }
 
 public record TicketResponse(
@@ -26,5 +27,6 @@ public record TicketResponse(
     decimal Price,
     DateTimeOffset IssuedAt,
     DateTimeOffset? UsedAt,
-    string? UsedBy
+    string? UsedBy,
+    DateTimeOffset? VoidedAt = null
 );

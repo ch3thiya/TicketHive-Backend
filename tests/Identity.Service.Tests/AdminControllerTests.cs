@@ -10,6 +10,7 @@ using Identity.Service.Clients;
 using Identity.Service.Controllers;
 using Identity.Service.Db;
 using Identity.Service.Models;
+using Identity.Service.Services;
 
 namespace Identity.Service.Tests;
 
@@ -26,7 +27,7 @@ public class AdminControllerTests
         _mockScimClient = new Mock<IWso2ScimClient>();
         _mockLogger = new Mock<ILogger<AdminController>>();
 
-        _controller = new AdminController(_mockRepo.Object, _mockScimClient.Object, _mockLogger.Object);
+        _controller = new AdminController(_mockRepo.Object, _mockScimClient.Object, new Mock<IOrganizerSuspensionService>().Object, _mockLogger.Object);
     }
 
     [Fact]

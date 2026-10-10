@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
 using Moq;
 using Xunit;
+using Inventory.Service.Clients;
 using Inventory.Service.Db;
 using Inventory.Service.Models;
 using Inventory.Service.Services;
@@ -15,6 +17,7 @@ public class HoldServiceTests
 {
     private readonly Mock<IHoldRepository> _mockRepo;
     private readonly Mock<IAdmissionTokenVerifier> _mockVerifier;
+    private readonly Mock<ISalesEligibilityClient> _mockEligibility;
     private readonly FakeTimeProvider _timeProvider;
     private readonly HoldService _service;
 
@@ -22,8 +25,11 @@ public class HoldServiceTests
     {
         _mockRepo = new Mock<IHoldRepository>();
         _mockVerifier = new Mock<IAdmissionTokenVerifier>();
+        _mockEligibility = new Mock<ISalesEligibilityClient>();
+        _mockEligibility.Setup(c => c.CheckAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SalesEligibilityDecision(SalesEligibilityStatus.Eligible));
         _timeProvider = new FakeTimeProvider(new DateTimeOffset(2026, 9, 15, 10, 0, 0, TimeSpan.Zero));
-        _service = new HoldService(_mockRepo.Object, _timeProvider, new Mock<ILogger<HoldService>>().Object, _mockVerifier.Object);
+        _service = new HoldService(_mockRepo.Object, _timeProvider, new Mock<ILogger<HoldService>>().Object, _mockVerifier.Object, _mockEligibility.Object);
     }
 
     private static CreateHoldRequest ValidRequest(params CreateHoldItemRequest[] items) =>

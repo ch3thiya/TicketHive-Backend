@@ -45,6 +45,9 @@ public interface IHoldRepository
     // with the original hold attached — never a second row.
     Task<HoldCreationResult> CreateAsync(Hold hold, int maxPerCustomer);
 
+    // Returns the customer's hold created with this idempotency key, or null.
+    Task<Hold?> GetByIdempotencyKeyAsync(string customerSub, string idempotencyKey);
+
     // Returns the hold with its items (currency joined from stock), or null
     // if it does not exist.
     Task<Hold?> GetByIdAsync(Guid holdId);
