@@ -108,4 +108,57 @@ public class ActiveOrganizerAuthorizationHandlerTests
         Assert.False(context.HasSucceeded);
         _mockClient.Verify(c => c.GetOrganizerStatusAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
+
+    private static AuthorizationHandlerContext CreateReadContext(ClaimsPrincipal user) =>
+        new(new[] { new ActiveOrganizerRequirement(allowSuspended: true) }, user, resource: null);
+
+    [Fact]
+    public async Task HandleRequirementAsync_SuspendedOrganizerOnManagementPolicy_FailsAndFlagsSuspension()
+    {
+        // Arrange
+        var organizerId = Guid.NewGuid();
+        _mockClient.Setup(c => c.GetOrganizerStatusAsync("sub-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OrganizerLookupResult(OrganizerLookupStatus.Suspended, organizerId));
+        var context = CreateContext(UserWithSub("sub-1"));
+
+        // Act
+        await _handler.HandleAsync(context);
+
+        // Assert
+        Assert.False(context.HasSucceeded);
+        Assert.True(_httpContext.Items.TryGetValue(ActiveOrganizerAuthorizationHandler.SuspendedItemKey, out var flag) && flag is true);
+    }
+
+    [Fact]
+    public async Task HandleRequirementAsync_SuspendedOrganizerOnReadPolicy_SucceedsWithOrganizerIdAndSuspendedFlag()
+    {
+        // Arrange
+        var organizerId = Guid.NewGuid();
+        _mockClient.Setup(c => c.GetOrganizerStatusAsync("sub-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OrganizerLookupResult(OrganizerLookupStatus.Suspended, organizerId));
+        var context = CreateReadContext(UserWithSub("sub-1"));
+
+        // Act
+        await _handler.HandleAsync(context);
+
+        // Assert
+        Assert.True(context.HasSucceeded);
+        Assert.Equal(organizerId, _httpContext.Items[ActiveOrganizerAuthorizationHandler.OrganizerIdItemKey]);
+        Assert.True(_httpContext.Items[ActiveOrganizerAuthorizationHandler.SuspendedItemKey] is true);
+    }
+
+    [Fact]
+    public async Task HandleRequirementAsync_UnavailableOnReadPolicy_StillFailsClosed()
+    {
+        // Arrange
+        _mockClient.Setup(c => c.GetOrganizerStatusAsync("sub-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OrganizerLookupResult(OrganizerLookupStatus.Unavailable, null));
+        var context = CreateReadContext(UserWithSub("sub-1"));
+
+        // Act
+        await _handler.HandleAsync(context);
+
+        // Assert
+        Assert.False(context.HasSucceeded);
+    }
 }
