@@ -19,5 +19,6 @@ public interface IAccountRepository
     Task<List<Dictionary<string, object>>> GetApprovedOrganizersAsync();
     Task<OrganizerStatusChangeResult> ApplyOrganizerStatusChangeAsync(Guid organizerId, OrganizerStatusAction action, string actorSub, string reason, DateTimeOffset occurredAt);
     Task<List<OrganizerStatusAuditEntry>> GetOrganizerStatusHistoryAsync(Guid organizerId);
+    Task<Dictionary<Guid, string>> GetOrganizerStatusesAsync(IReadOnlyCollection<Guid> organizerIds);
     Task DeleteUserAccountAsync(Guid id);
 }

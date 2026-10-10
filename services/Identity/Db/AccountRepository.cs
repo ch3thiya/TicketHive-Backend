@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Linq;
 using System.Threading.Tasks;
 using Npgsql;
 using Identity.Service.Models;
@@ -358,6 +359,28 @@ public class AccountRepository : IAccountRepository
         return entries;
     }
 
+    public async Task<Dictionary<Guid, string>> GetOrganizerStatusesAsync(IReadOnlyCollection<Guid> organizerIds)
+    {
+        await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
+
+        const string sql = @"
+            SELECT id, approval_status
+            FROM user_accounts
+            WHERE id = ANY(@Ids) AND role = 'Organizer' AND approval_status IN ('approved', 'suspended');
+        ";
+
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("Ids", organizerIds.ToArray());
+        await using var reader = await command.ExecuteReaderAsync();
+
+        var statuses = new Dictionary<Guid, string>();
+        while (await reader.ReadAsync())
+        {
+            statuses[reader.GetGuid(0)] = reader.GetString(1);
+        }
+
+        return statuses;
+    }
     public async Task<UserAccount?> GetUserAccountByEmailAsync(string email)
     {
         using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
