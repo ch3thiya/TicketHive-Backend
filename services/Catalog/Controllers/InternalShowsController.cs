@@ -7,6 +7,8 @@ namespace Catalog.Service.Controllers;
 
 public record SalesEligibilityResponse(Guid ShowId, bool Eligible, string Reason);
 
+public record EntryAccessResponse(Guid ShowId, bool Allowed, string Reason);
+
 [ApiController]
 [Route("internal/catalog/shows")]
 public class InternalShowsController : ControllerBase
@@ -60,6 +62,40 @@ public class InternalShowsController : ControllerBase
                 title: "Organizer status unavailable"),
             SalesEligibilityOutcome.Eligible => Ok(new SalesEligibilityResponse(showId, true, "None")),
             _ => Ok(new SalesEligibilityResponse(showId, false, result.Outcome.ToString()))
+        };
+    }
+
+    /// <summary>
+    /// Tells Booking whether the caller may validate tickets for the show. Only the owning
+    /// organizer is allowed (admins are decided by Booking from the token). Checked live on every
+    /// call; answers 503, never "allowed", when the organizer cannot be verified.
+    /// </summary>
+    [HttpGet("{showId:guid}/entry-access")]
+    [Authorize(Policy = "InternalService")]
+    [ProducesResponseType(typeof(EntryAccessResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status503ServiceUnavailable)]
+    public async Task<IActionResult> GetEntryAccess(Guid showId, [FromQuery] string? sub, [FromServices] IEntryAccessService entryAccess)
+    {
+        if (string.IsNullOrWhiteSpace(sub))
+        {
+            return Problem(detail: "The 'sub' query parameter is required.", statusCode: StatusCodes.Status400BadRequest, title: "Invalid request");
+        }
+
+        var result = await entryAccess.CheckAsync(showId, sub, HttpContext.RequestAborted);
+        return result.Outcome switch
+        {
+            EntryAccessOutcome.ShowNotFound => Problem(
+                detail: $"Show '{showId}' was not found.",
+                statusCode: StatusCodes.Status404NotFound,
+                title: "Show not found"),
+            EntryAccessOutcome.OrganizerStatusUnavailable => Problem(
+                detail: "The organizer's status could not be verified right now.",
+                statusCode: StatusCodes.Status503ServiceUnavailable,
+                title: "Organizer status unavailable"),
+            EntryAccessOutcome.Allowed => Ok(new EntryAccessResponse(showId, true, "None")),
+            _ => Ok(new EntryAccessResponse(showId, false, result.Outcome.ToString()))
         };
     }
 }
