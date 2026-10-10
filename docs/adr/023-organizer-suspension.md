@@ -29,7 +29,8 @@ An admin must be able to suspend an organizer so a problem account can no longer
 - **Propagation boundaries.** Management and hold checks are immediate. Customer pages can lag by up to the listing cache window. A hold whose eligibility check passed just before the suspension committed can still be created: the window is one request round trip and is accepted. Closing it would need an Inventory-side fence updated by a durable push from Identity.
 - Every hold attempt that passes the local gate makes a Catalog call, which makes an Identity call and two Catalog queries. This is on the high-demand path and should be load tested.
 - If Catalog or Identity is down, new holds are refused (503) even for healthy organizers.
-- The waiting room can still admit customers to a suspended organizer's high-demand show; they are refused when they try to hold.
+- **Waiting room (agreed boundary, no rule change).** The waiting room asks Catalog only for on-sale time and the high-demand flag, never for organizer status. Customers can still join a queue and be admitted for a suspended organizer's high-demand show; the hold they then attempt is refused with 409 and the event page shows the sales-unavailable notice. Event pages already disable Buy Now for suspended organizers, so queues form only for customers who reach the queue without that page state. Making the waiting room refuse joins is a separate decision for the Product Owner.
+- **Entry validation.** Booking's ticket reads and validation do not depend on organizer status, so sold tickets stay viewable and scannable during suspension.
 - Asgardeo's approval attribute is not changed; Identity's database is authoritative and tokens stay valid until each request is checked.
 - Seated tickets are out of scope (see ADR-022).
 
