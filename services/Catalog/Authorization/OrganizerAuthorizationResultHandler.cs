@@ -32,7 +32,7 @@ public class OrganizerAuthorizationResultHandler : IAuthorizationMiddlewareResul
                 Detail = "This organizer account is suspended. Event and show management is unavailable until an administrator reinstates it."
             };
             suspendedProblem.Extensions["code"] = SuspendedProblemCode;
-            await context.Response.WriteAsJsonAsync(suspendedProblem);
+            await context.Response.WriteAsJsonAsync(suspendedProblem, options: null, contentType: "application/problem+json");
             return;
         }
         if (!authorizeResult.Succeeded &&
@@ -48,7 +48,7 @@ public class OrganizerAuthorizationResultHandler : IAuthorizationMiddlewareResul
 
             context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
             context.Response.ContentType = "application/problem+json";
-            await context.Response.WriteAsJsonAsync(problemDetails);
+            await context.Response.WriteAsJsonAsync(problemDetails, options: null, contentType: "application/problem+json");
             return;
         }
 
