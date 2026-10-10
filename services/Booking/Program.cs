@@ -53,6 +53,15 @@ builder.Services.AddHttpClient<IInventoryClient, InventoryClient>(client =>
 })
 .AddHttpMessageHandler<InternalServiceAuthenticationHandler>();
 
+// Ticket validation asks Catalog whether the caller owns the show (needs catalog:read in
+// Wso2:InternalApi:Scope). Shares CatalogService:BaseUrl with the cancellation clients.
+var catalogBaseUrl = builder.Configuration["CatalogService:BaseUrl"] ?? "http://catalog:8080/";
+builder.Services.AddHttpClient<IEntryAccessClient, EntryAccessClient>(client =>
+{
+    client.BaseAddress = new Uri(catalogBaseUrl);
+})
+.AddHttpMessageHandler<InternalServiceAuthenticationHandler>();
+
 var allowedFrontendOrigins = builder.Configuration["Cors:AllowedOrigins"]?
     .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
     ?? new[]
