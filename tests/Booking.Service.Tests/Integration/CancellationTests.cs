@@ -184,4 +184,42 @@ public class CancellationTests(PostgresFixture fixture)
         Assert.Equal(200, email.Amount);
         await Assert.ThrowsAsync<PostgresException>(() => SeedAsync(status: OrderStatus.PaymentPending, show: paid.ShowId));
     }
+
+    [Fact]
+    public async Task No_new_order_can_commit_after_show_cancellation_is_acknowledged()
+    {
+        var show = Guid.CreateVersion7();
+        var cancellations = new CancellationRepository(Factory, TimeProvider.System);
+        await cancellations.CancelShowAsync(show);
+
+        var order = new Order
+        {
+            Id = Guid.CreateVersion7(), HoldId = Guid.CreateVersion7(), CustomerSub = "customer", ShowId = show,
+            Status = OrderStatus.PaymentPending, TotalAmount = 100, Currency = "LKR", IdempotencyKey = Guid.CreateVersion7().ToString(),
+            CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow
+        };
+        await Assert.ThrowsAsync<PostgresException>(() => new OrderRepository(Factory).CreateAsync(order));
+    }
+
+    [Fact]
+    public async Task Order_creation_racing_show_cancellation_is_rejected_or_cancelled()
+    {
+        for (var i = 0; i < 8; i++)
+        {
+            var show = Guid.CreateVersion7();
+            var order = new Order
+            {
+                Id = Guid.CreateVersion7(), HoldId = Guid.CreateVersion7(), CustomerSub = "customer", ShowId = show,
+                Status = OrderStatus.PaymentPending, TotalAmount = 100, Currency = "LKR", IdempotencyKey = Guid.CreateVersion7().ToString(),
+                CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow
+            };
+            var create = new OrderRepository(Factory).CreateAsync(order);
+            var cancel = new CancellationRepository(Factory, TimeProvider.System).CancelShowAsync(show);
+            try { await Task.WhenAll(create, cancel); }
+            catch (PostgresException) { await cancel; }
+
+            var stored = await new OrderRepository(Factory).GetByIdAsync(order.Id);
+            Assert.True(stored is null || stored.Status == OrderStatus.Cancelled);
+        }
+    }
 }

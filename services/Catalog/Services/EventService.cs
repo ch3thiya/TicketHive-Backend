@@ -420,7 +420,7 @@ public class EventService : IEventService
         if (evt.Status != "Cancelled") await _repository.UpdateEventStatusAsync(eventId, "Cancelled");
         if (_cancellationClient is not null)
             foreach (var show in await _repository.GetShowsByEventIdAsync(eventId))
-                await _cancellationClient.StopSalesAsync(show.Id);
+                await _cancellationClient.EstablishCancellationBarrierAsync(show.Id);
     }
 
     public async Task DeleteEventAsync(Guid organizerId, Guid eventId)
@@ -562,7 +562,7 @@ public class EventService : IEventService
 
         _logger.LogInformation("Cancelling Show {ShowId} for Organizer {OrganizerId}", showId, organizerId);
         if (show.Status != "Cancelled") await _repository.UpdateShowStatusAsync(showId, "Cancelled");
-        if (_cancellationClient is not null) await _cancellationClient.StopSalesAsync(showId);
+        if (_cancellationClient is not null) await _cancellationClient.EstablishCancellationBarrierAsync(showId);
     }
 
     public async Task<ShowSalesRulesDto?> GetSalesRulesAsync(Guid showId)

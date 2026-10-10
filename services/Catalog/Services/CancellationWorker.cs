@@ -26,9 +26,8 @@ public class CancellationWorker(IServiceScopeFactory scopes, ILogger<Cancellatio
                     var stopped = false;
                     try
                     {
-                        await client.StopSalesAsync(work.Value.ShowId);
+                        await client.EstablishCancellationBarrierAsync(work.Value.ShowId);
                         stopped = true;
-                        await client.CancelOrdersAsync(work.Value.ShowId);
                         await repository.FinishAsync(work.Value.ShowId, work.Value.Token, true, true);
                         _dispatched.Add(1);
                         logger.LogInformation("Dispatched cancellation for show {ShowId}", work.Value.ShowId);
