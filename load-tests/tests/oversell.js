@@ -31,6 +31,13 @@ const AVAILABILITY_URL = `${baseUrl('inventory')}/api/inventory/shows/${seed.con
 const ticketsHeld = new Counter('tickets_held');
 const soldOutRefusals = new Counter('sold_out_refusals');
 const unexpectedResponses = new Counter('unexpected_responses');
+// One counter per status code, because k6 only exposes metrics created in the
+// init context. Status 0 is a transport failure (timeout, reset, refused).
+const UNEXPECTED_STATUSES = [0, 400, 401, 403, 404, 408, 422, 429, 500, 502, 503, 504];
+const unexpectedByStatus = Object.fromEntries(
+  UNEXPECTED_STATUSES.map((status) => [status, new Counter(`unexpected_status_${status}`)]),
+);
+const unexpectedOther = new Counter('unexpected_status_other');
 const holdExpiresAt = new Trend('hold_expires_at_epoch_ms');
 const availableAfterBurst = new Gauge('available_after_burst');
 const availableAfterRelease = new Gauge('available_after_release');
@@ -92,6 +99,7 @@ export function tryToHold() {
     soldOutRefusals.add(1);
   } else {
     unexpectedResponses.add(1);
+    (unexpectedByStatus[res.status] || unexpectedOther).add(1);
   }
 
   check(res, { 'either held (201) or sold out (409)': (r) => r.status === 201 || r.status === 409 });
@@ -127,6 +135,15 @@ function metricValue(data, name, stat) {
   return data.metrics[name]?.values[stat];
 }
 
+// "74 x 500, 3 x 0 (transport error)" or "none"
+function unexpectedBreakdown(data) {
+  const parts = [...UNEXPECTED_STATUSES, 'other']
+    .map((status) => [status, metricValue(data, `unexpected_status_${status}`, 'count') || 0])
+    .filter(([, count]) => count > 0)
+    .map(([status, count]) => `${count} x ${status === 0 ? '0 (transport error)' : status}`);
+  return parts.length ? parts.join(', ') : 'none';
+}
+
 export function handleSummary(data) {
   const stock = seed.contention.stock;
   const held = metricValue(data, 'tickets_held', 'count') || 0;
@@ -148,7 +165,7 @@ export function handleSummary(data) {
     {
       name: 'Clean refusals',
       ok: unexpected === 0 && held + refused === USERS,
-      detail: `${refused} clean 409s, ${unexpected} unexpected responses`,
+      detail: `${refused} clean 409s, ${unexpected} unexpected (${unexpectedBreakdown(data)})`,
     },
   ];
 
