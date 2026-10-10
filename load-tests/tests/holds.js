@@ -14,7 +14,8 @@ import http from 'k6/http';
 import { check } from 'k6';
 import { baseUrl, seed, SUMMARY_TREND_STATS } from '../lib/config.js';
 import { scenario, think } from '../lib/profiles.js';
-import { authHeaders } from '../lib/auth.js';
+import { authHeaders, warmupHeaders } from '../lib/auth.js';
+import { warmUp, WARMUP_TAGS } from '../lib/warmup.js';
 import { buildSummary } from '../lib/summary.js';
 
 const HOLDS_URL = `${baseUrl('inventory')}/api/inventory/holds`;
@@ -29,13 +30,20 @@ export const options = {
   },
 };
 
-export function createHold() {
-  const payload = JSON.stringify({
-    showId: seed.capacity.showId,
-    items: [{ categoryId: seed.capacity.categoryId, quantity: 1 }],
-  });
+const holdBody = () =>
+  JSON.stringify({ showId: seed.capacity.showId, items: [{ categoryId: seed.capacity.categoryId, quantity: 1 }] });
 
-  const res = http.post(HOLDS_URL, payload, {
+export function setup() {
+  warmUp((i) =>
+    http.post(HOLDS_URL, holdBody(), {
+      headers: warmupHeaders(i, { 'Content-Type': 'application/json', 'Idempotency-Key': `warmup-${i}-${Date.now()}` }),
+      tags: WARMUP_TAGS,
+    }),
+  );
+}
+
+export function createHold() {
+  const res = http.post(HOLDS_URL, holdBody(), {
     headers: authHeaders({
       'Content-Type': 'application/json',
       // A fresh key per attempt: each request is a new hold, not a retry.

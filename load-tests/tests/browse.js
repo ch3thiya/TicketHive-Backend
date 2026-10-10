@@ -13,6 +13,7 @@ import { check, group } from 'k6';
 import { baseUrl, seed, SUMMARY_TREND_STATS } from '../lib/config.js';
 import { scenario, think } from '../lib/profiles.js';
 import { buildSummary } from '../lib/summary.js';
+import { warmUp, WARMUP_TAGS } from '../lib/warmup.js';
 
 const EVENTS_URL = `${baseUrl('catalog')}/api/catalog/events`;
 
@@ -27,6 +28,13 @@ export const options = {
     checks: ['rate>0.99'],
   },
 };
+
+export function setup() {
+  warmUp(() => {
+    http.get(EVENTS_URL, { tags: WARMUP_TAGS });
+    http.get(`${EVENTS_URL}/${seed.eventId}`, { tags: WARMUP_TAGS });
+  });
+}
 
 export function browse() {
   group('home page', () => {

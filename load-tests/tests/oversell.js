@@ -18,7 +18,8 @@ import http from 'k6/http';
 import { check, sleep } from 'k6';
 import { Counter, Gauge, Trend } from 'k6/metrics';
 import { baseUrl, seed, SUMMARY_TREND_STATS } from '../lib/config.js';
-import { authHeaders } from '../lib/auth.js';
+import { authHeaders, warmupHeaders } from '../lib/auth.js';
+import { warmUp, WARMUP_TAGS } from '../lib/warmup.js';
 import { buildSummary } from '../lib/summary.js';
 
 const USERS = Number(__ENV.OVERSELL_USERS || 500);
@@ -54,6 +55,20 @@ export const options = {
     unexpected_responses: ['count==0'],
   },
 };
+
+// Warm up on the capacity show: same code path, and no contention ticket is used.
+export function setup() {
+  warmUp((i) =>
+    http.post(
+      HOLDS_URL,
+      JSON.stringify({ showId: seed.capacity.showId, items: [{ categoryId: seed.capacity.categoryId, quantity: 1 }] }),
+      {
+        headers: warmupHeaders(i, { 'Content-Type': 'application/json', 'Idempotency-Key': `warmup-${i}-${Date.now()}` }),
+        tags: WARMUP_TAGS,
+      },
+    ),
+  );
+}
 
 export function tryToHold() {
   const res = http.post(

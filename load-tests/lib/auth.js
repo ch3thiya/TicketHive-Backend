@@ -23,6 +23,12 @@ export function currentToken() {
   return tokens[index % tokens.length];
 }
 
+// Identities for warm-up requests in setup(), taken from the end of the pool
+// so they don't collide with the customers the VUs play.
+export function warmupHeaders(n, extra = {}) {
+  return { Authorization: `Bearer ${tokens[tokens.length - 1 - (n % 10)]}`, ...extra };
+}
+
 export function authHeaders(extra = {}) {
   return { Authorization: `Bearer ${currentToken()}`, ...extra };
 }

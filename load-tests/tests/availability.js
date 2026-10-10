@@ -12,6 +12,7 @@ import { check } from 'k6';
 import { baseUrl, seed, SUMMARY_TREND_STATS } from '../lib/config.js';
 import { scenario, think } from '../lib/profiles.js';
 import { buildSummary } from '../lib/summary.js';
+import { warmUp, WARMUP_TAGS } from '../lib/warmup.js';
 
 const AVAILABILITY_URL = `${baseUrl('inventory')}/api/inventory/shows/${seed.capacity.showId}/availability`;
 
@@ -24,6 +25,10 @@ export const options = {
     checks: ['rate>0.99'],
   },
 };
+
+export function setup() {
+  warmUp(() => http.get(AVAILABILITY_URL, { tags: WARMUP_TAGS }));
+}
 
 export function pollAvailability() {
   // Anonymous on purpose: the endpoint is public, as it is for real visitors.
