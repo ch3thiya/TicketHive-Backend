@@ -225,18 +225,21 @@ public class OrganizerStatusClientTests
     }
 
     [Fact]
-    public async Task GetOrganizerStatusesAsync_IdentityOutage_ReturnsUnavailableAndIsNotCached()
+    public async Task GetOrganizerStatusesAsync_IdentityOutage_ReturnsUnavailableAndRetriesAfterCacheWindow()
     {
         // Arrange
         var id = Guid.NewGuid();
         var handler = MockHandlerReturning(HttpStatusCode.ServiceUnavailable);
-        var client = CreateClient(handler, new FakeTimeProvider());
+        var timeProvider = new FakeTimeProvider();
+        var client = CreateClient(handler, timeProvider, listingCacheSeconds: 5);
 
         // Act
         var first = await client.GetOrganizerStatusesAsync([id]);
         var second = await client.GetOrganizerStatusesAsync([id]);
+        timeProvider.Advance(TimeSpan.FromSeconds(6));
+        await client.GetOrganizerStatusesAsync([id]);
 
-        // Assert
+        // Assert: one call per window, so an outage cannot slow every public listing request.
         Assert.Equal(OrganizerLookupStatus.Unavailable, first[id]);
         Assert.Equal(OrganizerLookupStatus.Unavailable, second[id]);
         VerifyCalls(handler, 2);

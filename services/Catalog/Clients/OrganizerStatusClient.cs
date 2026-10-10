@@ -71,8 +71,9 @@ public class OrganizerStatusClient : IOrganizerStatusClient
                 : fetched.GetValueOrDefault(id, OrganizerLookupStatus.NotFound);
             result[id] = status;
 
-            // Only definite answers are cached; an outage is retried on the next request.
-            if (fetched is not null && _listingCacheDuration > TimeSpan.Zero)
+            // An outage is cached for the same short window so a struggling Identity cannot
+            // slow every public listing request. This is display data only.
+            if (_listingCacheDuration > TimeSpan.Zero)
             {
                 _cache.Set(ListingCacheKeyPrefix + id, new CacheEntry(status, now + _listingCacheDuration), _listingCacheDuration * 10);
             }
