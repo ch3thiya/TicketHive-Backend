@@ -17,7 +17,8 @@ import { check } from 'k6';
 import { Counter } from 'k6/metrics';
 import { baseUrl, seed, SUMMARY_TREND_STATS } from '../lib/config.js';
 import { scenario, think } from '../lib/profiles.js';
-import { authHeaders } from '../lib/auth.js';
+import { authHeaders, warmupHeaders } from '../lib/auth.js';
+import { warmUp, WARMUP_TAGS } from '../lib/warmup.js';
 import { buildSummary } from '../lib/summary.js';
 
 const QUEUE_URL = `${baseUrl('waitingRoom')}/api/waiting-room/queues/${seed.queue.showId}/entries`;
@@ -36,6 +37,15 @@ export const options = {
     checks: ['rate>0.99'],
   },
 };
+
+// The first join for a show also asks Catalog for its sales rules and creates
+// the queue, so warm-up covers that path as well as the join itself.
+export function setup() {
+  warmUp((i) => {
+    http.post(QUEUE_URL, null, { headers: warmupHeaders(i), tags: WARMUP_TAGS });
+    http.get(`${QUEUE_URL}/me`, { headers: warmupHeaders(i), tags: WARMUP_TAGS });
+  });
+}
 
 // Module scope in k6 is per VU, so this tracks whether *this* customer has joined.
 let joined = false;
