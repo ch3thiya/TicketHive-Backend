@@ -1,0 +1,77 @@
+name: Load tests
+
+# SE3112 load-testing stage. Runs every k6 test against a stack started on the
+# runner itself (load-tests/scripts/start-stack.sh), so it needs no deployed
+# environment and no Asgardeo credentials. The group pipeline can call it as
+# a reusable workflow (workflow_call).
+on:
+  push:
+    branches: [feature/se3112-testing, feature/se3112-load-tests]
+    paths: ['load-tests/**', 'services/**', '.github/workflows/load-tests.yml']
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: 'Load profile'
+        required: true
+        default: smoke
+        type: choice
+        options: [smoke, demo, load, spike]
+  workflow_call:
+    inputs:
+      profile:
+        type: string
+        default: smoke
+
+permissions:
+  contents: read
+
+jobs:
+  load:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      PROFILE: ${{ inputs.profile || 'smoke' }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - uses: grafana/setup-k6-action@v1
+
+      - name: Start stack (infrastructure, token issuer, services)
+        run: load-tests/scripts/start-stack.sh
+
+      # Every test runs even if an earlier one fails, so one run reports all of them.
+      - name: Run load tests
+        run: |
+          failed=0
+          for test in holds oversell availability queue browse rate-limit; do
+            echo "::group::$test ($PROFILE)"
+            load-tests/scripts/run.sh "$test" "$PROFILE" || { failed=1; echo "::error::Load test '$test' failed"; }
+            echo "::endgroup::"
+          done
+          exit $failed
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: load-test-results-${{ env.PROFILE }}
+          path: load-tests/results/
+
+      - name: Upload service logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: load-test-service-logs
+          path: load-tests/.run/*.log
+
+      - name: Stop stack
+        if: always()
+        run: load-tests/scripts/stop-stack.sh --all
