@@ -5,6 +5,8 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Inventory.Service.Clients;
 using Inventory.Service.Tests.Api;
 
 namespace Inventory.Service.Tests.Integration;
@@ -23,6 +25,8 @@ namespace Inventory.Service.Tests.Integration;
 public class HoldsApiFactory : WebApplicationFactory<Program>
 {
     private readonly string _connectionString;
+
+    public FakeSalesEligibilityClient SalesEligibility { get; } = new();
 
     public HoldsApiFactory(string connectionString)
     {
@@ -44,6 +48,10 @@ public class HoldsApiFactory : WebApplicationFactory<Program>
 
         builder.ConfigureServices(services =>
         {
+            // Catalog is not running in these tests; eligibility is driven through the fake.
+            services.RemoveAll<ISalesEligibilityClient>();
+            services.AddSingleton<ISalesEligibilityClient>(SalesEligibility);
+
             services.Configure<AuthenticationOptions>(options =>
             {
                 if (options.Schemes is IList<AuthenticationSchemeBuilder> schemes)

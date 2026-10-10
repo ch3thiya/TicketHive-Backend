@@ -199,6 +199,9 @@ public class HoldRepository : IHoldRepository
         return await GetByIdAsync(holdId, connection, null);
     }
 
+    public Task<Hold?> GetByIdempotencyKeyAsync(string customerSub, string idempotencyKey) =>
+        FindByIdempotencyKeyAsync(customerSub, idempotencyKey);
+
     private async Task<Hold?> FindByIdempotencyKeyAsync(string customerSub, string idempotencyKey)
     {
         await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
