@@ -216,6 +216,21 @@ Keep a full `load` run's report open as a fallback.
   `Timeout`, so excess requests queue in the pool instead of failing, and keep
   (instances x pool size) across services below `max_connections`. The thresholds
   stay strict so CI shows the problem until it is fixed.
+- **The hold-expiry sweeper cannot keep up with a high hold rate (finding).**
+  Inventory releases expired holds in batches of 200 every 10 s
+  (`HoldExpirySweep` `BatchSize` and `IntervalSeconds`). Measured from the
+  database over 60 s, the Expired count rose by 1,300: about 21 holds per
+  second, exactly one batch per tick. A `holds` load run creates about 260
+  holds per second and about 55,000 in 3.5 minutes, so the sweeper needs about
+  33 minutes to release the backlog of one run. ADR-014 requires expired holds
+  to be released within 30 s; that holds at the scale of the `oversell` test
+  (about 0.5 s in CI) but not at load. Overdue holds keep their stock
+  reserved and compete for CPU and locks with whatever runs next, which is why
+  `./scripts/cleanup.sh --execute` (load-test rows only; dry run without the
+  flag) should run before a measured test that follows a `holds` run. Possible
+  fixes, for a `fix/` branch: keep sweeping within a tick until a batch comes
+  back short, raise the batch size, or run the sweep more often. Check that
+  several instances can sweep safely before choosing.
 - **Holds and availability share rows.** Run `holds` and `availability` together
   (two terminals) to see read latency under write contention.
 
