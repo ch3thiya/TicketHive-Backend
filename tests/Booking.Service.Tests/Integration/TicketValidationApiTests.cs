@@ -43,9 +43,18 @@ public sealed class TicketValidationApiTests : IAsyncLifetime
     {
         var order = new Order
         {
-            Id = Guid.CreateVersion7(), HoldId = Guid.CreateVersion7(), CustomerSub = "customer", ShowId = Guid.CreateVersion7(),
-            Status = status, TotalAmount = 100, Currency = "LKR", IdempotencyKey = Guid.CreateVersion7().ToString(),
-            CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow, CustomerEmail = "t@example.invalid", CustomerName = "T"
+            Id = Guid.CreateVersion7(),
+            HoldId = Guid.CreateVersion7(),
+            CustomerSub = "customer",
+            ShowId = Guid.CreateVersion7(),
+            Status = status,
+            TotalAmount = 100,
+            Currency = "LKR",
+            IdempotencyKey = Guid.CreateVersion7().ToString(),
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow,
+            CustomerEmail = "t@example.invalid",
+            CustomerName = "T"
         };
         await new OrderRepository(Connections()).CreateAsync(order);
         var code = Guid.CreateVersion7().ToString();
