@@ -119,6 +119,21 @@ The issuer is for local and CI test stacks only.
 | contention | 100 (`CONTENTION_CAPACITY`) | 1,000 | **1 min** | oversell |
 | queue | 10,000,000, high-demand | 6 | 10 min | queue |
 
+### Warm-up before measuring
+
+The first requests after a service starts pay one-off costs: compiling the code
+path, opening database connections, the first call to another service. In a
+short run, those few slow requests decide the p95. Each test's `setup()` sends
+`WARMUP_REQUESTS` (default 5) untimed requests first, tagged `name:warmup` so no
+threshold sees them (`lib/warmup.js`). The oversell test warms up on the
+capacity show, so no contended ticket is used.
+
+This was found on the first real CI run: every `queue_join` took 530–542 ms
+because all five smoke-test users joined at the same instant on services that
+hadn't served a request yet. With warm-up, the thresholds measure steady state.
+Cold-start latency is still real for the first customers after a deploy:
+`WARMUP_REQUESTS=0 ./scripts/run.sh queue smoke` measures it on purpose.
+
 ### Two gateways
 
 A single load generator is one IP, and the gateway allows 100 requests per 10 s
@@ -143,6 +158,7 @@ Both are configured through settings only.
 | `OVERSELL_USERS` | 500 | Customers racing in the oversell test |
 | `RELEASE_CHECK` | 1 | `0` skips the ~90 s hold-release wait (quicker demo) |
 | `SPOOF_XFF` | 0 | `1` runs the rate-limit exposure check (below) |
+| `WARMUP_REQUESTS` | 5 | Untimed requests before measuring; `0` measures a cold system |
 | `OTEL` | 0 | `1` on `start-stack.sh` sends traces to the Aspire dashboard (http://localhost:18888) to find bottlenecks |
 | `SERVICES` | Catalog Inventory WaitingRoom Gateway | Services `start-stack.sh` starts |
 
@@ -178,6 +194,10 @@ Keep a full `load` run's report open as a fallback.
   a directly reachable gateway the budget invariant is **expected to fail**. In
   Azure, Container Apps ingress should append the real client IP, which is the
   value the gateway uses. Verify that before presenting it as a production issue.
+- **Cold start.** The first requests after a deploy are several times slower
+  (≈ 530 ms vs ≈ 20 ms for `queue_join` in CI). Compare `WARMUP_REQUESTS=0` with
+  the default to show it; readiness probes or a warm-up step after deployment
+  would hide it from customers.
 - **Holds and availability share rows.** Run `holds` and `availability` together
   (two terminals) to see read latency under write contention.
 
@@ -205,6 +225,7 @@ load-tests/
 │   ├── config.js             URLs, seed data, summary stats
 │   ├── profiles.js           smoke/demo/load/stress/spike/soak
 │   ├── auth.js               token pool (SharedArray)
+│   ├── warmup.js             untimed warm-up before measuring
 │   └── summary.js            console/markdown/JSON report + verdict
 └── tests/                    one file per scenario (table at the top)
 ```
