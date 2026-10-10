@@ -43,6 +43,8 @@ jobs:
           node-version: '22'
 
       - uses: grafana/setup-k6-action@v1
+        with:
+          k6-version: '0.57.0'
 
       - name: Start stack (infrastructure, token issuer, services)
         run: load-tests/scripts/start-stack.sh
@@ -71,6 +73,7 @@ jobs:
         with:
           name: load-test-service-logs
           path: load-tests/.run/*.log
+          include-hidden-files: true # .run/ is a hidden folder
 
       - name: Stop stack
         if: always()
