@@ -6,5 +6,10 @@ public class OrganizerStatusClientOptions
 
     public string BaseUrl { get; set; } = string.Empty;
 
-    public int CacheDurationSeconds { get; set; } = 60;
+    /// <summary>
+    /// How long listing flags (<c>salesAvailable</c>) may lag behind Identity. Management and
+    /// hold-time checks are never cached. Keep this small: it is the documented propagation
+    /// boundary for customer-facing display only.
+    /// </summary>
+    public int ListingCacheSeconds { get; set; } = 5;
 }

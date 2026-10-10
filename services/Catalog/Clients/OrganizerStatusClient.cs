@@ -8,13 +8,13 @@ namespace Catalog.Service.Clients;
 
 public class OrganizerStatusClient : IOrganizerStatusClient
 {
-    private const string CacheKeyPrefix = "organizer-status:";
+    private const string ListingCacheKeyPrefix = "organizer-listing-status:";
 
     private readonly HttpClient _httpClient;
     private readonly IMemoryCache _cache;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<OrganizerStatusClient> _logger;
-    private readonly TimeSpan _cacheDuration;
+    private readonly TimeSpan _listingCacheDuration;
 
     public OrganizerStatusClient(
         HttpClient httpClient,
@@ -27,43 +27,112 @@ public class OrganizerStatusClient : IOrganizerStatusClient
         _cache = cache;
         _timeProvider = timeProvider;
         _logger = logger;
-        _cacheDuration = TimeSpan.FromSeconds(options.Value.CacheDurationSeconds);
+        _listingCacheDuration = TimeSpan.FromSeconds(Math.Max(0, options.Value.ListingCacheSeconds));
     }
 
-    public async Task<OrganizerLookupResult> GetOrganizerStatusAsync(string sub, CancellationToken cancellationToken = default)
+    public Task<OrganizerLookupResult> GetOrganizerStatusAsync(string sub, CancellationToken cancellationToken = default) =>
+        LookupAsync($"internal/identity/organizers/{Uri.EscapeDataString(sub)}", cancellationToken);
+
+    public Task<OrganizerLookupResult> GetOrganizerStatusByIdAsync(Guid organizerId, CancellationToken cancellationToken = default) =>
+        LookupAsync($"internal/identity/organizers/by-id/{organizerId}", cancellationToken);
+
+    public async Task<IReadOnlyDictionary<Guid, OrganizerLookupStatus>> GetOrganizerStatusesAsync(
+        IReadOnlyCollection<Guid> organizerIds, CancellationToken cancellationToken = default)
     {
-        var cacheKey = CacheKeyPrefix + sub;
+        var result = new Dictionary<Guid, OrganizerLookupStatus>();
         var now = _timeProvider.GetUtcNow();
-        if (_cache.TryGetValue(cacheKey, out CacheEntry? cached) && cached is not null && cached.ExpiresAt > now)
+        var missing = new List<Guid>();
+
+        foreach (var id in organizerIds.Distinct())
         {
-            return cached.Result;
+            if (_listingCacheDuration > TimeSpan.Zero
+                && _cache.TryGetValue(ListingCacheKeyPrefix + id, out CacheEntry? cached)
+                && cached is not null
+                && cached.ExpiresAt > now)
+            {
+                result[id] = cached.Status;
+            }
+            else
+            {
+                missing.Add(id);
+            }
         }
 
-        OrganizerLookupResult result;
+        if (missing.Count == 0)
+        {
+            return result;
+        }
+
+        var fetched = await FetchBatchAsync(missing, cancellationToken);
+        foreach (var id in missing)
+        {
+            var status = fetched is null
+                ? OrganizerLookupStatus.Unavailable
+                : fetched.GetValueOrDefault(id, OrganizerLookupStatus.NotFound);
+            result[id] = status;
+
+            // Only definite answers are cached; an outage is retried on the next request.
+            if (fetched is not null && _listingCacheDuration > TimeSpan.Zero)
+            {
+                _cache.Set(ListingCacheKeyPrefix + id, new CacheEntry(status, now + _listingCacheDuration), _listingCacheDuration * 10);
+            }
+        }
+
+        return result;
+    }
+
+    private async Task<Dictionary<Guid, OrganizerLookupStatus>?> FetchBatchAsync(List<Guid> ids, CancellationToken cancellationToken)
+    {
         try
         {
-            var response = await _httpClient.GetAsync($"internal/identity/organizers/{Uri.EscapeDataString(sub)}", cancellationToken);
+            using var response = await _httpClient.PostAsJsonAsync("internal/identity/organizers/status", new { organizerIds = ids }, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Identity organizer batch lookup failed with status {StatusCode}", response.StatusCode);
+                return null;
+            }
+
+            var body = await response.Content.ReadFromJsonAsync<List<OrganizerLookupResponseDto>>(cancellationToken);
+            return body?.ToDictionary(b => b.OrganizerId, b => MapStatus(b.Status));
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogWarning(ex, "Identity organizer batch lookup failed");
+            return null;
+        }
+        catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogWarning(ex, "Identity organizer batch lookup timed out");
+            return null;
+        }
+    }
+
+    private async Task<OrganizerLookupResult> LookupAsync(string path, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var response = await _httpClient.GetAsync(path, cancellationToken);
 
             if (response.StatusCode == HttpStatusCode.NotFound)
             {
-                result = new OrganizerLookupResult(OrganizerLookupStatus.NotFound, null);
+                return new OrganizerLookupResult(OrganizerLookupStatus.NotFound, null);
             }
-            else if (response.IsSuccessStatusCode)
-            {
-                var body = await response.Content.ReadFromJsonAsync<OrganizerLookupResponseDto>(cancellationToken);
-                if (body is null)
-                {
-                    _logger.LogWarning("Identity returned an empty organizer lookup response");
-                    return new OrganizerLookupResult(OrganizerLookupStatus.Unavailable, null);
-                }
 
-                result = new OrganizerLookupResult(OrganizerLookupStatus.Active, body.OrganizerId);
-            }
-            else
+            if (!response.IsSuccessStatusCode)
             {
                 _logger.LogWarning("Identity organizer lookup failed with status {StatusCode}", response.StatusCode);
                 return new OrganizerLookupResult(OrganizerLookupStatus.Unavailable, null);
             }
+
+            var body = await response.Content.ReadFromJsonAsync<OrganizerLookupResponseDto>(cancellationToken);
+            if (body is null || body.OrganizerId == Guid.Empty)
+            {
+                _logger.LogWarning("Identity returned an empty organizer lookup response");
+                return new OrganizerLookupResult(OrganizerLookupStatus.Unavailable, null);
+            }
+
+            var status = MapStatus(body.Status);
+            return new OrganizerLookupResult(status, status == OrganizerLookupStatus.Unavailable ? null : body.OrganizerId);
         }
         catch (HttpRequestException ex)
         {
@@ -75,15 +144,28 @@ public class OrganizerStatusClient : IOrganizerStatusClient
             _logger.LogWarning(ex, "Identity organizer lookup timed out");
             return new OrganizerLookupResult(OrganizerLookupStatus.Unavailable, null);
         }
-
-        // A generous memory-only expiration bounds cache growth; the freshness
-        // window that matters for correctness is CacheEntry.ExpiresAt above,
-        // checked against the injected TimeProvider so it stays testable.
-        _cache.Set(cacheKey, new CacheEntry(result, now + _cacheDuration), _cacheDuration * 10);
-        return result;
     }
 
-    private record OrganizerLookupResponseDto(Guid OrganizerId);
+    // Fail closed: only the two documented statuses are understood. A missing or unknown
+    // value (for example an older Identity build that returns no status) is never treated
+    // as an active organizer.
+    private OrganizerLookupStatus MapStatus(string? status)
+    {
+        if (string.Equals(status, "approved", StringComparison.OrdinalIgnoreCase))
+        {
+            return OrganizerLookupStatus.Active;
+        }
 
-    private record CacheEntry(OrganizerLookupResult Result, DateTimeOffset ExpiresAt);
+        if (string.Equals(status, "suspended", StringComparison.OrdinalIgnoreCase))
+        {
+            return OrganizerLookupStatus.Suspended;
+        }
+
+        _logger.LogWarning("Identity returned an unrecognised organizer status; treating the lookup as unavailable");
+        return OrganizerLookupStatus.Unavailable;
+    }
+
+    private record OrganizerLookupResponseDto(Guid OrganizerId, string? Status);
+
+    private record CacheEntry(OrganizerLookupStatus Status, DateTimeOffset ExpiresAt);
 }
