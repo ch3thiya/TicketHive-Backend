@@ -41,7 +41,7 @@ public class CancellationsController(IEventRepository events, CancellationReposi
         return Ok(new { StartsAt = new DateTimeOffset(start), show.Status });
     }
 
-    [Authorize(Policy = "ActiveOrganizer"), HttpGet("api/catalog/shows/{id:guid}/cancellation")]
+    [Authorize(Policy = "OrganizerRead"), HttpGet("api/catalog/shows/{id:guid}/cancellation")]
     public async Task<IActionResult> Progress(Guid id)
     {
         var show = await events.GetShowByIdAsync(id);

@@ -95,7 +95,7 @@ public class EventsController : ControllerBase
     }
 
     [HttpGet("my-events")]
-    [Authorize(Policy = "ActiveOrganizer")]
+    [Authorize(Policy = "OrganizerRead")]
     public async Task<IActionResult> GetMyEvents()
     {
         try
