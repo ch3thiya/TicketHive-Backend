@@ -198,6 +198,23 @@ Keep a full `load` run's report open as a fallback.
   (≈ 530 ms vs ≈ 20 ms for `queue_join` in CI). Compare `WARMUP_REQUESTS=0` with
   the default to show it; readiness probes or a warm-up step after deployment
   would hide it from customers.
+- **A 500-customer burst exhausts Postgres connections (finding).** `oversell`
+  fails its "Clean refusals" invariant and its error-rate and p95 thresholds:
+  192 and 212 unexpected HTTP 500s out of 500 locally (gateway and `TARGET=direct`
+  runs), 74 in CI. Every one is `Npgsql.PostgresException 53300: sorry, too many
+  clients already`, thrown when Inventory opens a connection for the first
+  query of `CreateHoldAsync`. Postgres allows 100 connections
+  (`SHOW max_connections`), shared by every service. `pg_stat_activity` showed
+  64 connections already open before the burst (53 idle in Inventory's pool)
+  and a peak of 105 during it. Inventory sets no pool size, so Npgsql's
+  default maximum (100) equals the server's limit, and the server refuses
+  connections before the pool ever queues anyone. Nobody is oversold (the
+  correctness invariants pass); roughly 15-40 % of customers just get a 500
+  instead of a clean 201 or 409. Fix (service configuration, on a `fix/`
+  branch): give Inventory an explicit `Maximum Pool Size` (e.g. 20) and
+  `Timeout`, so excess requests queue in the pool instead of failing, and keep
+  (instances x pool size) across services below `max_connections`. The thresholds
+  stay strict so CI shows the problem until it is fixed.
 - **Holds and availability share rows.** Run `holds` and `availability` together
   (two terminals) to see read latency under write contention.
 
