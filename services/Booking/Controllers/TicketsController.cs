@@ -116,7 +116,7 @@ public class TicketsController : ControllerBase
         var ticket = await _ticketRepository.GetByCodeAsync(code);
         if (ticket is null)
         {
-            return Problem(detail: $"Ticket code '{code}' was not recognised.", statusCode: StatusCodes.Status404NotFound, title: "Ticket not recognised");
+            return Problem(detail: "Ticket code was not recognised.", statusCode: StatusCodes.Status404NotFound, title: "Ticket not recognised");
         }
 
         // Ownership comes before any ticket status, so a caller who may not scan this show learns
@@ -148,8 +148,9 @@ public class TicketsController : ControllerBase
 
         if (ticket.UsedAt is not null)
         {
+            // Deliberately omits who scanned it: that is another user's identifier.
             return Problem(
-                detail: $"Ticket was already used at {ticket.UsedAt:o} by {ticket.UsedBy}.",
+                detail: $"Ticket was already used at {ticket.UsedAt:o}.",
                 statusCode: StatusCodes.Status409Conflict,
                 title: "Ticket already used");
         }
