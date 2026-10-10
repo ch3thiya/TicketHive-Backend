@@ -231,10 +231,18 @@ public class AccountRepository : IAccountRepository
         using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
 
         const string sql = @"
-            SELECT ua.id, ua.email, ua.full_name, ua.created_at, oreq.organization_name, oreq.business_email, oreq.event_type
+            SELECT ua.id, ua.email, ua.full_name, ua.created_at, oreq.organization_name, oreq.business_email,
+                   oreq.event_type, ua.approval_status, susp.occurred_at, susp.reason
             FROM user_accounts ua
             LEFT JOIN organizer_requests oreq ON ua.id = oreq.user_account_id
-            WHERE ua.role = 'Organizer' AND ua.approval_status = 'approved';
+            LEFT JOIN LATERAL (
+                SELECT occurred_at, reason
+                FROM organizer_status_audit
+                WHERE organizer_id = ua.id AND action = 'Suspended'
+                ORDER BY occurred_at DESC, id DESC
+                LIMIT 1
+            ) susp ON ua.approval_status = 'suspended'
+            WHERE ua.role = 'Organizer' AND ua.approval_status IN ('approved', 'suspended');
         ";
 
         using var command = new NpgsqlCommand(sql, connection);
@@ -251,11 +259,138 @@ public class AccountRepository : IAccountRepository
                 { "createdAt", reader.GetDateTime(3) },
                 { "organizationName", reader.IsDBNull(4) ? "" : reader.GetString(4) },
                 { "businessEmail", reader.IsDBNull(5) ? "" : reader.GetString(5) },
-                { "eventType", reader.IsDBNull(6) ? "" : reader.GetString(6) }
+                { "eventType", reader.IsDBNull(6) ? "" : reader.GetString(6) },
+                { "status", reader.GetString(7) },
+                { "suspendedAt", reader.IsDBNull(8) ? null! : reader.GetFieldValue<DateTimeOffset>(8) },
+                { "suspensionReason", reader.IsDBNull(9) ? null! : reader.GetString(9) }
             });
         }
 
         return list;
+    }
+
+    public async Task<OrganizerStatusChangeResult> ApplyOrganizerStatusChangeAsync(
+        Guid organizerId, OrganizerStatusAction action, string actorSub, string reason, DateTimeOffset occurredAt)
+    {
+        await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
+        await using var transaction = await connection.BeginTransactionAsync();
+
+        // The row lock serialises concurrent suspend/reinstate calls for one organizer.
+        string role;
+        string current;
+        await using (var read = new NpgsqlCommand(
+            "SELECT role, approval_status FROM user_accounts WHERE id = @Id FOR UPDATE", connection, transaction))
+        {
+            read.Parameters.AddWithValue("Id", organizerId);
+            await using var reader = await read.ExecuteReaderAsync();
+            if (!await reader.ReadAsync())
+            {
+                return new OrganizerStatusChangeResult(OrganizerStatusChangeOutcome.NotFound, null);
+            }
+
+            role = reader.GetString(0);
+            current = reader.GetString(1);
+        }
+
+        if (role != "Organizer")
+        {
+            return new OrganizerStatusChangeResult(OrganizerStatusChangeOutcome.NotFound, null);
+        }
+
+        var decision = OrganizerStatusRules.Decide(current, action);
+        if (decision.Outcome != OrganizerStatusChangeOutcome.Changed)
+        {
+            return new OrganizerStatusChangeResult(decision.Outcome, decision.TargetStatus ?? current);
+        }
+
+        await using (var update = new NpgsqlCommand(
+            "UPDATE user_accounts SET approval_status = @Status WHERE id = @Id", connection, transaction))
+        {
+            update.Parameters.AddWithValue("Id", organizerId);
+            update.Parameters.AddWithValue("Status", decision.TargetStatus!);
+            await update.ExecuteNonQueryAsync();
+        }
+
+        await using (var audit = new NpgsqlCommand(@"
+            INSERT INTO organizer_status_audit (id, organizer_id, action, reason, actor_sub, occurred_at)
+            VALUES (@Id, @OrganizerId, @Action, @Reason, @ActorSub, @OccurredAt)", connection, transaction))
+        {
+            audit.Parameters.AddWithValue("Id", Guid.CreateVersion7());
+            audit.Parameters.AddWithValue("OrganizerId", organizerId);
+            audit.Parameters.AddWithValue("Action", action == OrganizerStatusAction.Suspend ? "Suspended" : "Reinstated");
+            audit.Parameters.AddWithValue("Reason", reason);
+            audit.Parameters.AddWithValue("ActorSub", actorSub);
+            audit.Parameters.AddWithValue("OccurredAt", occurredAt);
+            await audit.ExecuteNonQueryAsync();
+        }
+
+        await transaction.CommitAsync();
+        return new OrganizerStatusChangeResult(OrganizerStatusChangeOutcome.Changed, decision.TargetStatus);
+    }
+
+    public async Task<List<OrganizerStatusAuditEntry>> GetOrganizerStatusHistoryAsync(Guid organizerId)
+    {
+        await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
+
+        const string sql = @"
+            SELECT id, organizer_id, action, reason, actor_sub, occurred_at
+            FROM organizer_status_audit
+            WHERE organizer_id = @OrganizerId
+            ORDER BY occurred_at DESC, id DESC;
+        ";
+
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("OrganizerId", organizerId);
+        await using var reader = await command.ExecuteReaderAsync();
+
+        var entries = new List<OrganizerStatusAuditEntry>();
+        while (await reader.ReadAsync())
+        {
+            entries.Add(new OrganizerStatusAuditEntry(
+                reader.GetGuid(0),
+                reader.GetGuid(1),
+                reader.GetString(2),
+                reader.GetString(3),
+                reader.GetString(4),
+                reader.GetFieldValue<DateTimeOffset>(5)));
+        }
+
+        return entries;
+    }
+
+    public async Task<string> ChangeOrganizerStatusAsync(Guid organizerId, string targetStatus, string actorSub, string reason, DateTimeOffset occurredAt)
+    {
+        await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
+        await using var transaction = await connection.BeginTransactionAsync();
+        await using var read = new NpgsqlCommand("SELECT role,approval_status FROM user_accounts WHERE id=@id FOR UPDATE", connection, transaction);
+        read.Parameters.AddWithValue("id", organizerId);
+        string role;
+        string current;
+        await using (var reader = await read.ExecuteReaderAsync())
+        {
+            if (!await reader.ReadAsync()) return "NotFound";
+            role = reader.GetString(0);
+            current = reader.GetString(1);
+        }
+        if (role != "Organizer") return "NotFound";
+        if (current == targetStatus) return "Unchanged";
+        if (targetStatus == "suspended" && current != "approved") return "InvalidTransition";
+        if (targetStatus == "approved" && current != "suspended") return "InvalidTransition";
+
+        await using var update = new NpgsqlCommand("UPDATE user_accounts SET approval_status=@status WHERE id=@id", connection, transaction);
+        update.Parameters.AddWithValue("id", organizerId);
+        update.Parameters.AddWithValue("status", targetStatus);
+        await update.ExecuteNonQueryAsync();
+        await using var audit = new NpgsqlCommand("INSERT INTO organizer_status_audit VALUES(@audit,@id,@action,@reason,@actor,@at)", connection, transaction);
+        audit.Parameters.AddWithValue("audit", Guid.CreateVersion7());
+        audit.Parameters.AddWithValue("id", organizerId);
+        audit.Parameters.AddWithValue("action", targetStatus == "suspended" ? "Suspended" : "Reinstated");
+        audit.Parameters.AddWithValue("reason", reason);
+        audit.Parameters.AddWithValue("actor", actorSub);
+        audit.Parameters.AddWithValue("at", occurredAt);
+        await audit.ExecuteNonQueryAsync();
+        await transaction.CommitAsync();
+        return "Changed";
     }
 
     public async Task<UserAccount?> GetUserAccountByEmailAsync(string email)
