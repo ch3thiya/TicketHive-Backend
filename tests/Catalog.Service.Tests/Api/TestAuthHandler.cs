@@ -19,6 +19,8 @@ public class TestAuthHandler : AuthenticationHandler<AuthenticationSchemeOptions
     public const string SchemeName = "TestScheme";
     public const string SubHeaderName = "Test-Sub";
     public const string RoleHeaderName = "Test-Role";
+    public const string ScopeHeaderName = "Test-Scope";
+    public const string AuthenticationTypeHeaderName = "Test-Aut";
 
     public TestAuthHandler(IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder)
         : base(options, logger, encoder)
@@ -37,6 +39,8 @@ public class TestAuthHandler : AuthenticationHandler<AuthenticationSchemeOptions
         {
             claims.Add(new Claim(ClaimTypes.Role, roleValues.ToString()));
         }
+        if (Request.Headers.TryGetValue(ScopeHeaderName, out var scopeValues)) claims.Add(new Claim("scope", scopeValues.ToString()));
+        if (Request.Headers.TryGetValue(AuthenticationTypeHeaderName, out var autValues)) claims.Add(new Claim("aut", autValues.ToString()));
 
         var identity = new ClaimsIdentity(claims, SchemeName);
         var principal = new ClaimsPrincipal(identity);

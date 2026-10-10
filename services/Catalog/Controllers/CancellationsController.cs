@@ -36,7 +36,8 @@ public class CancellationsController(IEventRepository events, CancellationReposi
         if (show is null) return NotFound();
         // Catalog stores local show time; all current venues are in Sri Lanka.
         var local = show.ShowDate.ToDateTime(show.ShowTime, DateTimeKind.Unspecified);
-        var start = TimeZoneInfo.ConvertTimeToUtc(local, TimeZoneInfo.FindSystemTimeZoneById("Asia/Colombo"));
+        var zone = TimeZoneInfo.FindSystemTimeZoneById(OperatingSystem.IsWindows() ? "Sri Lanka Standard Time" : "Asia/Colombo");
+        var start = TimeZoneInfo.ConvertTimeToUtc(local, zone);
         return Ok(new { StartsAt = new DateTimeOffset(start), show.Status });
     }
 
