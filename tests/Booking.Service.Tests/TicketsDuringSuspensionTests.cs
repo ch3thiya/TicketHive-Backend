@@ -2,12 +2,15 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Security.Claims;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
 using Moq;
 using Xunit;
+using Booking.Service.Clients;
 using Booking.Service.Controllers;
 using Booking.Service.Db;
 using Booking.Service.Models;
@@ -22,12 +25,16 @@ public class TicketsDuringSuspensionTests
 {
     private readonly Mock<ITicketService> _tickets = new();
     private readonly Mock<ITicketRepository> _repository = new();
+    private readonly Mock<IEntryAccessClient> _entryAccess = new();
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 10, 10, 8, 0, 0, TimeSpan.Zero));
     private readonly TicketsController _controller;
 
     public TicketsDuringSuspensionTests()
     {
-        _controller = new TicketsController(_tickets.Object, _repository.Object, _time)
+        // The owning organizer is allowed whether or not the account is suspended: Catalog treats
+        // both statuses as owners.
+        _entryAccess.Setup(a => a.CheckAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(EntryAccessDecision.Allowed);
+        _controller = new TicketsController(_tickets.Object, _repository.Object, _entryAccess.Object, _time, NullLogger<TicketsController>.Instance)
         {
             ControllerContext = new ControllerContext
             {
@@ -60,6 +67,7 @@ public class TicketsDuringSuspensionTests
 
         // Assert
         Assert.DoesNotContain(dependencies, name => name.Contains("Organizer") || name.Contains("SalesEligibility"));
+        Assert.Contains(dependencies, name => name == nameof(IEntryAccessClient));
         Assert.DoesNotContain(allTypes, name => name.Contains("OrganizerStatus") || name.Contains("SalesEligibility"));
     }
 
