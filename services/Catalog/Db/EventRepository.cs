@@ -726,6 +726,19 @@ public class EventRepository : IEventRepository
         await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
         await using var transaction = await connection.BeginTransactionAsync();
 
+        // Seat layouts and requests reference the show, so they go first (layouts before requests).
+        const string deleteSeatMapsSql = @"
+            DELETE FROM seat_layouts
+            WHERE show_id IN (SELECT id FROM shows WHERE event_id = @EventId);
+            DELETE FROM seat_map_requests
+            WHERE show_id IN (SELECT id FROM shows WHERE event_id = @EventId);
+        ";
+        await using (var cmd = new NpgsqlCommand(deleteSeatMapsSql, connection, transaction))
+        {
+            cmd.Parameters.AddWithValue("EventId", eventId);
+            await cmd.ExecuteNonQueryAsync();
+        }
+
         const string deleteCategoriesSql = @"
             DELETE FROM ticket_categories
             WHERE show_id IN (SELECT id FROM shows WHERE event_id = @EventId);

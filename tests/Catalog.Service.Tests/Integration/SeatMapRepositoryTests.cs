@@ -290,4 +290,22 @@ public sealed class SeatMapRepositoryTests
         Assert.DoesNotContain(await repository.ListRequestsAsync(SeatMapStatuses.Completed, 500), r => r.Request.Id == request.Id);
         Assert.Contains(await repository.ListRequestsAsync(null, 500), r => r.Request.Id == request.Id);
     }
+
+    [Fact]
+    public async Task DeleteEvent_WithSeatMapRequestsAndLayouts_RemovesThemWithTheShow()
+    {
+        var (showId, organizerId, category) = await SeedShowAsync();
+        var repository = Repository();
+        var request = NewRequest(showId, organizerId);
+        await repository.CreateRequestAsync(request);
+        await repository.CreateDraftAsync(request.Id, Spec(category), "admin", DateTimeOffset.UtcNow);
+        var events = new EventRepository(Connections());
+        var show = await events.GetShowByIdAsync(showId);
+
+        await events.DeleteEventAsync(show!.EventId);
+
+        Assert.Null(await events.GetShowByIdAsync(showId));
+        Assert.Null(await repository.GetRequestAsync(request.Id));
+        Assert.Empty(await repository.GetLayoutsForShowAsync(showId));
+    }
 }
