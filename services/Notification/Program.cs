@@ -51,7 +51,17 @@ builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 
 builder.Services.AddScoped<CancellationEmailRepository>();
-builder.Services.Configure<CancellationEmailOptions>(builder.Configuration.GetSection("CancellationEmail"));
+builder.Services.Configure<CancellationEmailOptions>(options =>
+{
+    var emailJs = builder.Configuration.GetSection("EmailJS");
+    options.ServiceId = emailJs["ServiceId"] ?? "";
+    options.TemplateId = emailJs["TemplateId"] ?? "";
+    options.PublicKey = emailJs["PublicKey"] ?? "";
+    options.PrivateKey = emailJs["PrivateKey"] ?? "";
+    options.Simulate = false;
+
+    builder.Configuration.GetSection("CancellationEmail").Bind(options);
+});
 builder.Services.AddHttpClient<CancellationEmailSender>();
 builder.Services.AddHostedService<CancellationEmailWorker>();
 // Event reminders (SCRUM-172): one row per order, a timed job, and read-only calls to Catalog and Booking.
@@ -80,6 +90,14 @@ builder.Services.AddAuthentication("Bearer").AddJwtBearer("Bearer", options =>
         ValidateLifetime = true,
         ValidateIssuerSigningKey = true
     };
+
+    if (builder.Environment.IsDevelopment())
+    {
+        options.BackchannelHttpHandler = new HttpClientHandler
+        {
+            ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
+        };
+    }
 });
 builder.Services.AddCancellationInternalAuthorization("notification:write");
 var app = builder.Build();

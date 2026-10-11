@@ -29,6 +29,17 @@ public class CancellationEmailSenderTests
         Assert.Equal(1, handler.Calls);
     }
 
+    [Fact]
+    public async Task Customer_cancellation_skips_email()
+    {
+        var handler = new FakeHandler();
+        var sender = new CancellationEmailSender(new HttpClient(handler), Options.Create(new CancellationEmailOptions
+        { Simulate = false, ServiceId = "test", TemplateId = "test", PublicKey = "test" }));
+        var customerEmail = new CancellationEmail("key", "test@example.invalid", "Test", Guid.CreateVersion7(), new[] { Guid.CreateVersion7() }, 100, "LKR", true, "Customer");
+        Assert.Equal("NotRequired", await sender.SendAsync(customerEmail));
+        Assert.Equal(0, handler.Calls);
+    }
+
     private class FakeHandler : HttpMessageHandler
     {
         public int Calls { get; private set; }

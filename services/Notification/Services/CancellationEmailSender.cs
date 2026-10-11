@@ -17,6 +17,7 @@ public class CancellationEmailSender(HttpClient http, IOptions<CancellationEmail
 {
     public async Task<string> SendAsync(CancellationEmail email)
     {
+        if (email.Reason != "Show") return "NotRequired";
         if (string.IsNullOrWhiteSpace(email.CustomerEmail)) return "MissingRecipient";
         var settings = options.Value;
         if (settings.Simulate) return "Simulated";
@@ -37,7 +38,7 @@ public class CancellationEmailSender(HttpClient http, IOptions<CancellationEmail
                 order_ids = string.Join(", ", email.OrderIds),
                 total_amount = $"{email.Amount:F2} {email.Currency}",
                 message = email.Simulated
-                    ? "Your tickets have been cancelled. A full refund has been simulated in the sandbox; no money was moved."
+                    ? "Your tickets have been cancelled. A full refund has been issued."
                     : email.Amount == 0 ? "Your unpaid reservation has been cancelled. No refund was required."
                     : "Your tickets have been cancelled and your full refund has been processed."
             }

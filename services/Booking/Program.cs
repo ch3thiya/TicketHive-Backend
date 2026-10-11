@@ -25,6 +25,8 @@ if (args.Contains("--migrate"))
     }
 }
 
+DotNetEnv.Env.TraversePath().NoClobber().Load();
+
 var builder = WebApplication.CreateBuilder(args);
 builder.AddServiceDefaults();
 
