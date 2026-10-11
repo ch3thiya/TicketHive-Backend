@@ -261,26 +261,14 @@ internal sealed class TicketValidationFactory(string connectionString) : WebAppl
     {
         builder.UseEnvironment("Testing");
         builder.ConfigureLogging(logging => logging.ClearProviders());
-        builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:DefaultConnection"] = connectionString }));
+        builder.ConfigureAppConfiguration((_, config) => { config.AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:DefaultConnection"] = connectionString }); BookingJwtTestSupport.ConfigureApp(config); });
         builder.ConfigureServices(services =>
         {
             services.RemoveAll<Microsoft.Extensions.Hosting.IHostedService>();
             services.RemoveAll<IEntryAccessClient>();
             services.AddSingleton<IEntryAccessClient>(EntryAccess);
-            services.AddAuthentication("ValidationTest").AddScheme<AuthenticationSchemeOptions, ValidationTestAuthHandler>("ValidationTest", _ => { });
-            services.PostConfigure<AuthenticationOptions>(o => { o.DefaultAuthenticateScheme = "ValidationTest"; o.DefaultChallengeScheme = "ValidationTest"; o.DefaultScheme = "ValidationTest"; });
+            BookingJwtTestSupport.TrustLocalKey(services);
+            BookingJwtTestSupport.MintFromTestHeaders(services);
         });
-    }
-}
-
-internal sealed class ValidationTestAuthHandler(IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder)
-    : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
-{
-    protected override Task<AuthenticateResult> HandleAuthenticateAsync()
-    {
-        if (!Request.Headers.TryGetValue("Test-Sub", out var sub)) return Task.FromResult(AuthenticateResult.NoResult());
-        var claims = new List<Claim> { new(ClaimTypes.NameIdentifier, sub.ToString()) };
-        if (Request.Headers.TryGetValue("Test-Role", out var role) && !string.IsNullOrEmpty(role)) claims.Add(new Claim(ClaimTypes.Role, role.ToString()));
-        return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(new ClaimsIdentity(claims, Scheme.Name)), Scheme.Name)));
     }
 }

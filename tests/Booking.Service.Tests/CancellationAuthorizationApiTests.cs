@@ -69,14 +69,14 @@ file sealed class BookingCancellationApiFactory(string connectionString) : WebAp
     {
         builder.UseEnvironment("Testing");
         builder.ConfigureLogging(logging => logging.ClearProviders().AddConsole());
-        builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:DefaultConnection"] = connectionString }));
+        builder.ConfigureAppConfiguration((_, config) => { config.AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:DefaultConnection"] = connectionString }); BookingJwtTestSupport.ConfigureApp(config); });
         builder.ConfigureServices(services =>
         {
             services.RemoveAll<Microsoft.Extensions.Hosting.IHostedService>();
             services.RemoveAll<IHttpClientFactory>();
             services.AddSingleton<IHttpClientFactory>(new RulesHttpClientFactory());
-            services.AddAuthentication("CancellationTest").AddScheme<AuthenticationSchemeOptions, BookingTestAuthHandler>("CancellationTest", _ => { });
-            services.PostConfigure<AuthenticationOptions>(o => { o.DefaultAuthenticateScheme = "CancellationTest"; o.DefaultChallengeScheme = "CancellationTest"; o.DefaultScheme = "CancellationTest"; });
+            BookingJwtTestSupport.TrustLocalKey(services);
+            BookingJwtTestSupport.MintFromTestHeaders(services);
         });
     }
 }
@@ -88,17 +88,5 @@ file sealed class RulesHttpClientFactory : IHttpClientFactory
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
             Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{\"startsAt\":\"2099-01-01T00:00:00Z\",\"status\":\"Published\"}", System.Text.Encoding.UTF8, "application/json") });
-    }
-}
-
-file sealed class BookingTestAuthHandler(IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder) : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
-{
-    protected override Task<AuthenticateResult> HandleAuthenticateAsync()
-    {
-        if (!Request.Headers.TryGetValue("Test-Sub", out var sub)) return Task.FromResult(AuthenticateResult.NoResult());
-        var claims = new List<Claim> { new(ClaimTypes.NameIdentifier, sub.ToString()) };
-        if (Request.Headers.TryGetValue("Test-Scope", out var scope)) claims.Add(new Claim("scope", scope.ToString()));
-        if (Request.Headers.TryGetValue("Test-Aut", out var aut)) claims.Add(new Claim("aut", aut.ToString()));
-        return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(new ClaimsIdentity(claims, Scheme.Name)), Scheme.Name)));
     }
 }

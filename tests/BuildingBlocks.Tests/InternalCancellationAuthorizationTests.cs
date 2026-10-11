@@ -22,4 +22,30 @@ public class InternalCancellationAuthorizationTests
         var result = await provider.GetRequiredService<IAuthorizationService>().AuthorizeAsync(user, null, "CancellationInternal");
         Assert.Equal(allowed, result.Succeeded);
     }
+
+    [Fact]
+    public async Task Policy_BindsToTheNamedAuthenticationScheme_OnlyWhenGiven()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddCancellationInternalAuthorization("payment:refund", "Internal");
+        using var provider = services.BuildServiceProvider();
+
+        var policy = await provider.GetRequiredService<IAuthorizationPolicyProvider>().GetPolicyAsync("CancellationInternal");
+
+        Assert.Equal(new[] { "Internal" }, policy!.AuthenticationSchemes);
+    }
+
+    [Fact]
+    public async Task Policy_WithoutScheme_UsesTheDefaultScheme()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddCancellationInternalAuthorization("payment:refund");
+        using var provider = services.BuildServiceProvider();
+
+        var policy = await provider.GetRequiredService<IAuthorizationPolicyProvider>().GetPolicyAsync("CancellationInternal");
+
+        Assert.Empty(policy!.AuthenticationSchemes);
+    }
 }
