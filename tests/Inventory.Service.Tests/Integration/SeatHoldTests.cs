@@ -421,4 +421,26 @@ public sealed class SeatHoldTests
         Assert.Equal(await ScalarAsync<int>("SELECT COALESCE(SUM(hi.quantity),0)::int FROM hold_items hi JOIN holds h ON h.id = hi.hold_id WHERE h.show_id = @s AND h.status IN ('Active','PaymentPending')", ("s", s.Show)), held);
         Assert.Equal(18 - held, await AvailableAsync(s.Show, s.Vip) + await AvailableAsync(s.Show, s.General));
     }
+
+    [Fact]
+    public async Task TheHoldAndTheActiveHold_ListTheSeats_ForItsOwnerOnly()
+    {
+        var s = await SeedSeatedAsync();
+        var hold = await HoldAsync(s, 2, "owner");
+        HttpRequestMessage Get(string url, string customer)
+        {
+            var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.Add(CustomerTestAuthHandler.SubHeaderName, customer);
+            return request;
+        }
+
+        var byId = await Json(await _fixture.Factory.CreateClient().SendAsync(Get($"/api/inventory/holds/{hold}", "owner")));
+        var active = await Json(await _fixture.Factory.CreateClient().SendAsync(Get($"/api/inventory/holds/active?showId={s.Show}", "owner")));
+        var stranger = await _fixture.Factory.CreateClient().SendAsync(Get($"/api/inventory/holds/{hold}", "stranger"));
+
+        Assert.Equal(2, byId.GetProperty("seats").GetArrayLength());
+        Assert.Equal(2, active.GetProperty("seats").GetArrayLength());
+        Assert.Equal("Front", active.GetProperty("seats")[0].GetProperty("section").GetString());
+        Assert.True(stranger.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Forbidden);
+    }
 }

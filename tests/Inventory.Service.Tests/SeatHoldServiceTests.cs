@@ -134,4 +134,24 @@ public class SeatHoldServiceTests : IDisposable
 
         Assert.Equal(expected, result.Status);
     }
+
+    [Fact]
+    public void TheInternalHoldResponse_CarriesTheSeatsBookingNeeds()
+    {
+        var hold = new Hold
+        {
+            Id = Guid.NewGuid(),
+            ShowId = _show,
+            CustomerSub = "c",
+            Status = HoldStatus.Active,
+            ExpiresAt = DateTimeOffset.UtcNow,
+            Seats = new List<HoldSeat> { new(Guid.NewGuid(), Guid.NewGuid(), "Front", "A", 3) }
+        };
+
+        var response = _service.ToInternalResponse(hold);
+
+        var seat = Assert.Single(response.Seats!);
+        Assert.Equal(("Front", "A", 3), (seat.Section, seat.Row, seat.Number));
+        Assert.Equal(hold.Seats[0].SeatId, seat.SeatId);
+    }
 }
