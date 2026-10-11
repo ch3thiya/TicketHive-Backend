@@ -574,6 +574,9 @@ public class EventService : IEventService
         if (_cancellationClient is not null) await _cancellationClient.EstablishCancellationBarrierAsync(showId);
     }
 
+    public Task<List<ShowReminderInfo>> GetShowReminderInfoAsync(IReadOnlyCollection<Guid> showIds) =>
+        _repository.GetShowReminderInfoAsync(showIds);
+
     public async Task<ShowSalesRulesDto?> GetSalesRulesAsync(Guid showId)
     {
         var show = await _repository.GetShowByIdAsync(showId);

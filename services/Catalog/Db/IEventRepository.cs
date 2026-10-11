@@ -18,6 +18,10 @@ public interface IEventRepository
 
     Task<Show> CreateShowWithCategoriesAsync(Show show, List<TicketCategory> categories);
     Task<Show?> GetShowByIdAsync(Guid showId);
+
+    // Event name, venue, schedule and cancelled state for many shows in one query. Unknown ids are
+    // simply absent from the result.
+    Task<List<ShowReminderInfo>> GetShowReminderInfoAsync(IReadOnlyCollection<Guid> showIds);
     Task<List<Show>> GetShowsByEventIdAsync(Guid eventId);
 
     // Fetches shows for every given event in one query, grouped by event id.
