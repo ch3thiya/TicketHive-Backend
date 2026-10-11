@@ -1,4 +1,4 @@
-# Architecture Decision Records â€” Sprint 2 baseline
+# Architecture Decision Records — Sprint 2 baseline
 
 Format: [MADR](https://adr.github.io/madr/). All records below: **Accepted** (2026-09-11).
 Only decisions that govern Sprint 2 work are recorded here. Decisions for later work (seat layouts, checkout and payment, messaging) are added as new records when that work starts.

@@ -1,4 +1,4 @@
-﻿using System.Reflection;
+using System.Reflection;
 using BuildingBlocks;
 using Booking.Service.Authorization;
 using Booking.Service.Clients;

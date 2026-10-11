@@ -1,4 +1,4 @@
-﻿using Booking.Service.Authorization;
+using Booking.Service.Authorization;
 using Microsoft.Extensions.Configuration;
 using Xunit;
 
