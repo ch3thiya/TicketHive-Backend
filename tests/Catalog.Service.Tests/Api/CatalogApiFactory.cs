@@ -30,6 +30,8 @@ public class CatalogApiFactory : WebApplicationFactory<Program>
     public Mock<IEventRepository> EventRepositoryMock { get; } = new();
     public Mock<IVenueRepository> VenueRepositoryMock { get; } = new();
     public Mock<IInventoryClient> InventoryClientMock { get; } = new();
+    public Mock<ISeatMapRepository> SeatMapRepositoryMock { get; } = new();
+    public Mock<IInventorySeatClient> InventorySeatClientMock { get; } = new();
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -52,6 +54,12 @@ public class CatalogApiFactory : WebApplicationFactory<Program>
 
             services.RemoveAll<IInventoryClient>();
             services.TryAddSingleton(InventoryClientMock.Object);
+
+            services.RemoveAll<ISeatMapRepository>();
+            services.TryAddSingleton(SeatMapRepositoryMock.Object);
+
+            services.RemoveAll<IInventorySeatClient>();
+            services.TryAddSingleton(InventorySeatClientMock.Object);
 
             services.AddAuthentication(TestAuthHandler.SchemeName)
                 .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.SchemeName, options => { });

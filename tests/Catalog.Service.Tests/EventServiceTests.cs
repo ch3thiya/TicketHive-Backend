@@ -609,6 +609,27 @@ public class EventServiceTests
     }
 
     [Fact]
+    public async Task UpdateShow_SeatedShowWithCategoryChanges_IsRefusedAndNothingIsSaved()
+    {
+        var organizerId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+        var showId = Guid.NewGuid();
+        _mockRepo.Setup(r => r.GetShowByIdAsync(showId))
+                 .ReturnsAsync(new Show { Id = showId, EventId = eventId, Status = "Active", SeatingMode = SeatingModes.Seated });
+        _mockRepo.Setup(r => r.GetEventByIdAsync(eventId))
+                 .ReturnsAsync(new Event { Id = eventId, OrganizerId = organizerId });
+        var updateDto = new UpdateShowDto(
+            ShowDate: new DateOnly(2026, 9, 2),
+            ShowTime: new TimeOnly(20, 0),
+            Categories: new List<UpdateTicketCategoryDto> { new(null, "VIP", 50m, 100) });
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _service.UpdateShowAsync(organizerId, showId, updateDto));
+
+        _mockRepo.Verify(r => r.SaveTicketCategoriesAsync(It.IsAny<Guid>(), It.IsAny<List<TicketCategory>>()), Times.Never);
+        _mockRepo.Verify(r => r.UpdateShowAsync(It.IsAny<Show>()), Times.Never);
+    }
+
+    [Fact]
     public async Task UpdateShow_CategoryEmptyName_ThrowsArgumentException()
     {
         // Arrange

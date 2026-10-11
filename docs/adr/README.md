@@ -30,6 +30,7 @@ Accepted records are never rewritten; a changed decision is a new record that am
 | [023](023-organizer-suspension.md) | Organizer suspension enforced by live lookups |
 | [024](024-ticket-validation-authorization.md) | Ticket validation limited to the owning organizer and admins |
 | [025](025-booking-jwt-audience-validation.md) | Booking validates JWT audience and token type per scheme |
+| [026](026-seat-layouts-as-versioned-data.md) | Seat layouts are versioned, validated data owned by Catalog |
 
 ## Template
 

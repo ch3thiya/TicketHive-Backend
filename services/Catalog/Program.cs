@@ -50,6 +50,8 @@ builder.WebHost.ConfigureKestrel(options =>
 builder.Services.AddSingleton<DbConnectionFactory>();
 builder.Services.AddScoped<IEventRepository, EventRepository>();
 builder.Services.AddScoped<IEventService, EventService>();
+builder.Services.AddScoped<ISeatMapRepository, SeatMapRepository>();
+builder.Services.AddScoped<ISeatMapService, SeatMapService>();
 builder.Services.AddScoped<ISalesEligibilityService, SalesEligibilityService>();
 builder.Services.AddScoped<IEntryAccessService, EntryAccessService>();
 builder.Services.AddScoped<IVenueRepository, VenueRepository>();
@@ -76,6 +78,16 @@ builder.Services.AddHttpClient<IOrganizerStatusClient, OrganizerStatusClient>((s
 builder.Services.AddInternalServiceTokenClient(builder.Configuration);
 builder.Services.Configure<InventoryClientOptions>(builder.Configuration.GetSection(InventoryClientOptions.SectionName));
 builder.Services.AddHttpClient<IInventoryClient, InventoryClient>((sp, client) =>
+{
+    var options = sp.GetRequiredService<IOptions<InventoryClientOptions>>().Value;
+    if (!string.IsNullOrWhiteSpace(options.BaseUrl))
+    {
+        client.BaseAddress = new Uri(options.BaseUrl);
+    }
+})
+.AddHttpMessageHandler<InternalServiceAuthenticationHandler>();
+
+builder.Services.AddHttpClient<IInventorySeatClient, InventorySeatClient>((sp, client) =>
 {
     var options = sp.GetRequiredService<IOptions<InventoryClientOptions>>().Value;
     if (!string.IsNullOrWhiteSpace(options.BaseUrl))
