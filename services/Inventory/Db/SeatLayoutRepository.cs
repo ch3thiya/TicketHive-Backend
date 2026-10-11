@@ -15,6 +15,21 @@ public class SeatLayoutRepository(DbConnectionFactory connectionFactory) : ISeat
         await using var connection = (NpgsqlConnection)await connectionFactory.CreateConnectionAsync();
         await using var transaction = await connection.BeginTransactionAsync();
 
+        // Seats before stock, the same order a new hold uses (ADR-027). Replacing an existing layout
+        // therefore waits for in-flight holds on its seats instead of deadlocking with them.
+        await using (var existingLayout = new NpgsqlCommand(
+            "SELECT EXISTS (SELECT 1 FROM show_seat_layouts WHERE show_id = @ShowId)", connection, transaction))
+        {
+            existingLayout.Parameters.AddWithValue("ShowId", showId);
+            if ((bool)(await existingLayout.ExecuteScalarAsync())!)
+            {
+                await using var lockSeats = new NpgsqlCommand(
+                    "SELECT id FROM show_seats WHERE show_id = @ShowId ORDER BY id FOR UPDATE", connection, transaction);
+                lockSeats.Parameters.AddWithValue("ShowId", showId);
+                await lockSeats.ExecuteNonQueryAsync();
+            }
+        }
+
         var capacities = new Dictionary<Guid, int>();
         var anySold = false;
         await using (var lockStock = new NpgsqlCommand(
@@ -95,9 +110,9 @@ public class SeatLayoutRepository(DbConnectionFactory connectionFactory) : ISeat
         }
 
         await using (var insert = new NpgsqlCommand(@"
-            INSERT INTO show_seats (id, show_id, category_id, section, row_label, seat_number)
-            SELECT s.id, @ShowId, s.category_id, s.section, s.row_label, s.seat_number
-            FROM unnest(@Ids, @Categories, @Sections, @Rows, @Numbers) AS s(id, category_id, section, row_label, seat_number)", connection, transaction))
+            INSERT INTO show_seats (id, show_id, category_id, section, row_label, seat_number, ordinal)
+            SELECT s.id, @ShowId, s.category_id, s.section, s.row_label, s.seat_number, s.ordinal
+            FROM unnest(@Ids, @Categories, @Sections, @Rows, @Numbers, @Ordinals) AS s(id, category_id, section, row_label, seat_number, ordinal)", connection, transaction))
         {
             insert.Parameters.AddWithValue("ShowId", showId);
             insert.Parameters.Add(new NpgsqlParameter("Ids", NpgsqlDbType.Array | NpgsqlDbType.Uuid) { Value = seats.Select(_ => Guid.CreateVersion7()).ToArray() });
@@ -105,6 +120,7 @@ public class SeatLayoutRepository(DbConnectionFactory connectionFactory) : ISeat
             insert.Parameters.Add(new NpgsqlParameter("Sections", NpgsqlDbType.Array | NpgsqlDbType.Text) { Value = seats.Select(s => s.Section).ToArray() });
             insert.Parameters.Add(new NpgsqlParameter("Rows", NpgsqlDbType.Array | NpgsqlDbType.Text) { Value = seats.Select(s => s.Row).ToArray() });
             insert.Parameters.Add(new NpgsqlParameter("Numbers", NpgsqlDbType.Array | NpgsqlDbType.Integer) { Value = seats.Select(s => s.Number).ToArray() });
+            insert.Parameters.Add(new NpgsqlParameter("Ordinals", NpgsqlDbType.Array | NpgsqlDbType.Integer) { Value = Enumerable.Range(0, seats.Count).ToArray() });
             await insert.ExecuteNonQueryAsync();
         }
 
