@@ -358,7 +358,7 @@ public sealed class ReminderProcessorTests
 
         _clock.Advance(TimeSpan.FromMinutes(9));
         await Processor().RunOnceAsync();
-        Assert.Equal(1, _sender.Sent.Count);
+        Assert.Single(_sender.Sent);
 
         _clock.Advance(TimeSpan.FromMinutes(1));
         await Processor().RunOnceAsync();

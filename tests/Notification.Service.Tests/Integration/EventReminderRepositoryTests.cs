@@ -157,7 +157,7 @@ public sealed class EventReminderRepositoryTests
         for (var attempt = 1; attempt <= 3; attempt++)
         {
             Assert.Contains(await repository.ClaimDueAsync(100, 5), r => r.OrderId == id);
-            statuses.Add(await repository.RecordFailureAsync(id, "The email provider refused the reminder (HTTP 500).", 3, _clock.GetUtcNow().AddMinutes(10)));
+            statuses.Add((await repository.RecordFailureAsync(id, "The email provider refused the reminder (HTTP 500).", 3, _clock.GetUtcNow().AddMinutes(10)))!);
             if (attempt < 3)
             {
                 Assert.DoesNotContain(await repository.ClaimDueAsync(100, 5), r => r.OrderId == id);

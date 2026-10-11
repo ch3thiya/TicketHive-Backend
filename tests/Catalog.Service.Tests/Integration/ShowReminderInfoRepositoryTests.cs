@@ -35,8 +35,13 @@ public sealed class ShowReminderInfoRepositoryTests
         var events = new EventRepository(Connections());
         var evt = await events.CreateEventAsync(new Event
         {
-            OrganizerId = Guid.NewGuid(), Name = eventName, Description = "d", Category = "Concert",
-            EventDate = new DateOnly(2026, 12, 1), EventTime = new TimeOnly(19, 0), Status = "Published"
+            OrganizerId = Guid.NewGuid(),
+            Name = eventName,
+            Description = "d",
+            Category = "Concert",
+            EventDate = new DateOnly(2026, 12, 1),
+            EventTime = new TimeOnly(19, 0),
+            Status = "Published"
         });
         var show = await events.CreateShowWithCategoriesAsync(
             new Show { EventId = evt.Id, ShowDate = new DateOnly(2026, 12, 1), ShowTime = new TimeOnly(19, 0), VenueId = venueId, Status = showStatus },
