@@ -90,6 +90,14 @@ public class OrderService : IOrderService
                 CategoryId = i.CategoryId,
                 Quantity = i.Quantity,
                 UnitPrice = i.UnitPrice
+            }).ToList(),
+            Seats = (hold.Seats ?? new()).Select(s => new OrderSeat
+            {
+                SeatId = s.SeatId,
+                CategoryId = s.CategoryId,
+                Section = s.Section,
+                Row = s.Row,
+                Number = s.Number
             }).ToList()
         };
 
@@ -184,6 +192,7 @@ public class OrderService : IOrderService
         order.TotalAmount,
         order.Currency,
         order.CreatedAt,
-        order.Items.Select(i => new OrderItemResponse(i.CategoryId, i.Quantity, i.UnitPrice)).ToList()
+        order.Items.Select(i => new OrderItemResponse(i.CategoryId, i.Quantity, i.UnitPrice)).ToList(),
+        order.Seats.Select(s => new OrderSeatResponse(s.SeatId, s.CategoryId, s.Section, s.Row, s.Number)).ToList()
     );
 }
