@@ -7,8 +7,7 @@ public class SalesService(ISalesRepository repository, TimeProvider timeProvider
 {
     public async Task<SalesResult> GetShowSalesAsync(Guid showId)
     {
-        var sold = await repository.GetSoldAsync(showId);
-        var used = await repository.GetUsedAsync(showId);
+        var (sold, used) = await repository.GetAsync(showId);
         return ShowSalesCalculator.Compose(showId, sold, used, timeProvider.GetUtcNow());
     }
 }
