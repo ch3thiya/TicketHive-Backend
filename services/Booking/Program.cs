@@ -1,10 +1,9 @@
-using System.Reflection;
+﻿using System.Reflection;
 using BuildingBlocks;
+using Booking.Service.Authorization;
 using Booking.Service.Clients;
 using Booking.Service.Db;
 using Booking.Service.Services;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.IdentityModel.Tokens;
 
 if (args.Contains("--migrate"))
 {
@@ -81,39 +80,14 @@ builder.Services.AddCors(options =>
     });
 });
 
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
-    {
-        options.Authority = builder.Configuration["Jwt:Authority"];
-        options.Audience = builder.Configuration["Jwt:Audience"];
-        options.RequireHttpsMetadata = !builder.Environment.IsDevelopment();
-
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidIssuer = builder.Configuration["Jwt:Authority"],
-            ValidateAudience = false,
-            ValidAudience = builder.Configuration["Jwt:Audience"],
-            ValidateLifetime = true,
-            ValidateIssuerSigningKey = true,
-            RoleClaimType = "groups"
-        };
-
-        if (builder.Environment.IsDevelopment())
-        {
-            options.BackchannelHttpHandler = new HttpClientHandler
-            {
-                ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
-            };
-        }
-    });
+builder.Services.AddBookingJwtAuthentication();
 
 builder.Services.AddAuthorization();
 
 builder.Services.AddScoped<CancellationRepository>();
 builder.Services.AddScoped<CancellationClient>();
 builder.Services.AddHostedService<CancellationWorker>();
-builder.Services.AddCancellationInternalAuthorization("booking:write");
+builder.Services.AddCancellationInternalAuthorization("booking:write", BookingJwtSettings.InternalScheme);
 foreach (var service in new[] { "Catalog", "Inventory", "Payment", "Notification" })
 {
     var endpoint = builder.Configuration[$"{service}Service:BaseUrl"] ?? $"http://{service.ToLowerInvariant()}:8080/";
