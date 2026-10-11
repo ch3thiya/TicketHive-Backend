@@ -44,6 +44,7 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<IStockRepository, StockRepository>();
 builder.Services.AddScoped<IStockService, StockService>();
 builder.Services.AddScoped<IAllocationStrategy, GeneralAdmissionAllocationStrategy>();
+builder.Services.AddScoped<SeatedAllocationStrategy>();
 builder.Services.AddScoped<IHoldRepository, HoldRepository>();
 builder.Services.AddScoped<ISeatLayoutRepository, SeatLayoutRepository>();
 builder.Services.AddScoped<IHoldService, HoldService>();
