@@ -11,4 +11,10 @@ public interface ISeatLayoutRepository
     Task<EnableSeatsResult> EnableAsync(Guid showId, int version, IReadOnlyList<SeatToInitialize> seats, DateTimeOffset now);
 
     Task<SeatLockState> GetLockStateAsync(Guid showId);
+
+    // Null when the show has no enabled layout. Always read live, never cached.
+    Task<SeatMapView?> GetSeatMapAsync(Guid showId);
+
+    // The seats that are not Available; null when the show has no enabled layout.
+    Task<IReadOnlyList<SeatState>?> GetUnavailableSeatsAsync(Guid showId);
 }

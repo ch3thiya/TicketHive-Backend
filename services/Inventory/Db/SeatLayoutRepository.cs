@@ -168,4 +168,73 @@ public class SeatLayoutRepository(DbConnectionFactory connectionFactory) : ISeat
 
         return new SeatLockState(version is not null, isLocked, version);
     }
+
+    public async Task<SeatMapView?> GetSeatMapAsync(Guid showId)
+    {
+        await using var connection = (NpgsqlConnection)await connectionFactory.CreateConnectionAsync();
+
+        int version;
+        await using (var layout = new NpgsqlCommand("SELECT version FROM show_seat_layouts WHERE show_id = @ShowId", connection))
+        {
+            layout.Parameters.AddWithValue("ShowId", showId);
+            if (await layout.ExecuteScalarAsync() is not int found)
+            {
+                return null;
+            }
+
+            version = found;
+        }
+
+        var categories = new List<SeatMapCategory>();
+        await using (var stock = new NpgsqlCommand("SELECT category_id, unit_price, currency FROM stock WHERE show_id = @ShowId ORDER BY category_id", connection))
+        {
+            stock.Parameters.AddWithValue("ShowId", showId);
+            await using var reader = await stock.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                categories.Add(new SeatMapCategory(reader.GetGuid(0), reader.GetDecimal(1), reader.GetString(2).Trim()));
+            }
+        }
+
+        var seats = new List<SeatMapSeat>();
+        await using (var command = new NpgsqlCommand(@"
+            SELECT id, category_id, section, row_label, seat_number, status
+            FROM show_seats WHERE show_id = @ShowId
+            ORDER BY ordinal, section, row_label, seat_number", connection))
+        {
+            command.Parameters.AddWithValue("ShowId", showId);
+            await using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                seats.Add(new SeatMapSeat(reader.GetGuid(0), reader.GetGuid(1), reader.GetString(2), reader.GetString(3), reader.GetInt32(4), reader.GetString(5)));
+            }
+        }
+
+        return new SeatMapView(showId, version, categories, seats);
+    }
+
+    public async Task<IReadOnlyList<SeatState>?> GetUnavailableSeatsAsync(Guid showId)
+    {
+        await using var connection = (NpgsqlConnection)await connectionFactory.CreateConnectionAsync();
+
+        await using (var layout = new NpgsqlCommand("SELECT 1 FROM show_seat_layouts WHERE show_id = @ShowId", connection))
+        {
+            layout.Parameters.AddWithValue("ShowId", showId);
+            if (await layout.ExecuteScalarAsync() is null)
+            {
+                return null;
+            }
+        }
+
+        var states = new List<SeatState>();
+        await using var command = new NpgsqlCommand("SELECT id, status FROM show_seats WHERE show_id = @ShowId AND status <> 'Available' ORDER BY id", connection);
+        command.Parameters.AddWithValue("ShowId", showId);
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            states.Add(new SeatState(reader.GetGuid(0), reader.GetString(1)));
+        }
+
+        return states;
+    }
 }
