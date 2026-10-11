@@ -1,4 +1,4 @@
-# Architecture Decision Records — Sprint 2 baseline
+# Architecture Decision Records â€” Sprint 2 baseline
 
 Format: [MADR](https://adr.github.io/madr/). All records below: **Accepted** (2026-09-11).
 Only decisions that govern Sprint 2 work are recorded here. Decisions for later work (seat layouts, checkout and payment, messaging) are added as new records when that work starts.
@@ -29,6 +29,7 @@ Accepted records are never rewritten; a changed decision is a new record that am
 | [021](021-waiting-room-availability-check.md) | The waiting room's one read of Inventory's availability (amends 002) |
 | [023](023-organizer-suspension.md) | Organizer suspension enforced by live lookups |
 | [024](024-ticket-validation-authorization.md) | Ticket validation limited to the owning organizer and admins |
+| [025](025-booking-jwt-audience-validation.md) | Booking validates JWT audience and token type per scheme |
 
 ## Template
 
