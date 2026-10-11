@@ -213,7 +213,8 @@ builder.Services.AddAuthorization(options =>
 builder.Services.AddScoped<CancellationRepository>();
 builder.Services.AddScoped<CancellationClient>();
 builder.Services.AddHostedService<CancellationWorker>();
-builder.Services.AddCancellationInternalAuthorization("catalog:read");
+// Cancellation callers present machine tokens, which only the Internal scheme accepts (the default scheme validates the SPA audience).
+builder.Services.AddCancellationInternalAuthorization("catalog:read", "Internal");
 foreach (var service in new[] { "Inventory", "Booking" })
 {
     var endpoint = builder.Configuration[$"{service}Service:BaseUrl"] ?? $"http://{service.ToLowerInvariant()}:8080/";

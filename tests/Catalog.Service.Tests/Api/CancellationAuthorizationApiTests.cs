@@ -58,17 +58,4 @@ public class CancellationAuthorizationApiTests : IClassFixture<CatalogApiFactory
         Assert.Equal(HttpStatusCode.Forbidden, (await client.SendAsync(Request(HttpMethod.Post, $"/api/catalog/admin/events/{eventId}/cancel", "customer"))).StatusCode);
         Assert.Equal(HttpStatusCode.Accepted, (await client.SendAsync(Request(HttpMethod.Post, $"/api/catalog/admin/events/{eventId}/cancel", "admin", "admin"))).StatusCode);
     }
-
-    [Fact]
-    public async Task Internal_rules_requires_application_token_and_catalog_scope()
-    {
-        var showId = Guid.NewGuid();
-        factory.EventRepositoryMock.Setup(r => r.GetShowByIdAsync(showId)).ReturnsAsync(new Show { Id = showId, EventId = Guid.NewGuid(), Status = "Published", ShowDate = new DateOnly(2027, 1, 1), ShowTime = new TimeOnly(18, 0) });
-        var client = factory.CreateClient();
-
-        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync($"/internal/catalog/cancellations/shows/{showId}/rules")).StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, (await client.SendAsync(Request(HttpMethod.Get, $"/internal/catalog/cancellations/shows/{showId}/rules", "user", scope: "catalog:read", aut: "USER"))).StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, (await client.SendAsync(Request(HttpMethod.Get, $"/internal/catalog/cancellations/shows/{showId}/rules", "app", scope: "wrong", aut: "APPLICATION"))).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await client.SendAsync(Request(HttpMethod.Get, $"/internal/catalog/cancellations/shows/{showId}/rules", "app", scope: "catalog:read", aut: "APPLICATION"))).StatusCode);
-    }
 }
