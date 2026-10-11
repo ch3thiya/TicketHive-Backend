@@ -35,7 +35,7 @@ public class SeatMapServiceTests
         _inventorySeats.Setup(i => i.EnableSeatsAsync(It.IsAny<Guid>(), It.IsAny<int>(), It.IsAny<IReadOnlyList<SeatPosition>>(), It.IsAny<CancellationToken>())).ReturnsAsync(EnableSeatsResult.Enabled);
         _inventorySeats.Setup(i => i.GetLockAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync(new SeatLockInfo(false, false, null));
         _service = new SeatMapService(_seatMaps.Object, _events.Object, _inventory.Object, _inventorySeats.Object,
-            Options.Create(new PublishDefaultsOptions()), new FakeTimeProvider(), NullLogger<SeatMapService>.Instance);
+            Options.Create(new PublishDefaultsOptions()), Options.Create(new SeatMapOptions { AllowEnable = true }), new FakeTimeProvider(), NullLogger<SeatMapService>.Instance);
     }
 
     private SeatLayoutSpec ValidSpec() => new(new[]
@@ -195,6 +195,37 @@ public class SeatMapServiceTests
         Assert.Equal(new[] { "stock", "seats", "commit" }, order);
         _inventorySeats.Verify(i => i.EnableSeatsAsync(_show.Id, 1, It.Is<IReadOnlyList<SeatPosition>>(s => s.Count == 18), It.IsAny<CancellationToken>()), Times.Once);
     }
+
+    [Fact]
+    public async Task Enable_WhileSeatedSalesAreSwitchedOff_IsRefusedBeforeAnythingIsSent()
+    {
+        var off = new SeatMapService(_seatMaps.Object, _events.Object, _inventory.Object, _inventorySeats.Object,
+            Options.Create(new PublishDefaultsOptions()), Options.Create(new SeatMapOptions()), new FakeTimeProvider(), NullLogger<SeatMapService>.Instance);
+        var layout = Layout();
+        Returns(layout);
+
+        var result = await off.EnableAsync(layout.Id, "admin");
+
+        Assert.Equal(SeatMapStatus.Conflict, result.Status);
+        Assert.Equal("SeatedSalesNotEnabled", result.Code);
+        _inventory.Verify(i => i.InitializeShowStockAsync(It.IsAny<Guid>(), It.IsAny<InitializeShowStockRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+        _inventorySeats.Verify(i => i.EnableSeatsAsync(It.IsAny<Guid>(), It.IsAny<int>(), It.IsAny<IReadOnlyList<SeatPosition>>(), It.IsAny<CancellationToken>()), Times.Never);
+        _seatMaps.Verify(r => r.CompleteEnableAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<DateTimeOffset>()), Times.Never);
+    }
+
+    [Fact]
+    public void SeatedSalesDefaultToOff() => Assert.False(new SeatMapOptions().AllowEnable);
+
+    [Fact]
+    public async Task Requests_AndDrafts_StillWorkWhileSeatedSalesAreOff()
+    {
+        var off = new SeatMapService(_seatMaps.Object, _events.Object, _inventory.Object, _inventorySeats.Object,
+            Options.Create(new PublishDefaultsOptions()), Options.Create(new SeatMapOptions()), new FakeTimeProvider(), NullLogger<SeatMapService>.Instance);
+        _seatMaps.Setup(r => r.CreateRequestAsync(It.IsAny<SeatMapRequest>())).ReturnsAsync(CreateSeatMapRequestOutcome.Created);
+
+        Assert.Equal(SeatMapStatus.Ok, (await off.RequestAsync(_organizer, _show.Id, "Stalls")).Status);
+    }
+
 
     [Fact]
     public async Task Enable_AlreadyEnabledLayout_IsAnIdempotentSuccessWithoutCallingInventory()

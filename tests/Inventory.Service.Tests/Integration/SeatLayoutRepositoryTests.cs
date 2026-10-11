@@ -223,7 +223,9 @@ public sealed class SeatLayoutRepositoryTests
         var s = await SeedAsync();
         var repository = Repository();
         await repository.EnableAsync(s.Show, 1, FullLayout(s), DateTimeOffset.UtcNow);
-        await ExecuteAsync("UPDATE show_seats SET status = 'Held' WHERE id = (SELECT id FROM show_seats WHERE show_id = @s LIMIT 1)", ("s", s.Show));
+        var holdId = Guid.NewGuid();
+        await ExecuteAsync("INSERT INTO holds (id, show_id, customer_sub, status, expires_at, idempotency_key, created_at) VALUES (@h, @s, 'c', 'Expired', now(), @k, now())", ("h", holdId), ("s", s.Show), ("k", Guid.NewGuid().ToString()));
+        await ExecuteAsync("UPDATE show_seats SET status = 'Held', hold_id = @h WHERE id = (SELECT id FROM show_seats WHERE show_id = @s LIMIT 1)", ("h", holdId), ("s", s.Show));
 
         var v2 = await repository.EnableAsync(s.Show, 2, FullLayout(s), DateTimeOffset.UtcNow);
 

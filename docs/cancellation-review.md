@@ -103,7 +103,7 @@ provider settlement boundary that is not present in the existing payment flow.
 |---|---|---|
 | Customer AC1 | Complete | Owner-only future-show cancellation transactionally cancels the order and voids unused tickets. |
 | Customer AC2 | Simulated | Full verified paid amount is recorded as a sandbox refund; no money moves. |
-| Customer AC3 | Blocked | GA stock is returned idempotently. Seat return awaits a seating model. |
+| Customer AC3 | Complete (database level) | GA stock and seats are returned idempotently (migration 0009 moves the seat with the hold). End-to-end sandbox verification of a seated cancellation is tracked as SCRUM-169 follow-up. |
 | Customer AC4 | Complete | Voided tickets are displayed as cancelled and fail locked entry validation. |
 | Customer AC5 | Complete | Non-owner, used-ticket, and started-show attempts do not mutate state. |
 | Customer AC6 | Complete | Durable unique work, stock return, and refund operation keys make retries safe. |
@@ -116,8 +116,13 @@ provider settlement boundary that is not present in the existing payment flow.
 | Show AC6 | Complete | Automated retries do not duplicate refund or notification records. Ambiguous email delivery becomes terminal reconciliation work and is never blindly resent. |
 | Show AC7 | Complete | Organizer progress distinguishes refunded, simulated, processing, pending notification, and reconciliation counts. |
 
-Seated shows are not implemented in this repository: no seat schema or identifiers
-exist. The seated return part of customer AC3 remains blocked by that dependency.
+Seated cancellation (SCRUM-169 follow-up). Done: the seat is returned with the hold in one
+transaction, tested against PostgreSQL including repeated cancellation, re-holding the freed
+seat, and show cancellation closing active seated holds. Still to do before seated shows go
+on real sale: a sandbox walk-through of customer and organizer cancellation of a seated
+order through Booking, Payment and Inventory; a browser check that a cancelled seated ticket
+shows its seat as cancelled; and the Product Owner's confirmation of the cancellation window.
+Catalog keeps seated sales switched off (`SeatMaps__AllowEnable`) until this is done.
 The cancellation-until-show-start window and per-customer/per-show summary email
 interpretation await Product Owner confirmation. Dates/times are provisionally
 interpreted in Asia/Colombo because Catalog has no per-venue timezone.

@@ -67,10 +67,26 @@ public class TicketService : ITicketService
 
         foreach (var item in order.Items)
         {
+            // A seated order has one chosen seat per ticket, in a stable order. Issuing a ticket for
+            // the wrong or a missing seat would be worse than not issuing, so a mismatch stops here.
+            var seats = order.Seats
+                .Where(s => s.CategoryId == item.CategoryId)
+                .OrderBy(s => s.Section, StringComparer.Ordinal).ThenBy(s => s.Row, StringComparer.Ordinal).ThenBy(s => s.Number)
+                .ToList();
+            if (order.Seats.Count > 0 && seats.Count != item.Quantity)
+            {
+                throw new InvalidOperationException($"Order {order.Id} has {seats.Count} seats for {item.Quantity} tickets in category {item.CategoryId}.");
+            }
+
             for (int q = 0; q < item.Quantity; q++)
             {
+                var seat = seats.Count > 0 ? seats[q] : null;
                 var ticket = new Ticket
                 {
+                    SeatId = seat?.SeatId,
+                    SeatSection = seat?.Section,
+                    SeatRow = seat?.Row,
+                    SeatNumber = seat?.Number,
                     Id = Guid.CreateVersion7(),
                     OrderId = order.Id,
                     CategoryId = item.CategoryId,
@@ -143,6 +159,9 @@ public class TicketService : ITicketService
         ticket.IssuedAt,
         ticket.UsedAt,
         ticket.UsedBy,
-        ticket.VoidedAt
+        ticket.VoidedAt,
+        ticket.SeatSection is not null && ticket.SeatRow is not null && ticket.SeatNumber is not null
+            ? new TicketSeat(ticket.SeatSection, ticket.SeatRow, ticket.SeatNumber.Value)
+            : null
     );
 }

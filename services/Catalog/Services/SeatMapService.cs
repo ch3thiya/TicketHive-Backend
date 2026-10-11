@@ -11,6 +11,7 @@ public class SeatMapService(
     IInventoryClient inventory,
     IInventorySeatClient inventorySeats,
     IOptions<PublishDefaultsOptions> publishDefaults,
+    IOptions<SeatMapOptions> seatMapOptions,
     TimeProvider clock,
     ILogger<SeatMapService> logger) : ISeatMapService
 {
@@ -162,6 +163,14 @@ public class SeatMapService(
         if (layout.Status != SeatLayoutStatuses.Draft)
         {
             return SeatMapResult<SeatLayout>.Fail(SeatMapStatus.Conflict, "Only a draft layout can be enabled.", "LayoutNotDraft");
+        }
+
+        // Seated shows are only safe to sell once every service has the seat lifecycle (ADR-027).
+        if (!seatMapOptions.Value.AllowEnable)
+        {
+            logger.LogWarning("Seat layout {LayoutId} was not enabled: seated sales are switched off (SeatMaps:AllowEnable)", layoutId);
+            return SeatMapResult<SeatLayout>.Fail(SeatMapStatus.Conflict,
+                "Seat maps cannot be enabled yet. Seated sales are switched off until the whole seat lifecycle is deployed.", "SeatedSalesNotEnabled");
         }
 
         var show = await events.GetShowByIdAsync(layout.ShowId);

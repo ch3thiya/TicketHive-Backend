@@ -9,7 +9,9 @@ public record CreateOrderRequest(Guid HoldId);
 
 public record OrderItemResponse(Guid CategoryId, int Quantity, decimal UnitPrice);
 
-public record OrderResponse(Guid OrderId, Guid HoldId, string CustomerSub, Guid ShowId, string Status, decimal TotalAmount, string Currency, DateTimeOffset CreatedAt, List<OrderItemResponse> Items);
+public record OrderResponse(Guid OrderId, Guid HoldId, string CustomerSub, Guid ShowId, string Status, decimal TotalAmount, string Currency, DateTimeOffset CreatedAt, List<OrderItemResponse> Items, List<OrderSeatResponse>? Seats = null);
+
+public record OrderSeatResponse(Guid SeatId, Guid CategoryId, string Section, string Row, int Number);
 
 public enum CreateOrderStatus
 {

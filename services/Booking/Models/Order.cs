@@ -18,4 +18,7 @@ public class Order
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public List<OrderItem> Items { get; set; } = new();
+
+    // Empty for general-admission orders.
+    public List<OrderSeat> Seats { get; set; } = new();
 }

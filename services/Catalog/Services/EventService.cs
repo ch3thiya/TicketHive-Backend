@@ -151,7 +151,8 @@ public class EventService : IEventService
             show.ReminderMinutesBefore,
             show.Status,
             show.CreatedAt,
-            domainCategories
+            domainCategories,
+            show.SeatingMode
         );
     }
 
@@ -211,7 +212,8 @@ public class EventService : IEventService
                     s.ReminderMinutesBefore,
                     s.Status,
                     s.CreatedAt,
-                    categoriesByShowId.GetValueOrDefault(s.Id, new List<TicketCategory>())))
+                    categoriesByShowId.GetValueOrDefault(s.Id, new List<TicketCategory>()),
+                    s.SeatingMode))
                 .ToList();
 
             result.Add(new EventWithShowsDto(
@@ -247,7 +249,7 @@ public class EventService : IEventService
         foreach (var s in shows)
         {
             var categories = await _repository.GetTicketCategoriesByShowIdAsync(s.Id);
-            showDtos.Add(new ShowDetailsDto(s.Id, s.EventId, s.ShowDate, s.ShowTime, s.VenueId, s.OnSaleAt, s.HighDemandThreshold, s.ReminderMinutesBefore, s.Status, s.CreatedAt, categories));
+            showDtos.Add(new ShowDetailsDto(s.Id, s.EventId, s.ShowDate, s.ShowTime, s.VenueId, s.OnSaleAt, s.HighDemandThreshold, s.ReminderMinutesBefore, s.Status, s.CreatedAt, categories, s.SeatingMode));
         }
 
         return new EventWithShowsDto(
@@ -280,7 +282,7 @@ public class EventService : IEventService
         foreach (var s in shows)
         {
             var categories = await _repository.GetTicketCategoriesByShowIdAsync(s.Id);
-            showDtos.Add(new ShowDetailsDto(s.Id, s.EventId, s.ShowDate, s.ShowTime, s.VenueId, s.OnSaleAt, s.HighDemandThreshold, s.ReminderMinutesBefore, s.Status, s.CreatedAt, categories));
+            showDtos.Add(new ShowDetailsDto(s.Id, s.EventId, s.ShowDate, s.ShowTime, s.VenueId, s.OnSaleAt, s.HighDemandThreshold, s.ReminderMinutesBefore, s.Status, s.CreatedAt, categories, s.SeatingMode));
         }
 
         return new EventWithShowsDto(

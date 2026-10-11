@@ -71,7 +71,8 @@ public record ShowDetailsDto(
     int? ReminderMinutesBefore,
     string Status,
     DateTime CreatedAt,
-    List<TicketCategory> TicketCategories
+    List<TicketCategory> TicketCategories,
+    string SeatingMode = "GA"
 );
 
 public record EventWithShowsDto(

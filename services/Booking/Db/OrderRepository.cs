@@ -59,6 +59,20 @@ public class OrderRepository : IOrderRepository
                 await command.ExecuteNonQueryAsync();
             }
 
+            foreach (var seat in order.Seats)
+            {
+                await using var command = new NpgsqlCommand(@"
+                    INSERT INTO order_seats (order_id, seat_id, category_id, section, row_label, seat_number)
+                    VALUES (@OrderId, @SeatId, @CategoryId, @Section, @Row, @Number);", connection, transaction);
+                command.Parameters.AddWithValue("OrderId", order.Id);
+                command.Parameters.AddWithValue("SeatId", seat.SeatId);
+                command.Parameters.AddWithValue("CategoryId", seat.CategoryId);
+                command.Parameters.AddWithValue("Section", seat.Section);
+                command.Parameters.AddWithValue("Row", seat.Row);
+                command.Parameters.AddWithValue("Number", seat.Number);
+                await command.ExecuteNonQueryAsync();
+            }
+
             await transaction.CommitAsync();
             return new OrderCreationResult { Outcome = OrderCreationOutcome.Created, Order = order };
         }
@@ -114,6 +128,28 @@ public class OrderRepository : IOrderRepository
                     CategoryId = reader.GetGuid(12),
                     Quantity = reader.GetInt32(13),
                     UnitPrice = reader.GetDecimal(14)
+                });
+            }
+        }
+
+        if (order is not null)
+        {
+            await reader.DisposeAsync();
+            await using var seatCommand = new NpgsqlCommand(@"
+                SELECT seat_id, category_id, section, row_label, seat_number FROM order_seats
+                WHERE order_id = @OrderId ORDER BY section, row_label, seat_number;", connection);
+            seatCommand.Parameters.AddWithValue("OrderId", orderId);
+            await using var seatReader = await seatCommand.ExecuteReaderAsync();
+            while (await seatReader.ReadAsync())
+            {
+                order.Seats.Add(new OrderSeat
+                {
+                    OrderId = order.Id,
+                    SeatId = seatReader.GetGuid(0),
+                    CategoryId = seatReader.GetGuid(1),
+                    Section = seatReader.GetString(2),
+                    Row = seatReader.GetString(3),
+                    Number = seatReader.GetInt32(4)
                 });
             }
         }

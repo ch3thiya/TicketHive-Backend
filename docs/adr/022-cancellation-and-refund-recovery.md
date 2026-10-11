@@ -35,6 +35,7 @@ delivery. Ambiguous sends require reconciliation rather than automatic resend. T
 provider limitation prevents claiming both guaranteed delivery and exactly-once
 delivery across arbitrary crashes. Verification uses fakes/simulation only.
 
-Inventory is currently GA-only; no seat identifiers or seat allocation implementation
-exist. Preserve GA accounting; seated-show acceptance requires the separate seating
-dependency and must not be represented as implemented.
+Seated shows (ADR-026, ADR-027): returning a cancelled order's stock also returns its
+seats. The seat follows the hold's status in the database, so `return_cancelled_hold` and
+`close_cancelled_show` free the seats in the same transaction and a repeat changes nothing.
+GA accounting is unchanged. What remains for seated cancellation is tracked below.
