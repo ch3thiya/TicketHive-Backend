@@ -98,6 +98,7 @@ builder.Services.AddHttpClient<IInventorySeatClient, InventorySeatClient>((sp, c
 .AddHttpMessageHandler<InternalServiceAuthenticationHandler>();
 
 builder.Services.Configure<PublishDefaultsOptions>(builder.Configuration.GetSection(PublishDefaultsOptions.SectionName));
+builder.Services.Configure<SeatMapOptions>(builder.Configuration.GetSection(SeatMapOptions.SectionName));
 
 
 // Register CORS to allow React Frontend requests

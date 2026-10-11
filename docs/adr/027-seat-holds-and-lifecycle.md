@@ -18,7 +18,7 @@ Seated shows (ADR-026) need customers to choose exact seats. A seat must belong 
 - **Limits.** The seat count counts toward `max_per_customer`.
 - **Seat map is public and uncached.** `GET /api/inventory/shows/{id}/seats` (structure and states) and `/seats/states` (states only) carry no customer data and `Cache-Control: no-store`; the gateway's per-client rate limit applies. Clients poll as they do for availability.
 - **Tickets carry the seat.** The internal hold response lists the seats; Booking stores them on the order and gives each ticket one seat (section, row, number).
-- **Real sales.** Seated shows are only safe to sell once this lifecycle, the Booking ticket seats and the cancellation return are all deployed. Until then no show should be enabled as seated outside test environments.
+- **Real sales are gated.** Seated shows are only safe to sell once this lifecycle, the Booking ticket seats, the cancellation return and the web seat map are all deployed. Catalog refuses to enable a layout (409, code SeatedSalesNotEnabled) unless the operator sets `SeatMaps__AllowEnable=true`, which defaults to off. Requests and drafts are unaffected.
 
 ## Consequences
 
