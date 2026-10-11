@@ -268,4 +268,56 @@ public sealed class SeatLayoutRepositoryTests
             }
         }
     }
+
+    [Theory]
+    [InlineData("hold")]
+    [InlineData("sold")]
+    public async Task NewVersion_OnASeatedShowWithAHoldOrASale_IsLockedAndTheOldSeatsStay(string cause)
+    {
+        var s = await SeedAsync();
+        var repository = Repository();
+        await repository.EnableAsync(s.Show, 1, FullLayout(s), DateTimeOffset.UtcNow);
+        if (cause == "hold")
+        {
+            await ExecuteAsync("INSERT INTO holds (id, show_id, customer_sub, status, expires_at, idempotency_key, created_at) VALUES (@id, @s, 'c', 'Active', now() + interval '10 minutes', @k, now())",
+                ("id", Guid.NewGuid()), ("s", s.Show), ("k", Guid.NewGuid().ToString()));
+        }
+        else
+        {
+            await ExecuteAsync("UPDATE stock SET sold = 1, available = available - 1 WHERE show_id = @s AND category_id = @c", ("s", s.Show), ("c", s.General));
+        }
+
+        var different = Seats(s.Vip, "Balcony", 1, 6).Concat(Seats(s.General, "Floor", 2, 6)).ToList();
+        var v2 = await repository.EnableAsync(s.Show, 2, different, DateTimeOffset.UtcNow);
+
+        Assert.Equal(EnableSeatsOutcome.Locked, v2.Outcome);
+        Assert.Equal(18, await SeatCountAsync(s.Show));
+        Assert.Equal(0, await ScalarAsync<int>("SELECT count(*)::int FROM show_seats WHERE show_id = @s AND section = 'Balcony'", ("s", s.Show)));
+        Assert.Equal(1, (await repository.GetLockStateAsync(s.Show)).Version);
+        Assert.True((await repository.GetLockStateAsync(s.Show)).Locked);
+    }
+
+    [Fact]
+    public async Task NewVersionRacingAHold_OnASeatedShow_NeverLeavesMixedSeats()
+    {
+        for (var round = 0; round < 15; round++)
+        {
+            var s = await SeedAsync();
+            var repository = Repository();
+            await repository.EnableAsync(s.Show, 1, FullLayout(s), DateTimeOffset.UtcNow);
+            var different = Seats(s.Vip, "Balcony", 1, 6).Concat(Seats(s.General, "Floor", 2, 6)).ToList();
+
+            var hold = ExecuteAsync("INSERT INTO holds (id, show_id, customer_sub, status, expires_at, idempotency_key, created_at) VALUES (@id, @s, 'c', 'Active', now() + interval '10 minutes', @k, now())",
+                ("id", Guid.NewGuid()), ("s", s.Show), ("k", Guid.NewGuid().ToString()));
+            var enable = repository.EnableAsync(s.Show, 2, different, DateTimeOffset.UtcNow);
+            await Task.WhenAll(hold, enable);
+
+            // Whichever order the database picked, the show has exactly one complete layout.
+            Assert.Equal(18, await SeatCountAsync(s.Show));
+            var sections = await ScalarAsync<int>("SELECT count(DISTINCT section)::int FROM show_seats WHERE show_id = @s", ("s", s.Show));
+            Assert.Equal(2, sections);
+            var version = (await repository.GetLockStateAsync(s.Show)).Version;
+            Assert.Equal((await enable).Outcome == EnableSeatsOutcome.Enabled ? 2 : 1, version);
+        }
+    }
 }
