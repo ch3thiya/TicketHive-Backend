@@ -151,6 +151,15 @@ public class ReminderProcessor(
     private async Task SendAsync(ReminderRow row, ReminderShow show, int ticketCount, HashSet<Guid> open, CancellationToken cancellationToken)
     {
         var settings = options.Value;
+        if (!await reminders.TryBeginSendAsync(row.OrderId))
+        {
+            // Another instance parked it while this pass was busy: its state is no longer ours to change.
+            open.Remove(row.OrderId);
+            metrics.Outcome("lost_claim");
+            logger.LogWarning("Reminder for order {OrderId} is no longer claimed by this pass and was not sent", row.OrderId);
+            return;
+        }
+
         ReminderSendResult result;
         try
         {

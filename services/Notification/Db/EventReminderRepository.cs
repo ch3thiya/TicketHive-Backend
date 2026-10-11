@@ -72,6 +72,20 @@ public class EventReminderRepository(DbConnectionFactory factory, TimeProvider c
          WHERE order_id = ANY(@ids) AND status = 'Sending'
         """, ("until", until), ("ids", orderIds.ToArray()));
 
+    // Called right before a send. A slow pass can outlast the stale-send limit, and another instance may
+    // then have parked this reminder; false means it is no longer ours, so it must not be sent.
+    public async Task<bool> TryBeginSendAsync(Guid orderId)
+    {
+        await using var db = (NpgsqlConnection)await factory.CreateConnectionAsync();
+        await using var cmd = new NpgsqlCommand("""
+            UPDATE event_reminders SET updated_at = @now
+             WHERE order_id = @id AND status = 'Sending'
+            """, db);
+        cmd.Parameters.AddWithValue("id", orderId);
+        cmd.Parameters.AddWithValue("now", clock.GetUtcNow());
+        return await cmd.ExecuteNonQueryAsync() == 1;
+    }
+
     public Task SkipAsync(Guid orderId, string reason) => ExecuteAsync("""
         UPDATE event_reminders SET status = 'Skipped', skip_reason = @reason, updated_at = @now
          WHERE order_id = @id AND status = 'Sending'

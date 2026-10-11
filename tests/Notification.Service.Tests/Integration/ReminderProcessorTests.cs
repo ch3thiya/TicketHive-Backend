@@ -447,6 +447,43 @@ public sealed class ReminderProcessorTests
         public Task<ReminderSendResult> SendAsync(ReminderEmail email, CancellationToken cancellationToken = default) => Task.FromResult(results.Dequeue());
     }
 
+    [Fact]
+    public async Task AReminderParkedByAnotherInstanceMidPass_IsNotSentByThisOne()
+    {
+        var (_, first) = await OrderAsync(hoursAway: 10, email: "first@example.com");
+        var (_, second) = await OrderAsync(hoursAway: 10, email: "second@example.com");
+        var interfered = false;
+        var sender = new HookSender(async () =>
+        {
+            // The first send is slow; meanwhile another instance finds the unfinished claims stale and parks them.
+            if (!interfered)
+            {
+                interfered = true;
+                _clock.Advance(TimeSpan.FromMinutes(6));
+                await Repository().ClaimDueAsync(10, 5);
+            }
+        });
+        var processor = new ReminderProcessor(Repository(), _catalog, _booking, sender, Options.Create(new ReminderOptions()), _clock, new ReminderMetrics(_meter), NullLogger<ReminderProcessor>.Instance);
+
+        await processor.RunOnceAsync();
+
+        Assert.Single(sender.Seen);
+        var statuses = new[] { (await RecordAsync(first)).Status, (await RecordAsync(second)).Status };
+        Assert.All(statuses, s => Assert.Equal(ReminderStatuses.NeedsReconciliation, s)); // the in-flight one is for people to check; the unstarted one was not sent
+    }
+
+    private sealed class HookSender(Func<Task> duringSend) : IReminderEmailSender
+    {
+        public List<string> Seen { get; } = new();
+
+        public async Task<ReminderSendResult> SendAsync(ReminderEmail email, CancellationToken cancellationToken = default)
+        {
+            Seen.Add(email.RecipientEmail);
+            await duringSend();
+            return new ReminderSendResult(ReminderSendOutcome.Simulated);
+        }
+    }
+
     // ---- observability ----
 
     [Fact]
