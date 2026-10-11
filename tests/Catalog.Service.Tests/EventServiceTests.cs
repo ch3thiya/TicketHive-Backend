@@ -904,6 +904,32 @@ public class EventServiceTests
     }
 
     [Fact]
+    public async Task GetPublishedEvents_ExposesEachShowsSeatingMode()
+    {
+        var eventId = Guid.NewGuid();
+        var gaShow = Guid.NewGuid();
+        var seatedShow = Guid.NewGuid();
+        _mockRepo.Setup(r => r.GetPublishedEventsAsync(null, null, null, null, null))
+                 .ReturnsAsync(new List<Event> { new Event { Id = eventId, OrganizerId = Guid.NewGuid(), Name = "Mixed", Status = "Published", CreatedAt = DateTime.UtcNow } });
+        _mockRepo.Setup(r => r.GetShowsByEventIdsAsync(It.IsAny<IReadOnlyCollection<Guid>>()))
+                 .ReturnsAsync(new Dictionary<Guid, List<Show>>
+                 {
+                     [eventId] = new List<Show>
+                     {
+                         new Show { Id = gaShow, EventId = eventId, Status = "Active" },
+                         new Show { Id = seatedShow, EventId = eventId, Status = "Active", SeatingMode = SeatingModes.Seated }
+                     }
+                 });
+        _mockRepo.Setup(r => r.GetTicketCategoriesByShowIdsAsync(It.IsAny<IReadOnlyCollection<Guid>>()))
+                 .ReturnsAsync(new Dictionary<Guid, List<TicketCategory>>());
+
+        var result = await _service.GetPublishedEventsAsync(null, null, null, null, null);
+
+        Assert.Equal("GA", result[0].Shows.Single(s => s.Id == gaShow).SeatingMode);
+        Assert.Equal("Seated", result[0].Shows.Single(s => s.Id == seatedShow).SeatingMode);
+    }
+
+    [Fact]
     public async Task GetPublishedEvents_WithKeywordSearch_PassesSearchParamToRepository()
     {
         // Arrange
