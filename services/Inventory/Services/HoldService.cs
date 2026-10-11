@@ -15,6 +15,7 @@ public class HoldService : IHoldService
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<HoldService> _logger;
     private readonly ISalesEligibilityClient _salesEligibility;
+    private readonly SeatHoldMetrics? _seatMetrics;
     private const int MaxSeatsPerRequest = 50;
 
     public HoldService(
@@ -22,13 +23,15 @@ public class HoldService : IHoldService
         TimeProvider timeProvider,
         ILogger<HoldService> logger,
         IAdmissionTokenVerifier admissionTokenVerifier,
-        ISalesEligibilityClient salesEligibility)
+        ISalesEligibilityClient salesEligibility,
+        SeatHoldMetrics? seatMetrics = null)
     {
         _repository = repository;
         _timeProvider = timeProvider;
         _logger = logger;
         _admissionTokenVerifier = admissionTokenVerifier;
         _salesEligibility = salesEligibility;
+        _seatMetrics = seatMetrics;
     }
 
     public async Task<CreateHoldResult> CreateHoldAsync(string customerSub, string idempotencyKey, bool hasAdmissionToken, CreateHoldRequest request, string? admissionToken = null)
@@ -139,6 +142,11 @@ public class HoldService : IHoldService
         {
             case HoldCreationOutcome.Created:
                 _logger.LogInformation("Hold {HoldId} created for show {ShowId}", hold.Id, hold.ShowId);
+                if (hold.Seats.Count > 0 && result.Outcome == HoldCreationOutcome.Created)
+                {
+                    _seatMetrics?.SeatsHeld.Add(result.Hold!.Seats.Count);
+                    _logger.LogInformation("Hold {HoldId} holds {SeatCount} seat(s) for show {ShowId}", hold.Id, result.Hold!.Seats.Count, hold.ShowId);
+                }
                 return new CreateHoldResult { Status = CreateHoldStatus.Created, Hold = ToResponse(result.Hold!) };
             case HoldCreationOutcome.Duplicate:
                 return new CreateHoldResult { Status = CreateHoldStatus.Duplicate, Hold = ToResponse(result.Hold!) };
@@ -151,6 +159,7 @@ public class HoldService : IHoldService
                 _logger.LogInformation("Hold rejected for show {ShowId}: category {CategoryId} sold out", request.ShowId, result.CategoryId);
                 return new CreateHoldResult { Status = CreateHoldStatus.StockUnavailable, CategoryId = result.CategoryId };
             case HoldCreationOutcome.SeatsUnavailable:
+                _seatMetrics?.SelectionsRefused.Add(1);
                 _logger.LogInformation("Seat hold rejected for show {ShowId}: {SeatCount} requested seat(s) unavailable", request.ShowId, result.UnavailableSeats?.Count ?? 0);
                 return new CreateHoldResult
                 {
