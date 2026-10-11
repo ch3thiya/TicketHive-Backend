@@ -175,6 +175,11 @@ public class ReminderProcessor(
 
             case ReminderSendOutcome.Rejected:
                 var next = await reminders.RecordFailureAsync(row.OrderId, result.Error ?? "The reminder was refused.", settings.MaxAttempts, clock.GetUtcNow().AddMinutes(settings.RetryMinutes));
+                if (next is null)
+                {
+                    break;
+                }
+
                 metrics.Outcome(next == ReminderStatuses.Failed ? "failed" : "retry");
                 logger.LogWarning("Reminder for order {OrderId} was refused (attempt {Attempt} of {Max}); now {Status}", row.OrderId, row.Attempts + 1, settings.MaxAttempts, next);
                 break;

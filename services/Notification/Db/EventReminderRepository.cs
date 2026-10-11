@@ -89,7 +89,8 @@ public class EventReminderRepository(DbConnectionFactory factory, TimeProvider c
 
     // A definite refusal counts an attempt. It goes back to Pending for another try until the attempts
     // are used up, and then stays Failed. The order and its tickets are never touched.
-    public async Task<string> RecordFailureAsync(Guid orderId, string error, int maxAttempts, DateTimeOffset retryAt)
+    // Null when the reminder was no longer claimed, so a stale worker changes nothing.
+    public async Task<string?> RecordFailureAsync(Guid orderId, string error, int maxAttempts, DateTimeOffset retryAt)
     {
         await using var db = (NpgsqlConnection)await factory.CreateConnectionAsync();
         await using var cmd = new NpgsqlCommand("""
@@ -106,7 +107,7 @@ public class EventReminderRepository(DbConnectionFactory factory, TimeProvider c
         cmd.Parameters.AddWithValue("retry", retryAt);
         cmd.Parameters.AddWithValue("error", Truncate(error));
         cmd.Parameters.AddWithValue("now", clock.GetUtcNow());
-        return (string?)await cmd.ExecuteScalarAsync() ?? ReminderStatuses.Failed;
+        return (string?)await cmd.ExecuteScalarAsync();
     }
 
     public async Task<ReminderRecord?> GetAsync(Guid orderId)
