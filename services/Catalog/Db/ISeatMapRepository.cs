@@ -40,7 +40,7 @@ public interface ISeatMapRepository
 
     Task<List<SeatMapRequest>> GetRequestsForShowAsync(Guid showId);
 
-    Task<List<SeatMapRequest>> ListRequestsAsync(string? status, int limit);
+    Task<List<SeatMapRequestSummary>> ListRequestsAsync(string? status, int limit);
 
     Task<List<SeatLayout>> GetLayoutsForShowAsync(Guid showId);
 

@@ -284,8 +284,10 @@ public sealed class SeatMapRepositoryTests
         var request = NewRequest(showId, organizerId);
         await repository.CreateRequestAsync(request);
 
-        Assert.Contains(await repository.ListRequestsAsync(SeatMapStatuses.Pending, 500), r => r.Id == request.Id);
-        Assert.DoesNotContain(await repository.ListRequestsAsync(SeatMapStatuses.Completed, 500), r => r.Id == request.Id);
-        Assert.Contains(await repository.ListRequestsAsync(null, 500), r => r.Id == request.Id);
+        var pending = (await repository.ListRequestsAsync(SeatMapStatuses.Pending, 500)).Single(r => r.Request.Id == request.Id);
+        Assert.Equal("Seat Test", pending.EventName);
+        Assert.Equal(12, pending.TicketTotal);
+        Assert.DoesNotContain(await repository.ListRequestsAsync(SeatMapStatuses.Completed, 500), r => r.Request.Id == request.Id);
+        Assert.Contains(await repository.ListRequestsAsync(null, 500), r => r.Request.Id == request.Id);
     }
 }

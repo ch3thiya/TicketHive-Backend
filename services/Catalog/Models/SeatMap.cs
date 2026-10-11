@@ -180,3 +180,10 @@ public static class SeatLayoutRules
         }
     }
 }
+
+public record SeatMapRequestSummary(
+    SeatMapRequest Request,
+    string EventName,
+    DateOnly ShowDate,
+    TimeOnly ShowTime,
+    int TicketTotal);

@@ -73,16 +73,34 @@ public class SeatMapRepository(DbConnectionFactory connectionFactory) : ISeatMap
         return await ReadRequestsAsync(command);
     }
 
-    public async Task<List<SeatMapRequest>> ListRequestsAsync(string? status, int limit)
+    public async Task<List<SeatMapRequestSummary>> ListRequestsAsync(string? status, int limit)
     {
         await using var connection = (NpgsqlConnection)await connectionFactory.CreateConnectionAsync();
-        await using var command = new NpgsqlCommand($@"
-            SELECT {RequestColumns} FROM seat_map_requests
-            WHERE @Status::text IS NULL OR status = @Status
-            ORDER BY requested_at DESC, id DESC LIMIT @Limit", connection);
+        await using var command = new NpgsqlCommand(@"
+            SELECT r.id, r.show_id, r.organizer_id, r.description, r.status, r.rejection_reason, r.requested_at,
+                   r.decided_at, r.decided_by, e.name, s.show_date, s.show_time,
+                   COALESCE((SELECT SUM(c.capacity) FROM ticket_categories c WHERE c.show_id = s.id AND c.is_active), 0)::int
+            FROM seat_map_requests r
+            JOIN shows s ON s.id = r.show_id
+            JOIN events e ON e.id = s.event_id
+            WHERE @Status::text IS NULL OR r.status = @Status
+            ORDER BY r.requested_at DESC, r.id DESC LIMIT @Limit", connection);
         command.Parameters.Add(new NpgsqlParameter("Status", NpgsqlDbType.Text) { Value = (object?)status ?? DBNull.Value });
         command.Parameters.AddWithValue("Limit", limit);
-        return await ReadRequestsAsync(command);
+
+        await using var reader = await command.ExecuteReaderAsync();
+        var summaries = new List<SeatMapRequestSummary>();
+        while (await reader.ReadAsync())
+        {
+            summaries.Add(new SeatMapRequestSummary(
+                MapRequest(reader),
+                reader.GetString(9),
+                DateOnly.FromDateTime(reader.GetDateTime(10)),
+                TimeOnly.FromTimeSpan(reader.GetTimeSpan(11)),
+                reader.GetInt32(12)));
+        }
+
+        return summaries;
     }
 
     public async Task<List<SeatLayout>> GetLayoutsForShowAsync(Guid showId)
