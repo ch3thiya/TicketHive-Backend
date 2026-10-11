@@ -199,4 +199,51 @@ public sealed class SalesRepositoryTests
         Assert.Equal(3, sales.TicketsSold);
         Assert.Equal(280m, sales.Revenue);
     }
+
+    [Fact]
+    public async Task ReadsDuringSalesAndScans_NeverShowMoreEnteredThanSold()
+    {
+        var show = Guid.CreateVersion7();
+        using var stop = new CancellationTokenSource();
+
+        var writer = Task.Run(async () =>
+        {
+            for (var i = 0; i < 40; i++)
+            {
+                var order = await _data.AddOrderAsync(show, OrderStatus.Confirmed, "LKR", (Vip, 1, 120m));
+                var tickets = await _data.IssueTicketsAsync(order);
+                await _data.UseAsync(tickets[0]);
+            }
+
+            stop.Cancel();
+        });
+
+        var violations = 0;
+        var readers = Enumerable.Range(0, 4).Select(_ => Task.Run(async () =>
+        {
+            while (!stop.IsCancellationRequested)
+            {
+                var sales = await SalesAsync(show);
+                if (sales.TicketsUsed > sales.TicketsSold || sales.Categories.Any(c => c.Used > c.Sold)) Interlocked.Increment(ref violations);
+            }
+        })).ToArray();
+
+        await Task.WhenAll(readers.Append(writer));
+
+        Assert.Equal(0, violations);
+        var final = await SalesAsync(show);
+        Assert.Equal((40, 40, 4800m), (final.TicketsSold, final.TicketsUsed, final.Revenue));
+    }
+
+    [Fact]
+    public async Task MoneyKeepsItsPrecision_AcrossManyOrders()
+    {
+        var show = Guid.CreateVersion7();
+        for (var i = 0; i < 30; i++) await _data.AddOrderAsync(show, OrderStatus.Confirmed, "LKR", (Vip, 3, 33.33m));
+
+        var sales = await SalesAsync(show);
+
+        Assert.Equal(90, sales.TicketsSold);
+        Assert.Equal(2999.70m, sales.Revenue);
+    }
 }
