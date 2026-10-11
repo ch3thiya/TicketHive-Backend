@@ -48,4 +48,23 @@ public class InternalCancellationAuthorizationTests
 
         Assert.Empty(policy!.AuthenticationSchemes);
     }
+    [Theory]
+    [InlineData("APPLICATION", "openid booking:read", true)]
+    [InlineData("APPLICATION", "booking:write", false)]
+    [InlineData("APPLICATION", "booking:readonly", false)]
+    [InlineData("APPLICATION_USER", "booking:read", false)]
+    public async Task ANamedScopePolicy_NeedsAnApplicationTokenAndTheExactScope(string aut, string scope, bool allowed)
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddInternalScopePolicy("BookingInternalRead", "booking:read", "Internal");
+        using var provider = services.BuildServiceProvider();
+        var user = new ClaimsPrincipal(new ClaimsIdentity(new[] { new Claim("aut", aut), new Claim("scope", scope) }, "Test"));
+
+        var result = await provider.GetRequiredService<IAuthorizationService>().AuthorizeAsync(user, null, "BookingInternalRead");
+        var policy = await provider.GetRequiredService<IAuthorizationPolicyProvider>().GetPolicyAsync("BookingInternalRead");
+
+        Assert.Equal(allowed, result.Succeeded);
+        Assert.Equal(new[] { "Internal" }, policy!.AuthenticationSchemes);
+    }
 }
