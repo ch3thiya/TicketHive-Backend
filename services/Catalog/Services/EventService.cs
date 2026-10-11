@@ -464,6 +464,13 @@ public class EventService : IEventService
             throw new InvalidOperationException(editReason);
         }
 
+        // A seated show's seats are generated from its categories (ADR-026); changing them would
+        // desynchronise seats from stock.
+        if (show.SeatingMode == SeatingModes.Seated && dto.Categories is { Count: > 0 })
+        {
+            throw new InvalidOperationException("Ticket categories cannot be changed while the show has a seat map.");
+        }
+
         if (dto.VenueId.HasValue && !await _venueService.VenueExistsAsync(dto.VenueId.Value))
         {
             throw new ArgumentException($"Venue '{dto.VenueId}' does not exist.", nameof(dto.VenueId));

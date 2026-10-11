@@ -353,7 +353,7 @@ public class EventRepository : IEventRepository
         using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
 
         const string sql = @"
-            SELECT id, event_id, show_date, show_time, venue_id, on_sale_at, high_demand_threshold, reminder_minutes_before, status, created_at
+            SELECT id, event_id, show_date, show_time, venue_id, on_sale_at, high_demand_threshold, reminder_minutes_before, status, created_at, seating_mode
             FROM shows
             WHERE id = @Id;
         ";
@@ -375,7 +375,7 @@ public class EventRepository : IEventRepository
         using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
 
         const string sql = @"
-            SELECT id, event_id, show_date, show_time, venue_id, on_sale_at, high_demand_threshold, reminder_minutes_before, status, created_at
+            SELECT id, event_id, show_date, show_time, venue_id, on_sale_at, high_demand_threshold, reminder_minutes_before, status, created_at, seating_mode
             FROM shows
             WHERE event_id = @EventId
             ORDER BY show_date ASC, show_time ASC;
@@ -405,7 +405,7 @@ public class EventRepository : IEventRepository
         using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
 
         const string sql = @"
-            SELECT id, event_id, show_date, show_time, venue_id, on_sale_at, high_demand_threshold, reminder_minutes_before, status, created_at
+            SELECT id, event_id, show_date, show_time, venue_id, on_sale_at, high_demand_threshold, reminder_minutes_before, status, created_at, seating_mode
             FROM shows
             WHERE event_id = ANY(@EventIds)
             ORDER BY show_date ASC, show_time ASC;
@@ -716,7 +716,8 @@ public class EventRepository : IEventRepository
             HighDemandThreshold = reader.IsDBNull(6) ? null : reader.GetInt32(6),
             ReminderMinutesBefore = reader.IsDBNull(7) ? null : reader.GetInt32(7),
             Status = reader.GetString(8),
-            CreatedAt = reader.GetDateTime(9)
+            CreatedAt = reader.GetDateTime(9),
+            SeatingMode = reader.GetString(10)
         };
     }
 
