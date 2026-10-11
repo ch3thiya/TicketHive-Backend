@@ -2,6 +2,8 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Catalog.Service.Clients;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.Configuration;
 using Catalog.Service.Db;
 using Catalog.Service.Models;
 using Moq;
@@ -281,5 +283,20 @@ public class SeatMapsApiTests : IClassFixture<CatalogApiFactory>
         Assert.Equal(HttpStatusCode.BadRequest, missing.StatusCode);
         Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
         Assert.Equal("Venue plan missing", (await Body(ok)).GetProperty("rejectionReason").GetString());
+    }
+
+    [Fact]
+    public async Task Admin_Enable_WhenSeatedSalesAreSwitchedOff_Returns409WithCode()
+    {
+        var layout = new SeatLayout(Guid.NewGuid(), _show.Id, Guid.NewGuid(), 1, "Draft",
+            new SeatLayoutSpec(new[] { new SeatLayoutSection("Front", _vip.Id, 2, 3), new SeatLayoutSection("Hall", _general.Id, 3, 4) }), 18, "admin", DateTimeOffset.UtcNow, null);
+        _factory.SeatMapRepositoryMock.Setup(r => r.GetLayoutAsync(layout.Id)).ReturnsAsync(layout);
+        var client = _factory.WithWebHostBuilder(b => b.ConfigureAppConfiguration((_, c) => c.AddInMemoryCollection(new Dictionary<string, string?> { ["SeatMaps:AllowEnable"] = "false" }))).CreateClient();
+
+        var response = await client.SendAsync(Send(HttpMethod.Post, $"/api/catalog/admin/seat-layouts/{layout.Id}/enable", sub: "admin", role: "Admin"));
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal("SeatedSalesNotEnabled", (await Body(response)).GetProperty("code").GetString());
+        _factory.InventorySeatClientMock.Verify(c => c.EnableSeatsAsync(It.IsAny<Guid>(), It.IsAny<int>(), It.IsAny<IReadOnlyList<SeatPosition>>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }
