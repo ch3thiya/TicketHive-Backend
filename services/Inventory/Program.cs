@@ -11,6 +11,10 @@ using Inventory.Service.Models;
 using Inventory.Service.Services;
 using Inventory.Service.Clients;
 
+// Load root .env file if available; a real environment variable already set
+// (docker-compose, Container Apps) always wins over the .env file.
+DotNetEnv.Env.TraversePath().NoClobber().Load();
+
 if (args.Contains("--migrate"))
 {
     var migrationBuilder = WebApplication.CreateBuilder(args);
