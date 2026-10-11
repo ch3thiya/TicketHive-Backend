@@ -19,7 +19,7 @@ public class SeatMapsController(ISeatMapService seatMaps) : ControllerBase
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
-    public async Task<IActionResult> Request(Guid showId, [FromBody] SeatMapRequestBody body)
+    public async Task<IActionResult> RequestSeatMap(Guid showId, [FromBody] SeatMapRequestBody body)
     {
         var result = await seatMaps.RequestAsync(CurrentOrganizerId(), showId, body.Description);
         return result.Status == SeatMapStatus.Ok
