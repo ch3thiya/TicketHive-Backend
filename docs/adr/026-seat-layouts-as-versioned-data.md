@@ -23,3 +23,12 @@ A show is either general admission (GA) or seated, never both. An organizer asks
 - The layout is data, so a layout bug is fixed by a new version, not a migration.
 - Inventory never trusts Catalog's arithmetic: it re-checks seat counts against its own stock capacities.
 - Existing GA behaviour, cancellation and suspension rules are unchanged.
+
+## Failure windows and recovery
+
+Enabling touches two services, so a crash between the steps can leave them briefly out of step. All of these states fail safe (under-selling, never over-selling) and are repaired by an admin action:
+
+- Inventory succeeded but Catalog did not commit: Inventory has the seats (stock is `Seated`, so GA holds are refused) while Catalog still shows the layout as Draft. Enabling the same draft again is a no-op in Inventory and then commits Catalog.
+- Categories were edited in that window and the draft no longer matches: enabling is refused with the reasons. Saving a new version that matches and enabling it replaces the old seats, because Inventory only refuses a replacement once a hold or sale exists.
+- Inventory unreachable: Catalog answers 503, nothing is committed, and the draft stays enabled-able.
+- Deleting an event removes its seat requests and layouts in the same transaction.
