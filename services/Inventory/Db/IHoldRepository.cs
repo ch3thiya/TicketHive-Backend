@@ -10,7 +10,10 @@ public enum HoldCreationOutcome
     Duplicate,
     QuotaExceeded,
     CategoryNotFound,
-    StockUnavailable
+    StockUnavailable,
+    SeatsUnavailable,
+    SeatsRequired,
+    SeatsNotSupported
 }
 
 public class HoldCreationResult
@@ -19,6 +22,7 @@ public class HoldCreationResult
     public Hold? Hold { get; init; }
     public Guid? CategoryId { get; init; }
     public int? Limit { get; init; }
+    public IReadOnlyList<HoldSeat>? UnavailableSeats { get; init; }
 }
 
 public class HoldReleaseSummary
