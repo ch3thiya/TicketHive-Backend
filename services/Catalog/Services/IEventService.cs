@@ -109,4 +109,6 @@ public interface IEventService
     Task UpdateShowAsync(Guid organizerId, Guid showId, UpdateShowDto dto);
     Task CancelShowAsync(Guid organizerId, Guid showId);
     Task<ShowSalesRulesDto?> GetSalesRulesAsync(Guid showId);
+
+    Task<List<ShowReminderInfo>> GetShowReminderInfoAsync(IReadOnlyCollection<Guid> showIds);
 }

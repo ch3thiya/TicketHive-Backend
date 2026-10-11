@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Notification.Service.Clients;
 using Notification.Service.Db;
 using Notification.Service.Services;
 // Load root .env file if available; a real environment variable already set
@@ -53,6 +54,21 @@ builder.Services.AddScoped<CancellationEmailRepository>();
 builder.Services.Configure<CancellationEmailOptions>(builder.Configuration.GetSection("CancellationEmail"));
 builder.Services.AddHttpClient<CancellationEmailSender>();
 builder.Services.AddHostedService<CancellationEmailWorker>();
+// Event reminders (SCRUM-172): one row per order, a timed job, and read-only calls to Catalog and Booking.
+builder.Services.AddScoped<EventReminderRepository>();
+builder.Services.Configure<ReminderOptions>(builder.Configuration.GetSection(ReminderOptions.SectionName));
+builder.Services.AddSingleton<ReminderMetrics>();
+builder.Services.AddInternalServiceTokenClient(builder.Configuration);
+builder.Services.AddHttpClient<IReminderCatalogClient, ReminderCatalogClient>(client =>
+    client.BaseAddress = new Uri(builder.Configuration["CatalogService:BaseUrl"] ?? "http://catalog:8080/"))
+    .AddHttpMessageHandler<InternalServiceAuthenticationHandler>();
+builder.Services.AddHttpClient<IReminderBookingClient, ReminderBookingClient>(client =>
+    client.BaseAddress = new Uri(builder.Configuration["BookingService:BaseUrl"] ?? "http://booking:8080/"))
+    .AddHttpMessageHandler<InternalServiceAuthenticationHandler>();
+builder.Services.AddHttpClient<IReminderEmailSender, ReminderEmailSender>();
+builder.Services.AddScoped<ReminderSeeder>();
+builder.Services.AddScoped<ReminderProcessor>();
+builder.Services.AddHostedService<ReminderWorker>();
 builder.Services.AddAuthentication("Bearer").AddJwtBearer("Bearer", options =>
 {
     options.Authority = builder.Configuration["Jwt:Authority"];

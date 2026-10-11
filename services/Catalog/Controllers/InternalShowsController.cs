@@ -9,15 +9,48 @@ public record SalesEligibilityResponse(Guid ShowId, bool Eligible, string Reason
 
 public record EntryAccessResponse(Guid ShowId, bool Allowed, string Reason);
 
+public record ReminderInfoRequest(List<Guid>? ShowIds);
+
+public record ShowReminderInfoResponse(Guid ShowId, DateTimeOffset StartsAtUtc, string EventName, string? VenueName, bool Cancelled);
+
+public record ReminderInfoResponse(List<ShowReminderInfoResponse> Shows);
+
 [ApiController]
 [Route("internal/catalog/shows")]
 public class InternalShowsController : ControllerBase
 {
+    private const int MaxReminderShows = 200;
+
     private readonly IEventService _eventService;
 
     public InternalShowsController(IEventService eventService)
     {
         _eventService = eventService;
+    }
+
+    /// <summary>
+    /// Live schedule, event, venue and cancelled state for the shows Notification is about to remind
+    /// customers of. Read-only; shows that do not exist are left out of the answer.
+    /// </summary>
+    [HttpPost("reminder-info")]
+    [Authorize(Policy = "InternalService")]
+    [ProducesResponseType(typeof(ReminderInfoResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> GetReminderInfo([FromBody] ReminderInfoRequest request)
+    {
+        var ids = request.ShowIds?.Where(id => id != Guid.Empty).Distinct().ToList() ?? new List<Guid>();
+        if (ids.Count == 0 || ids.Count > MaxReminderShows)
+        {
+            return Problem(
+                detail: $"Send between 1 and {MaxReminderShows} show ids.",
+                statusCode: StatusCodes.Status400BadRequest,
+                title: "Invalid request");
+        }
+
+        var infos = await _eventService.GetShowReminderInfoAsync(ids);
+        return Ok(new ReminderInfoResponse(infos
+            .Select(i => new ShowReminderInfoResponse(i.ShowId, i.StartsAtUtc, i.EventName, i.VenueName, i.Cancelled))
+            .ToList()));
     }
 
     [HttpGet("{showId}/sales-rules")]

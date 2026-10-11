@@ -38,6 +38,7 @@ builder.Services.AddScoped<IOrderRepository, OrderRepository>();
 builder.Services.AddScoped<ITicketRepository, TicketRepository>();
 builder.Services.AddScoped<ISalesRepository, SalesRepository>();
 builder.Services.AddScoped<ISalesService, SalesService>();
+builder.Services.AddScoped<IReminderEligibilityRepository, ReminderEligibilityRepository>();
 builder.Services.AddScoped<IPayHereService, PayHereService>();
 builder.Services.AddSingleton<IKafkaProducer, KafkaProducer>();
 builder.Services.AddScoped<ITicketService, TicketService>();
@@ -90,6 +91,8 @@ builder.Services.AddScoped<CancellationRepository>();
 builder.Services.AddScoped<CancellationClient>();
 builder.Services.AddHostedService<CancellationWorker>();
 builder.Services.AddCancellationInternalAuthorization("booking:write", BookingJwtSettings.InternalScheme);
+// Notification asks which orders are still confirmed before it sends a reminder; read-only, own scope.
+builder.Services.AddInternalScopePolicy("BookingInternalRead", "booking:read", BookingJwtSettings.InternalScheme);
 foreach (var service in new[] { "Catalog", "Inventory", "Payment", "Notification" })
 {
     var endpoint = builder.Configuration[$"{service}Service:BaseUrl"] ?? $"http://{service.ToLowerInvariant()}:8080/";

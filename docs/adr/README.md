@@ -32,6 +32,7 @@ Accepted records are never rewritten; a changed decision is a new record that am
 | [025](025-booking-jwt-audience-validation.md) | Booking validates JWT audience and token type per scheme |
 | [026](026-seat-layouts-as-versioned-data.md) | Seat layouts are versioned, validated data owned by Catalog |
 | [027](027-seat-holds-and-lifecycle.md) | Seat holds follow the hold lifecycle |
+| [028](028-event-reminders.md) | Event reminders sent once per order from live data |
 
 ## Template
 

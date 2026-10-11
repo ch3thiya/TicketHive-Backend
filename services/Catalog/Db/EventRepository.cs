@@ -348,6 +348,42 @@ public class EventRepository : IEventRepository
         }
     }
 
+    public async Task<List<ShowReminderInfo>> GetShowReminderInfoAsync(IReadOnlyCollection<Guid> showIds)
+    {
+        var infos = new List<ShowReminderInfo>();
+        if (showIds.Count == 0)
+        {
+            return infos;
+        }
+
+        await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
+
+        const string sql = @"
+            SELECT s.id, s.show_date, s.show_time, s.status, e.name, e.status, v.name
+            FROM shows s
+            JOIN events e ON e.id = s.event_id
+            LEFT JOIN venues v ON v.id = s.venue_id
+            WHERE s.id = ANY(@ShowIds);
+        ";
+
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("ShowIds", showIds.ToArray());
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            infos.Add(new ShowReminderInfo(
+                reader.GetGuid(0),
+                DateOnly.FromDateTime(reader.GetDateTime(1)),
+                TimeOnly.FromTimeSpan(reader.GetTimeSpan(2)),
+                reader.GetString(3),
+                reader.GetString(4),
+                reader.GetString(5),
+                reader.IsDBNull(6) ? null : reader.GetString(6)));
+        }
+
+        return infos;
+    }
+
     public async Task<Show?> GetShowByIdAsync(Guid showId)
     {
         using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();

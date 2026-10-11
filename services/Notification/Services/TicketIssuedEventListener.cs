@@ -10,6 +10,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Notification.Service.Db;
 using Notification.Service.Models;
+using Notification.Service.Services;
 
 namespace Notification.Service.Services;
 
@@ -115,6 +116,11 @@ public class TicketIssuedEventListener : BackgroundService
 
                     _logger.LogInformation("[Kafka Listener Debug] Extracted OrderId={OrderId}, Email='{Email}', Name='{Name}'", orderId, customerEmail, customerName);
 
+                    // Record the order for its event reminder before anything else, so a failure sending the
+                    // confirmation (or a redelivered event) can never cost the order its reminder. Redelivery
+                    // is harmless: one row per order. A problem here must not stop the confirmation email.
+                    await SeedReminderAsync(scope.ServiceProvider, root, orderId, rawEmail, customerName);
+
                     var alreadySent = await notificationRepo.ExistsForOrderAndEmailAsync(orderId, customerEmail);
                     if (alreadySent)
                     {
@@ -171,6 +177,18 @@ public class TicketIssuedEventListener : BackgroundService
         catch (Exception ex)
         {
             _logger.LogError(ex, "TicketIssuedEventListener worker encountered fatal exception");
+        }
+    }
+
+    private async Task SeedReminderAsync(IServiceProvider services, JsonElement root, Guid orderId, string rawEmail, string customerName)
+    {
+        try
+        {
+            await services.GetRequiredService<ReminderSeeder>().SeedAsync(root, orderId, rawEmail, customerName);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Could not record the event reminder for order {OrderId}", orderId);
         }
     }
 }
