@@ -32,6 +32,13 @@ public enum RejectOutcome
     NotPending
 }
 
+public enum DeleteLayoutOutcome
+{
+    Deleted,
+    NotFound,
+    Enabled
+}
+
 public interface ISeatMapRepository
 {
     Task<CreateSeatMapRequestOutcome> CreateRequestAsync(SeatMapRequest request);
@@ -53,6 +60,8 @@ public interface ISeatMapRepository
     // Marks the layout Enabled, the request Completed and the show Seated in one transaction,
     // superseding any earlier enabled layout. Repeating it for an enabled layout changes nothing.
     Task<CompleteEnableOutcome> CompleteEnableAsync(Guid layoutId, string decidedBy, DateTimeOffset now);
+
+    Task<DeleteLayoutOutcome> DeleteLayoutAsync(Guid layoutId);
 
     Task<RejectOutcome> RejectAsync(Guid requestId, string reason, string decidedBy, DateTimeOffset now);
 }

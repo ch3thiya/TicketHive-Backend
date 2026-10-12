@@ -7,6 +7,7 @@ namespace Catalog.Service.Services;
 
 public record CreateVenueDto(string Name, string Address, int Capacity);
 public record UpdateVenueDto(string Name, string Address, int Capacity);
+public record SaveVenueSeatMapDto(IReadOnlyList<VenueSeatMapSection>? Sections);
 
 public interface IVenueService
 {
@@ -15,6 +16,8 @@ public interface IVenueService
     Task<Venue?> GetVenueByIdAsync(Guid id);
     Task<bool> VenueExistsAsync(Guid id);
     Task UpdateVenueAsync(Guid id, UpdateVenueDto dto);
+    Task<VenueSeatMap> SaveSeatMapAsync(Guid venueId, SaveVenueSeatMapDto dto, string adminSub);
+    Task DeleteSeatMapAsync(Guid venueId);
 
     // Throws KeyNotFoundException if the venue does not exist, or
     // InvalidOperationException (naming how many shows use it) if it is

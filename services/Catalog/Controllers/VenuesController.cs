@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Catalog.Service.Services;
@@ -125,6 +126,56 @@ public class VenuesController : ControllerBase
         {
             _logger.LogError(ex, "Error deleting venue {VenueId}", id);
             return StatusCode(500, new { message = "An error occurred while deleting the venue." });
+        }
+    }
+
+    [HttpPut("{id:guid}/seat-map")]
+    [Authorize(Roles = "Admin,admin")]
+    public async Task<IActionResult> SaveSeatMap(Guid id, [FromBody] SaveVenueSeatMapDto dto)
+    {
+        try
+        {
+            var adminSub = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub") ?? "unknown";
+            return Ok(await _venueService.SaveSeatMapAsync(id, dto, adminSub));
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (VenueSeatMapValidationException ex)
+        {
+            return UnprocessableEntity(new ProblemDetails
+            {
+                Title = "Invalid seat map",
+                Detail = ex.Message,
+                Status = StatusCodes.Status422UnprocessableEntity,
+                Extensions = { ["errors"] = ex.Errors }
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error saving the seat map for venue {VenueId}", id);
+            return StatusCode(500, new { message = "An error occurred while saving the seat map." });
+        }
+    }
+
+    [HttpDelete("{id:guid}/seat-map")]
+    [Authorize(Roles = "Admin,admin")]
+    public async Task<IActionResult> DeleteSeatMap(Guid id)
+    {
+        try
+        {
+            await _venueService.DeleteSeatMapAsync(id);
+            return NoContent();
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error deleting the seat map for venue {VenueId}", id);
+            return StatusCode(500, new { message = "An error occurred while deleting the seat map." });
         }
     }
 }

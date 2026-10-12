@@ -101,7 +101,7 @@ public class SeatMapService(
 
         var categories = (await events.GetTicketCategoriesByShowIdAsync(show.Id)).Where(c => c.IsActive).ToList();
         var layouts = await seatMaps.GetLayoutsForShowAsync(show.Id);
-        return SeatMapResult<SeatMapDetail>.Ok(new SeatMapDetail(request, evt.Name, show.ShowDate, show.ShowTime, show.SeatingMode, categories, layouts));
+        return SeatMapResult<SeatMapDetail>.Ok(new SeatMapDetail(request, evt.Name, show.ShowDate, show.ShowTime, show.SeatingMode, show.VenueId, categories, layouts));
     }
 
     public async Task<SeatMapResult<SeatLayout>> CreateDraftAsync(Guid requestId, SeatLayoutSpec spec, string adminSub)
@@ -254,6 +254,17 @@ public class SeatMapService(
             default:
                 return SeatMapResult<SeatMapRequest>.Fail(SeatMapStatus.NotFound, "Seat map request not found.");
         }
+    }
+
+    public async Task<SeatMapResult<bool>> DeleteLayoutAsync(Guid layoutId)
+    {
+        return await seatMaps.DeleteLayoutAsync(layoutId) switch
+        {
+            DeleteLayoutOutcome.Deleted => SeatMapResult<bool>.Ok(true),
+            DeleteLayoutOutcome.Enabled => SeatMapResult<bool>.Fail(SeatMapStatus.Conflict,
+                "An enabled seat map cannot be deleted after its seats have been created.", "LayoutEnabled"),
+            _ => SeatMapResult<bool>.Fail(SeatMapStatus.NotFound, "Layout not found.")
+        };
     }
 
     // Null means the layout may still change; otherwise the result to return (locked, or fail closed).
