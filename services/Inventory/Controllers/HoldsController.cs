@@ -69,10 +69,30 @@ public class HoldsController : ControllerBase
                     detail: "This show requires a valid admission token before holding tickets.",
                     statusCode: StatusCodes.Status403Forbidden,
                     title: "Admission required"),
+                CreateHoldStatus.OrganizerSuspended => Problem(
+                    detail: "Ticket sales for this show are currently unavailable.",
+                    statusCode: StatusCodes.Status409Conflict,
+                    title: "Sales unavailable"),
+                CreateHoldStatus.ShowNotOnSale => Problem(
+                    detail: "This show is not currently on sale.",
+                    statusCode: StatusCodes.Status409Conflict,
+                    title: "Show not on sale"),
+                CreateHoldStatus.SalesEligibilityUnavailable => SalesCheckUnavailable(),
                 CreateHoldStatus.StockUnavailable => Problem(
                     detail: $"Category '{result.CategoryId}' no longer has enough tickets available.",
                     statusCode: StatusCodes.Status409Conflict,
                     title: "Tickets no longer available"),
+                CreateHoldStatus.SeatsUnavailable => SeatsNoLongerAvailable(result.UnavailableSeats),
+                CreateHoldStatus.SeatsRequired => Problem(
+                    detail: "This show has assigned seats. Choose your seats on the seat map.",
+                    statusCode: StatusCodes.Status409Conflict,
+                    title: "Seat selection required",
+                    extensions: new Dictionary<string, object?> { ["code"] = "SeatsRequired" }),
+                CreateHoldStatus.SeatsNotSupported => Problem(
+                    detail: "This show does not have assigned seats.",
+                    statusCode: StatusCodes.Status409Conflict,
+                    title: "Seats not available for this show",
+                    extensions: new Dictionary<string, object?> { ["code"] = "SeatsNotSupported" }),
                 CreateHoldStatus.QuotaExceeded => Problem(
                     detail: $"This request would exceed the per-customer limit of {result.Limit} tickets for this show.",
                     statusCode: StatusCodes.Status422UnprocessableEntity,
@@ -87,6 +107,30 @@ public class HoldsController : ControllerBase
                 statusCode: StatusCodes.Status400BadRequest,
                 title: "Invalid hold request");
         }
+    }
+
+    private ObjectResult SeatsNoLongerAvailable(IReadOnlyList<HoldSeatResponse>? seats)
+    {
+        var named = (seats ?? Array.Empty<HoldSeatResponse>())
+            .OrderBy(s => s.Section).ThenBy(s => s.Row).ThenBy(s => s.Number)
+            .ToList();
+        var labels = named.Count == 0
+            ? "A selected seat"
+            : string.Join(", ", named.Select(s => string.IsNullOrEmpty(s.Section) ? "Unknown seat" : $"{s.Section} {s.Row}{s.Number}"));
+        return Problem(
+            detail: $"{labels} is no longer available. No seats were held; choose again.",
+            statusCode: StatusCodes.Status409Conflict,
+            title: "Seats no longer available",
+            extensions: new Dictionary<string, object?> { ["code"] = "SeatsUnavailable", ["unavailableSeats"] = named });
+    }
+
+    private ObjectResult SalesCheckUnavailable()
+    {
+        Response.Headers.RetryAfter = "5";
+        return Problem(
+            detail: "Ticket sales could not be verified right now. Please try again shortly.",
+            statusCode: StatusCodes.Status503ServiceUnavailable,
+            title: "Sales check unavailable");
     }
 
     [HttpGet("{holdId}")]

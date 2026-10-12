@@ -35,7 +35,8 @@ public class PaymentEventListener : BackgroundService
             BootstrapServers = _bootstrapServers,
             GroupId = "booking-service-payment-listeners",
             AutoOffsetReset = AutoOffsetReset.Earliest,
-            EnableAutoCommit = true,
+            EnableAutoCommit = false,
+            EnableAutoOffsetStore = false,
             SocketTimeoutMs = 3000
         };
 
@@ -57,10 +58,12 @@ public class PaymentEventListener : BackgroundService
 
             while (!stoppingToken.IsCancellationRequested)
             {
+                ConsumeResult<string, string>? pending = null;
                 try
                 {
                     var consumeResult = consumer.Consume(TimeSpan.FromSeconds(1));
                     if (consumeResult == null) continue;
+                    pending = consumeResult;
 
                     using var scope = _scopeFactory.CreateScope();
                     var orderRepository = scope.ServiceProvider.GetRequiredService<IOrderRepository>();
@@ -83,7 +86,11 @@ public class PaymentEventListener : BackgroundService
                             var order = await orderRepository.GetByIdAsync(orderId);
                             if (order != null && order.Status != OrderStatus.Confirmed)
                             {
-                                await orderRepository.UpdateStatusAsync(order.Id, OrderStatus.Confirmed, now);
+                                if (!await orderRepository.UpdateStatusAsync(order.Id, OrderStatus.Confirmed, now))
+                                {
+                                    consumer.Commit(consumeResult);
+                                    continue;
+                                }
                                 try
                                 {
                                     await inventoryClient.ConvertHoldAsync(order.HoldId);
@@ -152,7 +159,11 @@ public class PaymentEventListener : BackgroundService
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Error processing payment Kafka event");
+                    if (pending is not null) consumer.Seek(pending.TopicPartitionOffset);
+                    await Task.Delay(TimeSpan.FromSeconds(1), stoppingToken);
+                    continue;
                 }
+                if (pending is not null) consumer.Commit(pending);
             }
         }
         catch (Exception ex)

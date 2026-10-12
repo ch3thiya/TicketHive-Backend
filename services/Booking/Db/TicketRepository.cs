@@ -21,9 +21,9 @@ public class TicketRepository : ITicketRepository
         await using var transaction = await connection.BeginTransactionAsync();
 
         const string sql = @"
-            INSERT INTO tickets (id, order_id, category_id, show_id, customer_sub, unique_code, price, issued_at, used_at, used_by)
-            VALUES (@Id, @OrderId, @CategoryId, @ShowId, @CustomerSub, @UniqueCode, @Price, @IssuedAt, @UsedAt, @UsedBy)
-            ON CONFLICT (unique_code) DO NOTHING;
+            INSERT INTO tickets (id, order_id, category_id, show_id, customer_sub, unique_code, price, issued_at, used_at, used_by, seat_id, seat_section, seat_row, seat_number)
+            VALUES (@Id, @OrderId, @CategoryId, @ShowId, @CustomerSub, @UniqueCode, @Price, @IssuedAt, @UsedAt, @UsedBy, @SeatId, @SeatSection, @SeatRow, @SeatNumber)
+            ON CONFLICT DO NOTHING;
         ";
 
         foreach (var ticket in tickets)
@@ -39,6 +39,10 @@ public class TicketRepository : ITicketRepository
             command.Parameters.AddWithValue("IssuedAt", ticket.IssuedAt);
             command.Parameters.AddWithValue("UsedAt", (object?)ticket.UsedAt ?? DBNull.Value);
             command.Parameters.AddWithValue("UsedBy", (object?)ticket.UsedBy ?? DBNull.Value);
+            command.Parameters.AddWithValue("SeatId", (object?)ticket.SeatId ?? DBNull.Value);
+            command.Parameters.AddWithValue("SeatSection", (object?)ticket.SeatSection ?? DBNull.Value);
+            command.Parameters.AddWithValue("SeatRow", (object?)ticket.SeatRow ?? DBNull.Value);
+            command.Parameters.AddWithValue("SeatNumber", (object?)ticket.SeatNumber ?? DBNull.Value);
 
             await command.ExecuteNonQueryAsync();
         }
@@ -51,7 +55,7 @@ public class TicketRepository : ITicketRepository
         await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
 
         const string sql = @"
-            SELECT id, order_id, category_id, show_id, customer_sub, unique_code, price, issued_at, used_at, used_by
+            SELECT id, order_id, category_id, show_id, customer_sub, unique_code, price, issued_at, used_at, used_by, voided_at, seat_id, seat_section, seat_row, seat_number
             FROM tickets
             WHERE order_id = @OrderId
             ORDER BY issued_at ASC;
@@ -75,7 +79,7 @@ public class TicketRepository : ITicketRepository
         await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
 
         const string sql = @"
-            SELECT id, order_id, category_id, show_id, customer_sub, unique_code, price, issued_at, used_at, used_by
+            SELECT id, order_id, category_id, show_id, customer_sub, unique_code, price, issued_at, used_at, used_by, voided_at, seat_id, seat_section, seat_row, seat_number
             FROM tickets
             WHERE customer_sub = @CustomerSub
             ORDER BY issued_at DESC;
@@ -99,7 +103,7 @@ public class TicketRepository : ITicketRepository
         await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
 
         const string sql = @"
-            SELECT id, order_id, category_id, show_id, customer_sub, unique_code, price, issued_at, used_at, used_by
+            SELECT id, order_id, category_id, show_id, customer_sub, unique_code, price, issued_at, used_at, used_by, voided_at, seat_id, seat_section, seat_row, seat_number
             FROM tickets
             WHERE id = @TicketId AND customer_sub = @CustomerSub;
         ";
@@ -122,7 +126,7 @@ public class TicketRepository : ITicketRepository
         await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
 
         const string sql = @"
-            SELECT id, order_id, category_id, show_id, customer_sub, unique_code, price, issued_at, used_at, used_by
+            SELECT id, order_id, category_id, show_id, customer_sub, unique_code, price, issued_at, used_at, used_by, voided_at, seat_id, seat_section, seat_row, seat_number
             FROM tickets
             WHERE unique_code = @UniqueCode;
         ";
@@ -144,9 +148,7 @@ public class TicketRepository : ITicketRepository
         await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
 
         const string sql = @"
-            UPDATE tickets
-            SET used_at = @UsedAt, used_by = @UsedBy
-            WHERE unique_code = @UniqueCode AND used_at IS NULL;
+            SELECT validate_ticket(@UniqueCode, @UsedBy, @UsedAt);
         ";
 
         await using var command = new NpgsqlCommand(sql, connection);
@@ -154,8 +156,7 @@ public class TicketRepository : ITicketRepository
         command.Parameters.AddWithValue("UsedBy", organizerSub);
         command.Parameters.AddWithValue("UsedAt", usedAt);
 
-        var affected = await command.ExecuteNonQueryAsync();
-        return affected > 0;
+        return (bool)(await command.ExecuteScalarAsync())!;
     }
 
     private static Ticket ReadTicket(NpgsqlDataReader reader) => new()
@@ -169,6 +170,11 @@ public class TicketRepository : ITicketRepository
         Price = reader.GetDecimal(6),
         IssuedAt = reader.GetFieldValue<DateTimeOffset>(7),
         UsedAt = reader.IsDBNull(8) ? null : reader.GetFieldValue<DateTimeOffset>(8),
-        UsedBy = reader.IsDBNull(9) ? null : reader.GetString(9)
+        UsedBy = reader.IsDBNull(9) ? null : reader.GetString(9),
+        VoidedAt = reader.IsDBNull(10) ? null : reader.GetFieldValue<DateTimeOffset>(10),
+        SeatId = reader.IsDBNull(11) ? null : reader.GetGuid(11),
+        SeatSection = reader.IsDBNull(12) ? null : reader.GetString(12),
+        SeatRow = reader.IsDBNull(13) ? null : reader.GetString(13),
+        SeatNumber = reader.IsDBNull(14) ? null : reader.GetInt32(14)
     };
 }

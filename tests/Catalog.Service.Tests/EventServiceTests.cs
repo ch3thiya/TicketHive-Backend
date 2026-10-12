@@ -609,6 +609,27 @@ public class EventServiceTests
     }
 
     [Fact]
+    public async Task UpdateShow_SeatedShowWithCategoryChanges_IsRefusedAndNothingIsSaved()
+    {
+        var organizerId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+        var showId = Guid.NewGuid();
+        _mockRepo.Setup(r => r.GetShowByIdAsync(showId))
+                 .ReturnsAsync(new Show { Id = showId, EventId = eventId, Status = "Active", SeatingMode = SeatingModes.Seated });
+        _mockRepo.Setup(r => r.GetEventByIdAsync(eventId))
+                 .ReturnsAsync(new Event { Id = eventId, OrganizerId = organizerId });
+        var updateDto = new UpdateShowDto(
+            ShowDate: new DateOnly(2026, 9, 2),
+            ShowTime: new TimeOnly(20, 0),
+            Categories: new List<UpdateTicketCategoryDto> { new(null, "VIP", 50m, 100) });
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _service.UpdateShowAsync(organizerId, showId, updateDto));
+
+        _mockRepo.Verify(r => r.SaveTicketCategoriesAsync(It.IsAny<Guid>(), It.IsAny<List<TicketCategory>>()), Times.Never);
+        _mockRepo.Verify(r => r.UpdateShowAsync(It.IsAny<Show>()), Times.Never);
+    }
+
+    [Fact]
     public async Task UpdateShow_CategoryEmptyName_ThrowsArgumentException()
     {
         // Arrange
@@ -883,6 +904,32 @@ public class EventServiceTests
     }
 
     [Fact]
+    public async Task GetPublishedEvents_ExposesEachShowsSeatingMode()
+    {
+        var eventId = Guid.NewGuid();
+        var gaShow = Guid.NewGuid();
+        var seatedShow = Guid.NewGuid();
+        _mockRepo.Setup(r => r.GetPublishedEventsAsync(null, null, null, null, null))
+                 .ReturnsAsync(new List<Event> { new Event { Id = eventId, OrganizerId = Guid.NewGuid(), Name = "Mixed", Status = "Published", CreatedAt = DateTime.UtcNow } });
+        _mockRepo.Setup(r => r.GetShowsByEventIdsAsync(It.IsAny<IReadOnlyCollection<Guid>>()))
+                 .ReturnsAsync(new Dictionary<Guid, List<Show>>
+                 {
+                     [eventId] = new List<Show>
+                     {
+                         new Show { Id = gaShow, EventId = eventId, Status = "Active" },
+                         new Show { Id = seatedShow, EventId = eventId, Status = "Active", SeatingMode = SeatingModes.Seated }
+                     }
+                 });
+        _mockRepo.Setup(r => r.GetTicketCategoriesByShowIdsAsync(It.IsAny<IReadOnlyCollection<Guid>>()))
+                 .ReturnsAsync(new Dictionary<Guid, List<TicketCategory>>());
+
+        var result = await _service.GetPublishedEventsAsync(null, null, null, null, null);
+
+        Assert.Equal("GA", result[0].Shows.Single(s => s.Id == gaShow).SeatingMode);
+        Assert.Equal("Seated", result[0].Shows.Single(s => s.Id == seatedShow).SeatingMode);
+    }
+
+    [Fact]
     public async Task GetPublishedEvents_WithKeywordSearch_PassesSearchParamToRepository()
     {
         // Arrange
@@ -1120,7 +1167,7 @@ public class EventServiceTests
     }
 
     [Fact]
-    public async Task CancelEvent_AlreadyCancelledEvent_ThrowsInvalidOperationException()
+    public async Task CancelEvent_AlreadyCancelledEvent_IsIdempotent()
     {
         // Arrange
         var organizerId = Guid.NewGuid();
@@ -1130,7 +1177,7 @@ public class EventServiceTests
                  .ReturnsAsync(new Event { Id = eventId, OrganizerId = organizerId, Status = "Cancelled" });
 
         // Act & Assert
-        await Assert.ThrowsAsync<InvalidOperationException>(() => _service.CancelEventAsync(organizerId, eventId));
+        await _service.CancelEventAsync(organizerId, eventId);
         _mockRepo.Verify(r => r.UpdateEventStatusAsync(It.IsAny<Guid>(), It.IsAny<string>()), Times.Never);
     }
 
@@ -1152,7 +1199,7 @@ public class EventServiceTests
     }
 
     [Fact]
-    public async Task CancelShow_AlreadyCancelledShow_ThrowsInvalidOperationException()
+    public async Task CancelShow_AlreadyCancelledShow_IsIdempotent()
     {
         // Arrange
         var organizerId = Guid.NewGuid();
@@ -1166,7 +1213,7 @@ public class EventServiceTests
                  .ReturnsAsync(new Event { Id = eventId, OrganizerId = organizerId, Status = "Published" });
 
         // Act & Assert
-        await Assert.ThrowsAsync<InvalidOperationException>(() => _service.CancelShowAsync(organizerId, showId));
+        await _service.CancelShowAsync(organizerId, showId);
         _mockRepo.Verify(r => r.UpdateShowStatusAsync(It.IsAny<Guid>(), It.IsAny<string>()), Times.Never);
     }
 

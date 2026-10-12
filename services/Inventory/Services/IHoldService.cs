@@ -7,15 +7,18 @@ namespace Inventory.Service.Services;
 
 public record CreateHoldItemRequest(Guid CategoryId, int Quantity);
 
-public record CreateHoldRequest(Guid ShowId, List<CreateHoldItemRequest> Items);
+// Items are for general-admission shows, SeatIds for seated shows; a request carries exactly one.
+public record CreateHoldRequest(Guid ShowId, List<CreateHoldItemRequest>? Items = null, List<Guid>? SeatIds = null);
 
 public record HoldItemResponse(Guid CategoryId, int Quantity, decimal UnitPrice, string Currency);
 
-public record HoldResponse(Guid HoldId, Guid ShowId, string Status, DateTimeOffset ExpiresAt, List<HoldItemResponse> Items);
+public record HoldSeatResponse(Guid SeatId, Guid CategoryId, string Section, string Row, int Number);
+
+public record HoldResponse(Guid HoldId, Guid ShowId, string Status, DateTimeOffset ExpiresAt, List<HoldItemResponse> Items, List<HoldSeatResponse>? Seats = null);
 
 // Booking's own request/response shape (ADR-020 tolerant reader) — includes
 // CustomerSub, which the customer-facing HoldResponse has no reason to.
-public record InternalHoldResponse(Guid HoldId, Guid ShowId, string CustomerSub, string Status, DateTimeOffset ExpiresAt, List<HoldItemResponse> Items);
+public record InternalHoldResponse(Guid HoldId, Guid ShowId, string CustomerSub, string Status, DateTimeOffset ExpiresAt, List<HoldItemResponse> Items, List<HoldSeatResponse>? Seats = null);
 
 public enum CreateHoldStatus
 {
@@ -25,7 +28,13 @@ public enum CreateHoldStatus
     CategoryNotFound,
     StockUnavailable,
     QuotaExceeded,
-    HighDemandBlocked
+    HighDemandBlocked,
+    OrganizerSuspended,
+    ShowNotOnSale,
+    SalesEligibilityUnavailable,
+    SeatsUnavailable,
+    SeatsRequired,
+    SeatsNotSupported
 }
 
 public class CreateHoldResult
@@ -34,6 +43,7 @@ public class CreateHoldResult
     public HoldResponse? Hold { get; init; }
     public Guid? CategoryId { get; init; }
     public int? Limit { get; init; }
+    public IReadOnlyList<HoldSeatResponse>? UnavailableSeats { get; init; }
 }
 
 public interface IHoldService

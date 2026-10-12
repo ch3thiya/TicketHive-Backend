@@ -11,11 +11,13 @@ public class HoldRepository : IHoldRepository
 {
     private readonly DbConnectionFactory _connectionFactory;
     private readonly IAllocationStrategy _allocationStrategy;
+    private readonly SeatedAllocationStrategy? _seatedStrategy;
 
-    public HoldRepository(DbConnectionFactory connectionFactory, IAllocationStrategy allocationStrategy)
+    public HoldRepository(DbConnectionFactory connectionFactory, IAllocationStrategy allocationStrategy, SeatedAllocationStrategy? seatedStrategy = null)
     {
         _connectionFactory = connectionFactory;
         _allocationStrategy = allocationStrategy;
+        _seatedStrategy = seatedStrategy;
     }
 
     public async Task<ShowRules?> GetShowRulesAsync(Guid showId)
@@ -70,6 +72,29 @@ public class HoldRepository : IHoldRepository
     {
         await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
         await using var transaction = await connection.BeginTransactionAsync();
+
+        await using (var admission = new NpgsqlCommand("SELECT pg_advisory_xact_lock_shared(hashtextextended(@show::text,169)); SELECT EXISTS(SELECT 1 FROM cancelled_shows WHERE show_id=@show)", connection, transaction))
+        {
+            admission.Parameters.AddWithValue("show", hold.ShowId);
+            await using var reader = await admission.ExecuteReaderAsync();
+            await reader.NextResultAsync();
+            await reader.ReadAsync();
+            if (reader.GetBoolean(0)) return new HoldCreationResult { Outcome = HoldCreationOutcome.StockUnavailable };
+        }
+
+        // A show is either seated or GA, never both (ADR-026/027): each mode is refused on the other kind.
+        var seatMode = hold.Seats.Count > 0;
+        var showIsSeated = await IsSeatedShowAsync(connection, transaction, hold.ShowId);
+        if (seatMode != showIsSeated)
+        {
+            await transaction.RollbackAsync();
+            return new HoldCreationResult { Outcome = seatMode ? HoldCreationOutcome.SeatsNotSupported : HoldCreationOutcome.SeatsRequired };
+        }
+
+        if (seatMode)
+        {
+            return await CreateSeatedAsync(connection, transaction, hold, maxPerCustomer);
+        }
 
         // Existence only, never availability — categories are never deleted
         // once a show is initialized (ADR-004), so this carries none of the
@@ -184,11 +209,141 @@ public class HoldRepository : IHoldRepository
         }
     }
 
+    private async Task<bool> IsSeatedShowAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid showId)
+    {
+        await using var command = new NpgsqlCommand(
+            "SELECT EXISTS (SELECT 1 FROM show_seat_layouts WHERE show_id = @ShowId)", connection, transaction);
+        command.Parameters.AddWithValue("ShowId", showId);
+        return (bool)(await command.ExecuteScalarAsync())!;
+    }
+
+    // Seated holds (ADR-027). Lock order is quota, seats (by id), stock (by category): a seat that is
+    // not Available is refused before any stock is touched, so this transaction never waits on a
+    // hold that is itself being expired, cancelled or converted.
+    private async Task<HoldCreationResult> CreateSeatedAsync(
+        NpgsqlConnection connection, NpgsqlTransaction transaction, Hold hold, int maxPerCustomer)
+    {
+        if (_seatedStrategy is null)
+        {
+            await transaction.RollbackAsync();
+            return new HoldCreationResult { Outcome = HoldCreationOutcome.SeatsNotSupported };
+        }
+
+        // A retry of a hold that already exists is replayed, not refused (ADR-009).
+        var replay = await FindByIdempotencyKeyAsync(hold.CustomerSub, hold.IdempotencyKey);
+        if (replay is not null)
+        {
+            await transaction.RollbackAsync();
+            return new HoldCreationResult { Outcome = HoldCreationOutcome.Duplicate, Hold = replay };
+        }
+
+        var seatIds = hold.Seats.Select(s => s.SeatId).Distinct().OrderBy(id => id).ToList();
+
+        await using (var command = new NpgsqlCommand(
+            "INSERT INTO customer_quotas (show_id, customer_sub, quantity) VALUES (@ShowId, @CustomerSub, 0) ON CONFLICT DO NOTHING;", connection, transaction))
+        {
+            command.Parameters.AddWithValue("ShowId", hold.ShowId);
+            command.Parameters.AddWithValue("CustomerSub", hold.CustomerSub);
+            await command.ExecuteNonQueryAsync();
+        }
+
+        int quotaRows;
+        await using (var command = new NpgsqlCommand(@"
+            UPDATE customer_quotas SET quantity = quantity + @Total
+             WHERE show_id = @ShowId AND customer_sub = @CustomerSub AND quantity + @Total <= @Max;", connection, transaction))
+        {
+            command.Parameters.AddWithValue("ShowId", hold.ShowId);
+            command.Parameters.AddWithValue("CustomerSub", hold.CustomerSub);
+            command.Parameters.AddWithValue("Total", seatIds.Count);
+            command.Parameters.AddWithValue("Max", maxPerCustomer);
+            quotaRows = await command.ExecuteNonQueryAsync();
+        }
+
+        if (quotaRows == 0)
+        {
+            await transaction.RollbackAsync();
+            return new HoldCreationResult { Outcome = HoldCreationOutcome.QuotaExceeded, Limit = maxPerCustomer };
+        }
+
+        var claim = await _seatedStrategy.LockSeatsAsync(connection, transaction, hold.ShowId, seatIds);
+        if (claim.Unavailable.Count > 0)
+        {
+            await transaction.RollbackAsync();
+            // Two identical requests racing: the loser sees the winner's seats taken. That is a replay.
+            var winner = await FindByIdempotencyKeyAsync(hold.CustomerSub, hold.IdempotencyKey);
+            return winner is not null
+                ? new HoldCreationResult { Outcome = HoldCreationOutcome.Duplicate, Hold = winner }
+                : new HoldCreationResult { Outcome = HoldCreationOutcome.SeatsUnavailable, UnavailableSeats = claim.Unavailable };
+        }
+
+        hold.Items.Clear();
+        foreach (var group in claim.Seats.GroupBy(s => s.CategoryId).OrderBy(g => g.Key))
+        {
+            var allocated = await _seatedStrategy.TryAllocateAsync(connection, transaction, hold.ShowId, group.Key, group.Count());
+            if (allocated is null)
+            {
+                await transaction.RollbackAsync();
+                return new HoldCreationResult { Outcome = HoldCreationOutcome.StockUnavailable, CategoryId = group.Key };
+            }
+
+            hold.Items.Add(new HoldItem
+            {
+                HoldId = hold.Id,
+                CategoryId = group.Key,
+                Quantity = group.Count(),
+                UnitPrice = allocated.UnitPrice,
+                Currency = allocated.Currency
+            });
+        }
+
+        try
+        {
+            await using (var command = new NpgsqlCommand(@"
+                INSERT INTO holds (id, show_id, customer_sub, status, expires_at, idempotency_key, created_at)
+                VALUES (@Id, @ShowId, @CustomerSub, @Status, @ExpiresAt, @IdempotencyKey, @CreatedAt);", connection, transaction))
+            {
+                command.Parameters.AddWithValue("Id", hold.Id);
+                command.Parameters.AddWithValue("ShowId", hold.ShowId);
+                command.Parameters.AddWithValue("CustomerSub", hold.CustomerSub);
+                command.Parameters.AddWithValue("Status", hold.Status.ToString());
+                command.Parameters.AddWithValue("ExpiresAt", hold.ExpiresAt);
+                command.Parameters.AddWithValue("IdempotencyKey", hold.IdempotencyKey);
+                command.Parameters.AddWithValue("CreatedAt", hold.CreatedAt);
+                await command.ExecuteNonQueryAsync();
+            }
+
+            foreach (var item in hold.Items)
+            {
+                await using var command = new NpgsqlCommand(
+                    "INSERT INTO hold_items (hold_id, category_id, quantity, unit_price) VALUES (@HoldId, @CategoryId, @Quantity, @UnitPrice);", connection, transaction);
+                command.Parameters.AddWithValue("HoldId", hold.Id);
+                command.Parameters.AddWithValue("CategoryId", item.CategoryId);
+                command.Parameters.AddWithValue("Quantity", item.Quantity);
+                command.Parameters.AddWithValue("UnitPrice", item.UnitPrice);
+                await command.ExecuteNonQueryAsync();
+            }
+
+            await _seatedStrategy.MarkHeldAsync(connection, transaction, hold.Id, seatIds);
+            await transaction.CommitAsync();
+            hold.Seats = claim.Seats.OrderBy(s => s.Section).ThenBy(s => s.Row).ThenBy(s => s.Number).ToList();
+            return new HoldCreationResult { Outcome = HoldCreationOutcome.Created, Hold = hold };
+        }
+        catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UniqueViolation)
+        {
+            await transaction.RollbackAsync();
+            var existing = await FindByIdempotencyKeyAsync(hold.CustomerSub, hold.IdempotencyKey);
+            return new HoldCreationResult { Outcome = HoldCreationOutcome.Duplicate, Hold = existing };
+        }
+    }
+
     public async Task<Hold?> GetByIdAsync(Guid holdId)
     {
         await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
         return await GetByIdAsync(holdId, connection, null);
     }
+
+    public Task<Hold?> GetByIdempotencyKeyAsync(string customerSub, string idempotencyKey) =>
+        FindByIdempotencyKeyAsync(customerSub, idempotencyKey);
 
     private async Task<Hold?> FindByIdempotencyKeyAsync(string customerSub, string idempotencyKey)
     {
@@ -241,6 +396,20 @@ public class HoldRepository : IHoldRepository
                 UnitPrice = reader.GetDecimal(9),
                 Currency = reader.GetString(10).Trim()
             });
+        }
+
+        if (hold is not null)
+        {
+            await reader.DisposeAsync();
+            await using var seatCommand = new NpgsqlCommand(@"
+                SELECT id, category_id, section, row_label, seat_number FROM show_seats
+                WHERE hold_id = @HoldId ORDER BY section, row_label, seat_number;", connection, transaction);
+            seatCommand.Parameters.AddWithValue("HoldId", holdId);
+            await using var seatReader = await seatCommand.ExecuteReaderAsync();
+            while (await seatReader.ReadAsync())
+            {
+                hold.Seats.Add(new HoldSeat(seatReader.GetGuid(0), seatReader.GetGuid(1), seatReader.GetString(2), seatReader.GetString(3), seatReader.GetInt32(4)));
+            }
         }
 
         return hold;
@@ -347,7 +516,8 @@ public class HoldRepository : IHoldRepository
                 command.Parameters.AddWithValue("Quantity", totalQuantity);
                 command.Parameters.AddWithValue("ShowId", showId);
                 command.Parameters.AddWithValue("CustomerSub", customerSub);
-                var wasClamped = (bool)(await command.ExecuteScalarAsync())!;
+                // No row at all (nothing to restore) is not a clamp; it must not abort the whole batch.
+                var wasClamped = await command.ExecuteScalarAsync() is true;
                 if (wasClamped)
                 {
                     quotaClampCount++;
@@ -390,7 +560,7 @@ public class HoldRepository : IHoldRepository
         const string selectSql = @"
             SELECT show_id
             FROM holds
-            WHERE id = @HoldId AND customer_sub = @CustomerSub AND status IN ('Active', 'PaymentPending');
+            WHERE id = @HoldId AND customer_sub = @CustomerSub AND status IN ('Active', 'PaymentPending') FOR UPDATE;
         ";
 
         Guid showId;

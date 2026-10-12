@@ -2,8 +2,15 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Identity.Service.Clients;
 using Identity.Service.Db;
+using Identity.Service.Models;
+using Identity.Service.Services;
+using System.Security.Claims;
 
 namespace Identity.Service.Controllers;
+
+public record SuspendOrganizerRequest(string? Reason);
+public record ReinstateOrganizerRequest(string? Note);
+public record OrganizerStatusResponse(Guid OrganizerId, string Status, bool Repeated);
 
 [ApiController]
 [Route("api/identity/organizer-requests")]
@@ -12,15 +19,104 @@ public class AdminController : ControllerBase
 {
     private readonly IAccountRepository _repository;
     private readonly IWso2ScimClient _scimClient;
+    private readonly IOrganizerSuspensionService _suspensionService;
     private readonly ILogger<AdminController> _logger;
 
-    public AdminController(IAccountRepository repository, IWso2ScimClient scimClient, ILogger<AdminController> logger)
+    public AdminController(IAccountRepository repository, IWso2ScimClient scimClient, IOrganizerSuspensionService suspensionService, ILogger<AdminController> logger)
     {
         _repository = repository;
         _scimClient = scimClient;
+        _suspensionService = suspensionService;
         _logger = logger;
     }
 
+    /// <summary>
+    /// Suspends an approved organizer. The reason is mandatory and is recorded with the
+    /// acting admin and a timestamp. Repeating the request is harmless.
+    /// </summary>
+    [HttpPost("organizers/{id:guid}/suspend")]
+    [ProducesResponseType(typeof(OrganizerStatusResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> SuspendOrganizer(Guid id, [FromBody] SuspendOrganizerRequest? request)
+    {
+        var actor = GetActorSub();
+        if (actor is null)
+        {
+            return Problem(statusCode: StatusCodes.Status401Unauthorized, title: "Unauthorized", detail: "The acting administrator could not be identified.");
+        }
+
+        var result = await _suspensionService.SuspendAsync(id, actor, request?.Reason);
+        return ToResponse(id, result);
+    }
+
+    /// <summary>
+    /// Reinstates a suspended organizer. Cancelled shows stay cancelled and draft shows
+    /// stay drafts; only management and sales eligibility resume.
+    /// </summary>
+    [HttpPost("organizers/{id:guid}/reinstate")]
+    [ProducesResponseType(typeof(OrganizerStatusResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> ReinstateOrganizer(Guid id, [FromBody] ReinstateOrganizerRequest? request = null)
+    {
+        var actor = GetActorSub();
+        if (actor is null)
+        {
+            return Problem(statusCode: StatusCodes.Status401Unauthorized, title: "Unauthorized", detail: "The acting administrator could not be identified.");
+        }
+
+        var result = await _suspensionService.ReinstateAsync(id, actor, request?.Note);
+        return ToResponse(id, result);
+    }
+
+    /// <summary>
+    /// Returns the durable suspension/reinstatement history for one organizer.
+    /// </summary>
+    [HttpGet("organizers/{id:guid}/status-history")]
+    [ProducesResponseType(typeof(IReadOnlyList<OrganizerStatusAuditEntry>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetOrganizerStatusHistory(Guid id)
+    {
+        var history = await _suspensionService.GetHistoryAsync(id);
+        if (history is null)
+        {
+            return Problem(statusCode: StatusCodes.Status404NotFound, title: "Organizer not found", detail: "No organizer exists with that identifier.");
+        }
+
+        return Ok(history);
+    }
+
+    private string? GetActorSub()
+    {
+        var sub = User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? User.FindFirst("sub")?.Value;
+        return string.IsNullOrWhiteSpace(sub) ? null : sub;
+    }
+
+    private IActionResult ToResponse(Guid organizerId, OrganizerStatusChangeResult result)
+    {
+        return result.Outcome switch
+        {
+            OrganizerStatusChangeOutcome.Changed => Ok(new OrganizerStatusResponse(organizerId, result.Status!, false)),
+            OrganizerStatusChangeOutcome.Unchanged => Ok(new OrganizerStatusResponse(organizerId, result.Status!, true)),
+            OrganizerStatusChangeOutcome.NotFound => Problem(
+                statusCode: StatusCodes.Status404NotFound,
+                title: "Organizer not found",
+                detail: "No organizer exists with that identifier."),
+            OrganizerStatusChangeOutcome.InvalidReason => Problem(
+                statusCode: StatusCodes.Status400BadRequest,
+                title: "Invalid reason",
+                detail: $"A reason of 1 to {OrganizerSuspensionService.MaxReasonLength} characters is required."),
+            _ => Problem(
+                statusCode: StatusCodes.Status409Conflict,
+                title: "Invalid status change",
+                detail: "Only approved organizers can be suspended and only suspended organizers can be reinstated.")
+        };
+    }
     /// <summary>
     /// Lists all organizer requests that are pending approval.
     /// </summary>

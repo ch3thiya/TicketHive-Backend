@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Inventory.Service.Db;
 using Inventory.Service.Models;
+using Inventory.Service.Clients;
 
 namespace Inventory.Service.Services;
 
@@ -13,32 +14,56 @@ public class HoldService : IHoldService
     private readonly IAdmissionTokenVerifier _admissionTokenVerifier;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<HoldService> _logger;
+    private readonly ISalesEligibilityClient _salesEligibility;
+    private readonly SeatHoldMetrics? _seatMetrics;
+    private const int MaxSeatsPerRequest = 50;
 
     public HoldService(
         IHoldRepository repository,
         TimeProvider timeProvider,
         ILogger<HoldService> logger,
-        IAdmissionTokenVerifier admissionTokenVerifier)
+        IAdmissionTokenVerifier admissionTokenVerifier,
+        ISalesEligibilityClient salesEligibility,
+        SeatHoldMetrics? seatMetrics = null)
     {
         _repository = repository;
         _timeProvider = timeProvider;
         _logger = logger;
         _admissionTokenVerifier = admissionTokenVerifier;
+        _salesEligibility = salesEligibility;
+        _seatMetrics = seatMetrics;
     }
 
     public async Task<CreateHoldResult> CreateHoldAsync(string customerSub, string idempotencyKey, bool hasAdmissionToken, CreateHoldRequest request, string? admissionToken = null)
     {
-        if (request.Items == null || request.Items.Count == 0)
+        var hasItems = request.Items is { Count: > 0 };
+        var hasSeats = request.SeatIds is { Count: > 0 };
+        if (!hasItems && !hasSeats)
         {
-            throw new ArgumentException("At least one item is required to place a hold.");
+            throw new ArgumentException("At least one item or seat is required to place a hold.");
         }
 
-        foreach (var item in request.Items)
+        if (hasItems && hasSeats)
+        {
+            throw new ArgumentException("Choose either ticket quantities or specific seats, not both.");
+        }
+
+        foreach (var item in request.Items ?? new List<CreateHoldItemRequest>())
         {
             if (item.Quantity <= 0)
             {
                 throw new ArgumentException($"Item quantity must be positive. Invalid quantity: {item.Quantity}");
             }
+        }
+
+        if (hasSeats && (request.SeatIds!.Any(id => id == Guid.Empty) || request.SeatIds!.Distinct().Count() != request.SeatIds!.Count))
+        {
+            throw new ArgumentException("Each seat can be selected only once.");
+        }
+
+        if (hasSeats && request.SeatIds!.Count > MaxSeatsPerRequest)
+        {
+            throw new ArgumentException($"At most {MaxSeatsPerRequest} seats can be selected at once.");
         }
 
         var showRules = await _repository.GetShowRulesAsync(request.ShowId);
@@ -69,6 +94,30 @@ public class HoldService : IHoldService
                 }
             }
         }
+
+        // Local gates run first so unadmitted traffic never reaches Catalog or Identity. The
+        // eligibility answer is live (never cached), so a suspension applies to the next hold.
+        var eligibility = await _salesEligibility.CheckAsync(request.ShowId);
+        if (!eligibility.IsEligible)
+        {
+            // A retry of a hold that already exists is replayed, not refused (ADR-009).
+            var existing = await _repository.GetByIdempotencyKeyAsync(customerSub, idempotencyKey);
+            if (existing is not null)
+            {
+                return new CreateHoldResult { Status = CreateHoldStatus.Duplicate, Hold = ToResponse(existing) };
+            }
+
+            _logger.LogInformation("Hold rejected for show {ShowId}: sales eligibility {Eligibility}", request.ShowId, eligibility.Status);
+            return new CreateHoldResult
+            {
+                Status = eligibility.Status switch
+                {
+                    SalesEligibilityStatus.OrganizerSuspended => CreateHoldStatus.OrganizerSuspended,
+                    SalesEligibilityStatus.Unavailable => CreateHoldStatus.SalesEligibilityUnavailable,
+                    _ => CreateHoldStatus.ShowNotOnSale
+                }
+            };
+        }
         var hold = new Hold
         {
             Id = Guid.CreateVersion7(),
@@ -78,8 +127,12 @@ public class HoldService : IHoldService
             ExpiresAt = now.AddMinutes(showRules.HoldMinutes),
             IdempotencyKey = idempotencyKey,
             CreatedAt = now,
-            Items = request.Items
+            Items = (request.Items ?? new List<CreateHoldItemRequest>())
                 .Select(i => new HoldItem { CategoryId = i.CategoryId, Quantity = i.Quantity })
+                .ToList(),
+            // Only the ids are known here; the repository fills in section, row and number.
+            Seats = (request.SeatIds ?? new List<Guid>())
+                .Select(id => new HoldSeat(id, Guid.Empty, string.Empty, string.Empty, 0))
                 .ToList()
         };
 
@@ -89,6 +142,11 @@ public class HoldService : IHoldService
         {
             case HoldCreationOutcome.Created:
                 _logger.LogInformation("Hold {HoldId} created for show {ShowId}", hold.Id, hold.ShowId);
+                if (hold.Seats.Count > 0 && result.Outcome == HoldCreationOutcome.Created)
+                {
+                    _seatMetrics?.SeatsHeld.Add(result.Hold!.Seats.Count);
+                    _logger.LogInformation("Hold {HoldId} holds {SeatCount} seat(s) for show {ShowId}", hold.Id, result.Hold!.Seats.Count, hold.ShowId);
+                }
                 return new CreateHoldResult { Status = CreateHoldStatus.Created, Hold = ToResponse(result.Hold!) };
             case HoldCreationOutcome.Duplicate:
                 return new CreateHoldResult { Status = CreateHoldStatus.Duplicate, Hold = ToResponse(result.Hold!) };
@@ -100,6 +158,19 @@ public class HoldService : IHoldService
             case HoldCreationOutcome.StockUnavailable:
                 _logger.LogInformation("Hold rejected for show {ShowId}: category {CategoryId} sold out", request.ShowId, result.CategoryId);
                 return new CreateHoldResult { Status = CreateHoldStatus.StockUnavailable, CategoryId = result.CategoryId };
+            case HoldCreationOutcome.SeatsUnavailable:
+                _seatMetrics?.SelectionsRefused.Add(1);
+                _logger.LogInformation("Seat hold rejected for show {ShowId}: {SeatCount} requested seat(s) unavailable", request.ShowId, result.UnavailableSeats?.Count ?? 0);
+                return new CreateHoldResult
+                {
+                    Status = CreateHoldStatus.SeatsUnavailable,
+                    UnavailableSeats = (result.UnavailableSeats ?? Array.Empty<HoldSeat>())
+                        .Select(s => new HoldSeatResponse(s.SeatId, s.CategoryId, s.Section, s.Row, s.Number)).ToList()
+                };
+            case HoldCreationOutcome.SeatsRequired:
+                return new CreateHoldResult { Status = CreateHoldStatus.SeatsRequired };
+            case HoldCreationOutcome.SeatsNotSupported:
+                return new CreateHoldResult { Status = CreateHoldStatus.SeatsNotSupported };
             default:
                 throw new InvalidOperationException($"Unhandled hold creation outcome '{result.Outcome}'.");
         }
@@ -134,7 +205,8 @@ public class HoldService : IHoldService
         hold.ShowId,
         hold.EffectiveStatus(_timeProvider.GetUtcNow()).ToString(),
         hold.ExpiresAt,
-        hold.Items.Select(i => new HoldItemResponse(i.CategoryId, i.Quantity, i.UnitPrice, i.Currency)).ToList());
+        hold.Items.Select(i => new HoldItemResponse(i.CategoryId, i.Quantity, i.UnitPrice, i.Currency)).ToList(),
+        ToSeatResponses(hold));
 
     public InternalHoldResponse ToInternalResponse(Hold hold) => new(
         hold.Id,
@@ -142,5 +214,9 @@ public class HoldService : IHoldService
         hold.CustomerSub,
         hold.EffectiveStatus(_timeProvider.GetUtcNow()).ToString(),
         hold.ExpiresAt,
-        hold.Items.Select(i => new HoldItemResponse(i.CategoryId, i.Quantity, i.UnitPrice, i.Currency)).ToList());
+        hold.Items.Select(i => new HoldItemResponse(i.CategoryId, i.Quantity, i.UnitPrice, i.Currency)).ToList(),
+        ToSeatResponses(hold));
+
+    private static List<HoldSeatResponse> ToSeatResponses(Hold hold) =>
+        hold.Seats.Select(s => new HoldSeatResponse(s.SeatId, s.CategoryId, s.Section, s.Row, s.Number)).ToList();
 }

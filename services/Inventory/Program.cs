@@ -9,6 +9,11 @@ using BuildingBlocks;
 using Inventory.Service.Db;
 using Inventory.Service.Models;
 using Inventory.Service.Services;
+using Inventory.Service.Clients;
+
+// Load root .env file if available; a real environment variable already set
+// (docker-compose, Container Apps) always wins over the .env file.
+DotNetEnv.Env.TraversePath().NoClobber().Load();
 
 if (args.Contains("--migrate"))
 {
@@ -43,8 +48,17 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<IStockRepository, StockRepository>();
 builder.Services.AddScoped<IStockService, StockService>();
 builder.Services.AddScoped<IAllocationStrategy, GeneralAdmissionAllocationStrategy>();
+builder.Services.AddScoped<SeatedAllocationStrategy>();
+builder.Services.AddSingleton<SeatHoldMetrics>();
 builder.Services.AddScoped<IHoldRepository, HoldRepository>();
+builder.Services.AddScoped<ISeatLayoutRepository, SeatLayoutRepository>();
 builder.Services.AddScoped<IHoldService, HoldService>();
+builder.Services.AddInternalServiceTokenClient(builder.Configuration);
+// Sales eligibility comes from Catalog over an authenticated service call (resilience defaults
+// apply). Needs catalog:read in Wso2:InternalApi:Scope.
+builder.Services.AddHttpClient<ISalesEligibilityClient, SalesEligibilityClient>(client =>
+    client.BaseAddress = new Uri(builder.Configuration["CatalogService:BaseUrl"] ?? "http://catalog:8080/"))
+    .AddHttpMessageHandler<InternalServiceAuthenticationHandler>();
 builder.Services.Configure<HoldExpirySweepOptions>(builder.Configuration.GetSection(HoldExpirySweepOptions.SectionName));
 builder.Services.AddSingleton<HoldExpiryMetrics>();
 builder.Services.AddHostedService<ExpiredHoldReleaseWorker>();
@@ -212,6 +226,8 @@ builder.Services.AddRateLimiter(options =>
     };
 });
 
+builder.Services.AddScoped<CancellationRepository>();
+builder.Services.AddCancellationInternalAuthorization("inventory:write");
 var app = builder.Build();
 app.UseServiceDefaults();
 

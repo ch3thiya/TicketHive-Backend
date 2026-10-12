@@ -25,6 +25,8 @@ if (args.Contains("--migrate"))
     }
 }
 
+DotNetEnv.Env.TraversePath().NoClobber().Load();
+
 var builder = WebApplication.CreateBuilder(args);
 builder.AddServiceDefaults();
 
@@ -85,6 +87,8 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
 builder.Services.AddAuthorization();
 
+builder.Services.AddScoped<RefundRepository>();
+builder.Services.AddCancellationInternalAuthorization("payment:refund");
 var app = builder.Build();
 app.UseServiceDefaults();
 

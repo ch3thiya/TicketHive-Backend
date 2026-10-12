@@ -1,10 +1,9 @@
 using System.Reflection;
 using BuildingBlocks;
+using Booking.Service.Authorization;
 using Booking.Service.Clients;
 using Booking.Service.Db;
 using Booking.Service.Services;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.IdentityModel.Tokens;
 
 if (args.Contains("--migrate"))
 {
@@ -26,6 +25,8 @@ if (args.Contains("--migrate"))
     }
 }
 
+DotNetEnv.Env.TraversePath().NoClobber().Load();
+
 var builder = WebApplication.CreateBuilder(args);
 builder.AddServiceDefaults();
 
@@ -37,6 +38,9 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<ITicketCodeGenerator, TicketCodeGenerator>();
 builder.Services.AddScoped<IOrderRepository, OrderRepository>();
 builder.Services.AddScoped<ITicketRepository, TicketRepository>();
+builder.Services.AddScoped<ISalesRepository, SalesRepository>();
+builder.Services.AddScoped<ISalesService, SalesService>();
+builder.Services.AddScoped<IReminderEligibilityRepository, ReminderEligibilityRepository>();
 builder.Services.AddScoped<IPayHereService, PayHereService>();
 builder.Services.AddSingleton<IKafkaProducer, KafkaProducer>();
 builder.Services.AddScoped<ITicketService, TicketService>();
@@ -50,6 +54,15 @@ var inventoryBaseUrl = builder.Configuration["InventoryService:BaseUrl"] ?? "htt
 builder.Services.AddHttpClient<IInventoryClient, InventoryClient>(client =>
 {
     client.BaseAddress = new Uri(inventoryBaseUrl);
+})
+.AddHttpMessageHandler<InternalServiceAuthenticationHandler>();
+
+// Ticket validation asks Catalog whether the caller owns the show (needs catalog:read in
+// Wso2:InternalApi:Scope). Shares CatalogService:BaseUrl with the cancellation clients.
+var catalogBaseUrl = builder.Configuration["CatalogService:BaseUrl"] ?? "http://catalog:8080/";
+builder.Services.AddHttpClient<IEntryAccessClient, EntryAccessClient>(client =>
+{
+    client.BaseAddress = new Uri(catalogBaseUrl);
 })
 .AddHttpMessageHandler<InternalServiceAuthenticationHandler>();
 
@@ -72,35 +85,22 @@ builder.Services.AddCors(options =>
     });
 });
 
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
-    {
-        options.Authority = builder.Configuration["Jwt:Authority"];
-        options.Audience = builder.Configuration["Jwt:Audience"];
-        options.RequireHttpsMetadata = !builder.Environment.IsDevelopment();
-
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidIssuer = builder.Configuration["Jwt:Authority"],
-            ValidateAudience = false,
-            ValidAudience = builder.Configuration["Jwt:Audience"],
-            ValidateLifetime = true,
-            ValidateIssuerSigningKey = true,
-            RoleClaimType = "groups"
-        };
-
-        if (builder.Environment.IsDevelopment())
-        {
-            options.BackchannelHttpHandler = new HttpClientHandler
-            {
-                ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
-            };
-        }
-    });
+builder.Services.AddBookingJwtAuthentication();
 
 builder.Services.AddAuthorization();
 
+builder.Services.AddScoped<CancellationRepository>();
+builder.Services.AddScoped<CancellationClient>();
+builder.Services.AddHostedService<CancellationWorker>();
+builder.Services.AddCancellationInternalAuthorization("booking:write", BookingJwtSettings.InternalScheme);
+// Notification asks which orders are still confirmed before it sends a reminder; read-only, own scope.
+builder.Services.AddInternalScopePolicy("BookingInternalRead", "booking:read", BookingJwtSettings.InternalScheme);
+foreach (var service in new[] { "Catalog", "Inventory", "Payment", "Notification" })
+{
+    var endpoint = builder.Configuration[$"{service}Service:BaseUrl"] ?? $"http://{service.ToLowerInvariant()}:8080/";
+    builder.Services.AddHttpClient($"Cancellation{service}", client => client.BaseAddress = new Uri(endpoint))
+        .AddHttpMessageHandler<InternalServiceAuthenticationHandler>();
+}
 var app = builder.Build();
 app.UseServiceDefaults();
 

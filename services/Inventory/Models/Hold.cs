@@ -14,6 +14,9 @@ public class Hold
     public DateTimeOffset CreatedAt { get; set; }
     public List<HoldItem> Items { get; set; } = new();
 
+    // Empty for general-admission holds. Seated holds list the exact seats (ADR-027).
+    public List<HoldSeat> Seats { get; set; } = new();
+
     // The expiry timestamp is the truth; the sweeper is cleanup. A hold
     // reads as Expired once its time has passed even if the sweeper has
     // not reached it yet, without mutating the stored row.

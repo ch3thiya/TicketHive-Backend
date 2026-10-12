@@ -20,6 +20,7 @@ public class GeneralAdmissionAllocationStrategy : IAllocationStrategy
         const string sql = @"
             UPDATE stock SET available = available - @Quantity
              WHERE show_id = @ShowId AND category_id = @CategoryId AND available >= @Quantity
+               AND allocation_mode = 'GA'
              RETURNING unit_price, currency;
         ";
 

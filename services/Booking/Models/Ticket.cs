@@ -14,6 +14,13 @@ public class Ticket
     public required DateTimeOffset IssuedAt { get; init; }
     public DateTimeOffset? UsedAt { get; set; }
     public string? UsedBy { get; set; }
+    public DateTimeOffset? VoidedAt { get; set; }
+
+    // Set for tickets on seated shows.
+    public Guid? SeatId { get; init; }
+    public string? SeatSection { get; init; }
+    public string? SeatRow { get; init; }
+    public int? SeatNumber { get; init; }
 }
 
 public record TicketResponse(
@@ -26,5 +33,9 @@ public record TicketResponse(
     decimal Price,
     DateTimeOffset IssuedAt,
     DateTimeOffset? UsedAt,
-    string? UsedBy
+    string? UsedBy,
+    DateTimeOffset? VoidedAt = null,
+    TicketSeat? Seat = null
 );
+
+public record TicketSeat(string Section, string Row, int Number);

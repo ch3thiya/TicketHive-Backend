@@ -7,6 +7,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Moq;
+using Inventory.Service.Clients;
 using Inventory.Service.Db;
 using Inventory.Service.Models;
 
@@ -32,6 +33,8 @@ namespace Inventory.Service.Tests.Api;
 public class InventoryApiFactory : WebApplicationFactory<Program>
 {
     public Mock<IStockRepository> StockRepositoryMock { get; } = new();
+    public FakeSalesEligibilityClient SalesEligibility { get; } = new();
+    public Mock<ISeatLayoutRepository> SeatLayoutRepositoryMock { get; } = new();
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -51,8 +54,12 @@ public class InventoryApiFactory : WebApplicationFactory<Program>
             // codes, not SQL behaviour (that is covered by the repository's
             // own Testcontainers integration tests), so the repository is
             // stubbed out to keep these tests off a real database.
+            services.RemoveAll<ISalesEligibilityClient>();
+            services.AddSingleton<ISalesEligibilityClient>(SalesEligibility);
             services.RemoveAll<IStockRepository>();
             services.TryAddSingleton(StockRepositoryMock.Object);
+            services.RemoveAll<ISeatLayoutRepository>();
+            services.TryAddSingleton(SeatLayoutRepositoryMock.Object);
 
             // Remove Program.cs's real "Internal" JwtBearer scheme so a test
             // handler can be registered under the same name below.

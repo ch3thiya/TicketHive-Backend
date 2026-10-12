@@ -102,7 +102,7 @@ public class EventStatusTransitionApiTests : IClassFixture<CatalogApiFactory>
     }
 
     [Fact]
-    public async Task CancelEvent_AlreadyCancelledEvent_ReturnsConflictProblemDetails()
+    public async Task CancelEvent_AlreadyCancelledEvent_ReturnsAccepted()
     {
         // Arrange
         const string sub = "organizer-cancel-cancelled";
@@ -119,7 +119,7 @@ public class EventStatusTransitionApiTests : IClassFixture<CatalogApiFactory>
         var response = await client.SendAsync(request);
 
         // Assert
-        await AssertConflictProblemDetails(response);
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
         _factory.EventRepositoryMock.Verify(r => r.UpdateEventStatusAsync(It.IsAny<Guid>(), It.IsAny<string>()), Times.Never);
     }
 
@@ -155,7 +155,7 @@ public class EventStatusTransitionApiTests : IClassFixture<CatalogApiFactory>
     }
 
     [Fact]
-    public async Task CancelShow_AlreadyCancelledShow_ReturnsConflictProblemDetails()
+    public async Task CancelShow_AlreadyCancelledShow_ReturnsAccepted()
     {
         // Arrange
         const string sub = "organizer-cancel-cancelled-show";
@@ -175,7 +175,7 @@ public class EventStatusTransitionApiTests : IClassFixture<CatalogApiFactory>
         var response = await client.SendAsync(request);
 
         // Assert
-        await AssertConflictProblemDetails(response);
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
         _factory.EventRepositoryMock.Verify(r => r.UpdateShowStatusAsync(It.IsAny<Guid>(), It.IsAny<string>()), Times.Never);
     }
 

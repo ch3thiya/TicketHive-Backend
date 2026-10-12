@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -13,11 +15,13 @@ namespace Catalog.Service.Controllers;
 public class EventsController : ControllerBase
 {
     private readonly IEventService _eventService;
+    private readonly ISalesEligibilityService _salesEligibility;
     private readonly ILogger<EventsController> _logger;
 
-    public EventsController(IEventService eventService, ILogger<EventsController> logger)
+    public EventsController(IEventService eventService, ISalesEligibilityService salesEligibility, ILogger<EventsController> logger)
     {
         _eventService = eventService;
+        _salesEligibility = salesEligibility;
         _logger = logger;
     }
 
@@ -95,7 +99,7 @@ public class EventsController : ControllerBase
     }
 
     [HttpGet("my-events")]
-    [Authorize(Policy = "ActiveOrganizer")]
+    [Authorize(Policy = "OrganizerRead")]
     public async Task<IActionResult> GetMyEvents()
     {
         try
@@ -113,6 +117,15 @@ public class EventsController : ControllerBase
             _logger.LogError(ex, "Error getting organizer events");
             return StatusCode(500, new { message = "An error occurred while retrieving your events." });
         }
+    }
+
+    // Flags events whose organizer is suspended so customer pages can say sales are paused.
+    // Display only: Inventory re-checks eligibility on every hold.
+    private async Task<List<EventWithShowsDto>> WithSalesStatusAsync(IEnumerable<EventWithShowsDto> events)
+    {
+        var list = events.ToList();
+        var suspended = await _salesEligibility.GetSuspendedOrganizerIdsAsync(list.Select(e => e.OrganizerId), HttpContext.RequestAborted);
+        return list.Select(e => suspended.Contains(e.OrganizerId) ? e with { SalesSuspended = true } : e).ToList();
     }
 
     [HttpGet]
@@ -154,7 +167,7 @@ public class EventsController : ControllerBase
                 ? await _eventService.GetPublishedEventsAsync(search, category, parsedFromDate, parsedToDate, venueId)
                 : await _eventService.GetAllPublishedEventsAsync();
 
-            return Ok(events);
+            return Ok(await WithSalesStatusAsync(events));
         }
         catch (ArgumentException ex)
         {
@@ -187,7 +200,7 @@ public class EventsController : ControllerBase
                 return NotFound(new { message = $"Event with ID '{eventId}' was not found." });
             }
 
-            return Ok(evt);
+            return Ok((await WithSalesStatusAsync([evt]))[0]);
         }
         catch (Exception ex)
         {
@@ -280,7 +293,7 @@ public class EventsController : ControllerBase
         {
             var organizerId = GetCurrentOrganizerId();
             await _eventService.CancelEventAsync(organizerId, eventId);
-            return Ok(new { message = "Event cancelled successfully.", eventId, status = "Cancelled" });
+            return Accepted(new { message = "Sales stopped. Order cancellation and refunds are processing.", eventId, status = "Cancelled" });
         }
         catch (KeyNotFoundException ex)
         {
@@ -380,7 +393,7 @@ public class EventsController : ControllerBase
         {
             var organizerId = GetCurrentOrganizerId();
             await _eventService.CancelShowAsync(organizerId, showId);
-            return Ok(new { message = "Show cancelled successfully.", showId, status = "Cancelled" });
+            return Accepted(new { message = "Sales stopped. Order cancellation and refunds are processing.", showId, status = "Cancelled" });
         }
         catch (KeyNotFoundException ex)
         {

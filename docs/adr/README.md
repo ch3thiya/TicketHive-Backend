@@ -27,6 +27,12 @@ Accepted records are never rewritten; a changed decision is a new record that am
 | [019](019-metrics-and-alerting.md) | Business metrics, dashboard and alerting |
 | [020](020-modularity-and-decoupling-rules.md) | Modularity and decoupling rules inside each codebase |
 | [021](021-waiting-room-availability-check.md) | The waiting room's one read of Inventory's availability (amends 002) |
+| [023](023-organizer-suspension.md) | Organizer suspension enforced by live lookups |
+| [024](024-ticket-validation-authorization.md) | Ticket validation limited to the owning organizer and admins |
+| [025](025-booking-jwt-audience-validation.md) | Booking validates JWT audience and token type per scheme |
+| [026](026-seat-layouts-as-versioned-data.md) | Seat layouts are versioned, validated data owned by Catalog |
+| [027](027-seat-holds-and-lifecycle.md) | Seat holds follow the hold lifecycle |
+| [028](028-event-reminders.md) | Event reminders sent once per order from live data |
 
 ## Template
 

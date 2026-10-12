@@ -14,4 +14,5 @@ public class Show
     public int? ReminderMinutesBefore { get; set; }
     public string Status { get; set; } = "Active";
     public DateTime CreatedAt { get; set; }
+    public string SeatingMode { get; set; } = SeatingModes.GeneralAdmission;
 }

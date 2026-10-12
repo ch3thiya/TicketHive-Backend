@@ -177,13 +177,17 @@ public class OrdersController : ControllerBase
     }
 
     [HttpPost("{id}/confirm-sandbox")]
+    [Authorize]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> ConfirmSandboxOrder(Guid id, [FromBody] ConfirmSandboxOrderRequest? request = null)
     {
+        if (!HttpContext.RequestServices.GetRequiredService<IConfiguration>().GetValue<bool>("PayHere:EnableSandboxConfirmation"))
+            return NotFound();
         var order = await _orderService.GetOrderAsync(id);
-        if (order is null)
+        var customerSub = User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? User.FindFirst("sub")?.Value;
+        if (order is null || order.CustomerSub != customerSub)
         {
             return Problem(detail: $"Order '{id}' was not found.", statusCode: StatusCodes.Status404NotFound, title: "Order not found");
         }
@@ -200,6 +204,9 @@ public class OrdersController : ControllerBase
         var now = _timeProvider.GetUtcNow();
         var expiresAt = order.CreatedAt.AddMinutes(10);
 
+        if (order.Status is OrderStatus.Cancelled or OrderStatus.Failed)
+            return Problem(statusCode: 409, detail: "Order is no longer payable.");
+
         if (order.Status == OrderStatus.PaymentPending && now >= expiresAt)
         {
             await _orderRepository.UpdateStatusAsync(order.Id, OrderStatus.Failed, now);
@@ -209,7 +216,8 @@ public class OrdersController : ControllerBase
 
         if (order.Status != OrderStatus.Confirmed)
         {
-            await _orderRepository.UpdateStatusAsync(order.Id, OrderStatus.Confirmed, now);
+            if (!await _orderRepository.UpdateStatusAsync(order.Id, OrderStatus.Confirmed, now))
+                return Problem(statusCode: 409, detail: "Order is no longer payable.");
             try { await _inventoryClient.ConvertHoldAsync(order.HoldId); } catch { }
             await _ticketService.IssueTicketsForOrderAsync(order);
         }

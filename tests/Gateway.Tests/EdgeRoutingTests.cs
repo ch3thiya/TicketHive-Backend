@@ -55,6 +55,25 @@ public class EdgeRoutingTests : IClassFixture<GatewayFactory>
         Assert.Equal(HttpStatusCode.BadGateway, response.StatusCode);
     }
 
+    [Theory]
+    [InlineData("/api/inventory/shows/0199a1b2-0000-7000-8000-000000000001/seats")]
+    [InlineData("/api/inventory/shows/0199a1b2-0000-7000-8000-000000000001/seats/states")]
+    public async Task Seat_map_routes_are_forwarded_without_token(string path)
+    {
+        var response = await _client.GetAsync(path);
+
+        Assert.NotEqual(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Equal(HttpStatusCode.BadGateway, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Seat_map_routes_do_not_allow_writes_without_token()
+    {
+        var response = await _client.PutAsync("/api/inventory/shows/0199a1b2-0000-7000-8000-000000000001/seats", new StringContent("{}"));
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
     [Fact]
     public async Task My_events_route_requires_token()
     {

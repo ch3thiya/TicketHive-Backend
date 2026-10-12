@@ -71,7 +71,8 @@ public record ShowDetailsDto(
     int? ReminderMinutesBefore,
     string Status,
     DateTime CreatedAt,
-    List<TicketCategory> TicketCategories
+    List<TicketCategory> TicketCategories,
+    string SeatingMode = "GA"
 );
 
 public record EventWithShowsDto(
@@ -86,7 +87,8 @@ public record EventWithShowsDto(
     int? CancellationCutoffHours,
     string Status,
     DateTime CreatedAt,
-    List<ShowDetailsDto> Shows
+    List<ShowDetailsDto> Shows,
+    bool SalesSuspended = false
 );
 
 public record ShowSalesRulesDto(Guid ShowId, DateTimeOffset? OnSaleAt, bool HighDemand);
@@ -107,4 +109,6 @@ public interface IEventService
     Task UpdateShowAsync(Guid organizerId, Guid showId, UpdateShowDto dto);
     Task CancelShowAsync(Guid organizerId, Guid showId);
     Task<ShowSalesRulesDto?> GetSalesRulesAsync(Guid showId);
+
+    Task<List<ShowReminderInfo>> GetShowReminderInfoAsync(IReadOnlyCollection<Guid> showIds);
 }

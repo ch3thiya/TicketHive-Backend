@@ -23,6 +23,7 @@ public class EventService : IEventService
     private readonly IOptions<PublishDefaultsOptions> _publishDefaults;
     private readonly ILogger<EventService> _logger;
     private readonly TimeProvider _timeProvider;
+    private readonly CancellationClient? _cancellationClient;
 
     public EventService(
         IEventRepository repository,
@@ -30,7 +31,8 @@ public class EventService : IEventService
         IInventoryClient inventoryClient,
         IOptions<PublishDefaultsOptions> publishDefaults,
         ILogger<EventService> logger,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        CancellationClient? cancellationClient = null)
     {
         _repository = repository;
         _venueService = venueService;
@@ -38,6 +40,7 @@ public class EventService : IEventService
         _publishDefaults = publishDefaults;
         _logger = logger;
         _timeProvider = timeProvider;
+        _cancellationClient = cancellationClient;
     }
 
     public async Task<Event> CreateEventAsync(Guid organizerId, CreateEventDto dto)
@@ -148,7 +151,8 @@ public class EventService : IEventService
             show.ReminderMinutesBefore,
             show.Status,
             show.CreatedAt,
-            domainCategories
+            domainCategories,
+            show.SeatingMode
         );
     }
 
@@ -208,7 +212,8 @@ public class EventService : IEventService
                     s.ReminderMinutesBefore,
                     s.Status,
                     s.CreatedAt,
-                    categoriesByShowId.GetValueOrDefault(s.Id, new List<TicketCategory>())))
+                    categoriesByShowId.GetValueOrDefault(s.Id, new List<TicketCategory>()),
+                    s.SeatingMode))
                 .ToList();
 
             result.Add(new EventWithShowsDto(
@@ -244,7 +249,7 @@ public class EventService : IEventService
         foreach (var s in shows)
         {
             var categories = await _repository.GetTicketCategoriesByShowIdAsync(s.Id);
-            showDtos.Add(new ShowDetailsDto(s.Id, s.EventId, s.ShowDate, s.ShowTime, s.VenueId, s.OnSaleAt, s.HighDemandThreshold, s.ReminderMinutesBefore, s.Status, s.CreatedAt, categories));
+            showDtos.Add(new ShowDetailsDto(s.Id, s.EventId, s.ShowDate, s.ShowTime, s.VenueId, s.OnSaleAt, s.HighDemandThreshold, s.ReminderMinutesBefore, s.Status, s.CreatedAt, categories, s.SeatingMode));
         }
 
         return new EventWithShowsDto(
@@ -277,7 +282,7 @@ public class EventService : IEventService
         foreach (var s in shows)
         {
             var categories = await _repository.GetTicketCategoriesByShowIdAsync(s.Id);
-            showDtos.Add(new ShowDetailsDto(s.Id, s.EventId, s.ShowDate, s.ShowTime, s.VenueId, s.OnSaleAt, s.HighDemandThreshold, s.ReminderMinutesBefore, s.Status, s.CreatedAt, categories));
+            showDtos.Add(new ShowDetailsDto(s.Id, s.EventId, s.ShowDate, s.ShowTime, s.VenueId, s.OnSaleAt, s.HighDemandThreshold, s.ReminderMinutesBefore, s.Status, s.CreatedAt, categories, s.SeatingMode));
         }
 
         return new EventWithShowsDto(
@@ -408,13 +413,16 @@ public class EventService : IEventService
             throw new UnauthorizedAccessException("You are not authorized to cancel this event.");
         }
 
-        if (!EventStatusTransitions.CanTransition(evt.Status, "Cancelled", out var transitionReason))
+        if (evt.Status != "Cancelled" && !EventStatusTransitions.CanTransition(evt.Status, "Cancelled", out var transitionReason))
         {
             throw new InvalidOperationException(transitionReason);
         }
 
         _logger.LogInformation("Cancelling Event {EventId} for Organizer {OrganizerId}", eventId, organizerId);
-        await _repository.UpdateEventStatusAsync(eventId, "Cancelled");
+        if (evt.Status != "Cancelled") await _repository.UpdateEventStatusAsync(eventId, "Cancelled");
+        if (_cancellationClient is not null)
+            foreach (var show in await _repository.GetShowsByEventIdAsync(eventId))
+                await _cancellationClient.EstablishCancellationBarrierAsync(show.Id);
     }
 
     public async Task DeleteEventAsync(Guid organizerId, Guid eventId)
@@ -456,6 +464,13 @@ public class EventService : IEventService
         if (!ShowStatusTransitions.CanEdit(show.Status, out var editReason))
         {
             throw new InvalidOperationException(editReason);
+        }
+
+        // A seated show's seats are generated from its categories (ADR-026); changing them would
+        // desynchronise seats from stock.
+        if (show.SeatingMode == SeatingModes.Seated && dto.Categories is { Count: > 0 })
+        {
+            throw new InvalidOperationException("Ticket categories cannot be changed while the show has a seat map.");
         }
 
         if (dto.VenueId.HasValue && !await _venueService.VenueExistsAsync(dto.VenueId.Value))
@@ -549,14 +564,18 @@ public class EventService : IEventService
             throw new UnauthorizedAccessException("You are not authorized to cancel this show.");
         }
 
-        if (!ShowStatusTransitions.CanTransition(show.Status, "Cancelled", out var transitionReason))
+        if (show.Status != "Cancelled" && !ShowStatusTransitions.CanTransition(show.Status, "Cancelled", out var transitionReason))
         {
             throw new InvalidOperationException(transitionReason);
         }
 
         _logger.LogInformation("Cancelling Show {ShowId} for Organizer {OrganizerId}", showId, organizerId);
-        await _repository.UpdateShowStatusAsync(showId, "Cancelled");
+        if (show.Status != "Cancelled") await _repository.UpdateShowStatusAsync(showId, "Cancelled");
+        if (_cancellationClient is not null) await _cancellationClient.EstablishCancellationBarrierAsync(showId);
     }
+
+    public Task<List<ShowReminderInfo>> GetShowReminderInfoAsync(IReadOnlyCollection<Guid> showIds) =>
+        _repository.GetShowReminderInfoAsync(showIds);
 
     public async Task<ShowSalesRulesDto?> GetSalesRulesAsync(Guid showId)
     {
