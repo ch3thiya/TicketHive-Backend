@@ -117,6 +117,10 @@ service_env() {  # $1 = service
     inventory)
       printf '%s\n' \
         "Jwt__Authority=${JWT_AUTHORITY}" "Jwt__Audience=${JWT_AUDIENCE}" \
+        "Wso2__InternalApi__TokenEndpoint=${WSO2_TOKEN}" \
+        "Wso2__InternalApi__ClientId=secretref:wso2-int-id" \
+        "Wso2__InternalApi__ClientSecret=secretref:wso2-int-secret" \
+        "Wso2__InternalApi__Scope=catalog:read" \
         "Wso2__InternalApi__RequiredScope=inventory:write" \
         "HoldExpiry__Sweep__IntervalSeconds=10" \
         "HoldExpiry__Sweep__BatchSize=200" \
