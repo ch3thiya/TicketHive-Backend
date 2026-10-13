@@ -214,7 +214,15 @@ done
 
 az containerapp update -g "$RG" -n tickethive-catalog --set-env-vars \
   "Services__Identity__BaseUrl=${URL[identity]}" \
-  "Services__Inventory__BaseUrl=${URL[inventory]}" -o none
+  "Services__Inventory__BaseUrl=${URL[inventory]}" \
+  "InventoryService__BaseUrl=${URL[inventory]}" \
+  "BookingService__BaseUrl=${URL[booking]}" -o none
+
+# Inventory checks Catalog before every new hold. Without this explicit
+# Container Apps address it falls back to the local-development port and
+# refuses purchases with a 503.
+az containerapp update -g "$RG" -n tickethive-inventory --set-env-vars \
+  "CatalogService__BaseUrl=${URL[catalog]}" -o none
 
 az containerapp update -g "$RG" -n tickethive-waitingroom --set-env-vars \
   "Services__Catalog__BaseUrl=${URL[catalog]}" \
@@ -223,8 +231,13 @@ az containerapp update -g "$RG" -n tickethive-waitingroom --set-env-vars \
 # Booking uses its own key name for this; see the note in the Phase 5 handover.
 az containerapp update -g "$RG" -n tickethive-booking --set-env-vars \
   "InventoryService__BaseUrl=${URL[inventory]}" \
+  "CatalogService__BaseUrl=${URL[catalog]}" \
   "Services__Inventory__BaseUrl=${URL[inventory]}" \
   "Services__Payment__BaseUrl=${URL[payment]}" -o none
+
+az containerapp update -g "$RG" -n tickethive-notification --set-env-vars \
+  "CatalogService__BaseUrl=${URL[catalog]}" \
+  "BookingService__BaseUrl=${URL[booking]}" -o none
 
 # ------------------------------------------------------------------ gateway --
 # Not in SERVICES: it has no database, no connection-string secret and no
