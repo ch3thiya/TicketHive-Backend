@@ -148,7 +148,7 @@ service_env() {  # $1 = service
         "Wso2__InternalApi__TokenEndpoint=${WSO2_TOKEN}" \
         "Wso2__InternalApi__ClientId=secretref:wso2-int-id" \
         "Wso2__InternalApi__ClientSecret=secretref:wso2-int-secret" \
-        "Wso2__InternalApi__Scope=inventory:write" \
+        "Wso2__InternalApi__Scope=inventory:write catalog:read payment:refund notification:write" \
         "PayHere__MerchantId=secretref:payhere-merchant-id" \
         "PayHere__MerchantSecret=secretref:payhere-merchant-secret"
       ;;
