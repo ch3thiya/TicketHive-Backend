@@ -252,7 +252,7 @@ GATEWAY_ENV=(
   "Jwt__Authority=${JWT_AUTHORITY}" "Jwt__Audience=${JWT_AUDIENCE}"
   "Cors__AllowedOrigins=${FRONTEND_ORIGINS}"
 )
-for svc in identity catalog inventory waitingroom booking payment; do
+for svc in identity catalog inventory waitingroom booking payment notification; do
   GATEWAY_ENV+=("ReverseProxy__Clusters__${svc}__Destinations__primary__Address=${URL[$svc]}")
 done
 

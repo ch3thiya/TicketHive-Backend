@@ -92,6 +92,32 @@ public class EdgeRoutingTests : IClassFixture<GatewayFactory>
     }
 
     [Fact]
+    public async Task Swagger_ui_is_publicly_available()
+    {
+        var response = await _client.GetAsync("/swagger/index.html");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains("TicketHive API Documentation", html);
+    }
+
+    [Theory]
+    [InlineData("identity")]
+    [InlineData("catalog")]
+    [InlineData("inventory")]
+    [InlineData("waitingroom")]
+    [InlineData("booking")]
+    [InlineData("payment")]
+    [InlineData("notification")]
+    public async Task OpenApi_documents_are_forwarded_without_a_token(string service)
+    {
+        var response = await _client.GetAsync($"/swagger/specs/{service}/v1.json");
+
+        Assert.NotEqual(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Equal(HttpStatusCode.BadGateway, response.StatusCode);
+    }
+
+    [Fact]
     public async Task Preflight_from_allowed_origin_is_answered_without_token()
     {
         using var request = new HttpRequestMessage(HttpMethod.Options, "/api/booking/orders");

@@ -39,7 +39,7 @@ builder.AddServiceDefaults();
 
 // Add services to the container.
 builder.Services.AddControllers();
-builder.Services.AddOpenApi();
+builder.Services.AddTicketHiveOpenApi();
 
 builder.WebHost.ConfigureKestrel(options =>
 {
@@ -250,10 +250,7 @@ DatabaseMigrator.MigrateIfDevelopment(app.Environment, app.Configuration, connec
     DatabaseMigrator.Migrate(connectionString, Assembly.GetExecutingAssembly(), app.Logger));
 
 // Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
-{
-    app.MapOpenApi();
-}
+app.MapOpenApi().AllowAnonymous();
 
 app.UseCors("AllowFrontend");
 

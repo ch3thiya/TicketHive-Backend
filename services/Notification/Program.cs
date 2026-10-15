@@ -48,7 +48,7 @@ builder.Services.AddHttpClient<IEmailService, EmailJsService>();
 builder.Services.AddHostedService<TicketIssuedEventListener>();
 
 builder.Services.AddControllers();
-builder.Services.AddOpenApi();
+builder.Services.AddTicketHiveOpenApi();
 
 builder.Services.AddScoped<CancellationEmailRepository>();
 builder.Services.Configure<CancellationEmailOptions>(options =>
@@ -107,10 +107,7 @@ app.UseServiceDefaults();
 DatabaseMigrator.MigrateIfDevelopment(app.Environment, app.Configuration, connectionString =>
     DatabaseMigrator.Migrate(connectionString, Assembly.GetExecutingAssembly(), app.Logger));
 
-if (app.Environment.IsDevelopment())
-{
-    app.MapOpenApi();
-}
+app.MapOpenApi().AllowAnonymous();
 
 app.UseRouting();
 app.UseAuthentication();
