@@ -58,11 +58,56 @@ public class VenueService : IVenueService
         venue.Name = ValidateName(dto.Name);
         venue.Address = ValidateAddress(dto.Address);
         ValidateCapacity(dto.Capacity);
+        if (venue.SeatMap is not null && dto.Capacity < venue.SeatMap.SeatCount)
+        {
+            throw new ArgumentException(
+                $"Venue capacity cannot be lower than its {venue.SeatMap.SeatCount}-seat map. Edit or delete the seat map first.",
+                nameof(dto.Capacity));
+        }
         venue.Capacity = dto.Capacity;
         venue.UpdatedAt = _timeProvider.GetUtcNow().UtcDateTime;
 
         _logger.LogInformation("Updating venue {VenueId}", id);
         await _repository.UpdateVenueAsync(venue);
+    }
+
+    public async Task<VenueSeatMap> SaveSeatMapAsync(Guid venueId, SaveVenueSeatMapDto dto, string adminSub)
+    {
+        var venue = await _repository.GetVenueByIdAsync(venueId);
+        if (venue is null)
+        {
+            throw new KeyNotFoundException($"Venue with ID '{venueId}' was not found.");
+        }
+
+        var spec = new VenueSeatMapSpec((dto.Sections ?? [])
+            .Select(section => section with { Name = (section.Name ?? string.Empty).Trim() })
+            .ToList());
+        var errors = VenueSeatMapRules.Validate(spec, venue.Capacity);
+        if (errors.Count > 0)
+        {
+            throw new VenueSeatMapValidationException(errors);
+        }
+
+        var now = _timeProvider.GetUtcNow();
+        var map = await _repository.UpsertSeatMapAsync(
+            venueId, spec, VenueSeatMapRules.SeatCount(spec), adminSub, now);
+        _logger.LogInformation("Saved a {SeatCount}-seat map for venue {VenueId}", map.SeatCount, venueId);
+        return map;
+    }
+
+    public async Task DeleteSeatMapAsync(Guid venueId)
+    {
+        if (!await _repository.VenueExistsAsync(venueId))
+        {
+            throw new KeyNotFoundException($"Venue with ID '{venueId}' was not found.");
+        }
+
+        if (!await _repository.DeleteSeatMapAsync(venueId))
+        {
+            throw new KeyNotFoundException("This venue does not have a seat map.");
+        }
+
+        _logger.LogInformation("Deleted the seat map for venue {VenueId}", venueId);
     }
 
     public async Task DeleteVenueAsync(Guid id)
@@ -109,4 +154,9 @@ public class VenueService : IVenueService
             throw new ArgumentException("Venue capacity must be positive.", nameof(capacity));
         }
     }
+}
+
+public sealed class VenueSeatMapValidationException(IReadOnlyList<LayoutError> errors) : Exception("The seat map is not valid.")
+{
+    public IReadOnlyList<LayoutError> Errors { get; } = errors;
 }

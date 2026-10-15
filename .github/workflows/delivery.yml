@@ -44,27 +44,14 @@ jobs:
             exit 0
           fi
 
-          changed="$(git diff --name-only HEAD~1 HEAD)"
-          echo "changed files:"; echo "$changed"
-
-          if grep -qE '^services/BuildingBlocks/|^TicketHive\.slnx$|^\.github/workflows/delivery\.yml$' <<<"$changed"; then
-            echo "services=$all" >> "$GITHUB_OUTPUT"
-            echo "any=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          list=()
-          for svc in Identity Catalog Inventory WaitingRoom Booking Payment Notification Gateway; do
-            grep -q "^services/${svc}/" <<<"$changed" && \
-              list+=("\"$(echo "$svc" | tr '[:upper:]' '[:lower:]')\"")
-          done
-
-          if [ ${#list[@]} -eq 0 ]; then
-            echo "services=[]" >> "$GITHUB_OUTPUT"; echo "any=false" >> "$GITHUB_OUTPUT"
-          else
-            printf -v joined '%s,' "${list[@]}"
-            echo "services=[${joined%,}]" >> "$GITHUB_OUTPUT"; echo "any=true" >> "$GITHUB_OUTPUT"
-          fi
+          # A main deployment promotes one dev commit SHA for every service
+          # changed since the previous release. Build a complete image set for
+          # that SHA so a service which changed in an earlier dev merge is not
+          # missing when main eventually catches up. Selective builds here used
+          # to leave older services on stale images while newer services were
+          # promoted, creating an incompatible distributed deployment.
+          echo "services=$all" >> "$GITHUB_OUTPUT"
+          echo "any=true" >> "$GITHUB_OUTPUT"
 
   publish:
     needs: changes
