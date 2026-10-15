@@ -24,6 +24,7 @@ public record SeatMapDetail(
     DateOnly ShowDate,
     TimeOnly ShowTime,
     string SeatingMode,
+    Guid? VenueId,
     IReadOnlyList<TicketCategory> Categories,
     IReadOnlyList<SeatLayout> Layouts);
 
@@ -40,6 +41,8 @@ public interface ISeatMapService
     Task<SeatMapResult<SeatLayout>> CreateDraftAsync(Guid requestId, SeatLayoutSpec spec, string adminSub);
 
     Task<SeatMapResult<SeatLayout>> EnableAsync(Guid layoutId, string adminSub);
+
+    Task<SeatMapResult<bool>> DeleteLayoutAsync(Guid layoutId);
 
     Task<SeatMapResult<SeatMapRequest>> RejectAsync(Guid requestId, string? reason, string adminSub);
 }

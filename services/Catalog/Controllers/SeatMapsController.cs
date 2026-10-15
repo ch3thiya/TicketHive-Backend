@@ -92,6 +92,17 @@ public class SeatMapsController(ISeatMapService seatMaps) : ControllerBase
         return result.Status == SeatMapStatus.Ok ? Ok(result.Value) : ToProblem(result);
     }
 
+    [HttpDelete("api/catalog/admin/seat-layouts/{layoutId:guid}")]
+    [Authorize(Roles = AdminRoles)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> DeleteLayout(Guid layoutId)
+    {
+        var result = await seatMaps.DeleteLayoutAsync(layoutId);
+        return result.Status == SeatMapStatus.Ok ? NoContent() : ToProblem(result);
+    }
+
     [HttpPost("api/catalog/admin/seat-map-requests/{requestId:guid}/reject")]
     [Authorize(Roles = AdminRoles)]
     [ProducesResponseType(typeof(SeatMapRequest), StatusCodes.Status200OK)]

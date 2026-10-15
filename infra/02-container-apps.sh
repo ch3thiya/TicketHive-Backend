@@ -117,6 +117,10 @@ service_env() {  # $1 = service
     inventory)
       printf '%s\n' \
         "Jwt__Authority=${JWT_AUTHORITY}" "Jwt__Audience=${JWT_AUDIENCE}" \
+        "Wso2__InternalApi__TokenEndpoint=${WSO2_TOKEN}" \
+        "Wso2__InternalApi__ClientId=secretref:wso2-int-id" \
+        "Wso2__InternalApi__ClientSecret=secretref:wso2-int-secret" \
+        "Wso2__InternalApi__Scope=catalog:read" \
         "Wso2__InternalApi__RequiredScope=inventory:write" \
         "HoldExpiry__Sweep__IntervalSeconds=10" \
         "HoldExpiry__Sweep__BatchSize=200" \
@@ -144,7 +148,7 @@ service_env() {  # $1 = service
         "Wso2__InternalApi__TokenEndpoint=${WSO2_TOKEN}" \
         "Wso2__InternalApi__ClientId=secretref:wso2-int-id" \
         "Wso2__InternalApi__ClientSecret=secretref:wso2-int-secret" \
-        "Wso2__InternalApi__Scope=inventory:write" \
+        "Wso2__InternalApi__Scope=inventory:write catalog:read payment:refund notification:write" \
         "PayHere__MerchantId=secretref:payhere-merchant-id" \
         "PayHere__MerchantSecret=secretref:payhere-merchant-secret"
       ;;
@@ -214,7 +218,15 @@ done
 
 az containerapp update -g "$RG" -n tickethive-catalog --set-env-vars \
   "Services__Identity__BaseUrl=${URL[identity]}" \
-  "Services__Inventory__BaseUrl=${URL[inventory]}" -o none
+  "Services__Inventory__BaseUrl=${URL[inventory]}" \
+  "InventoryService__BaseUrl=${URL[inventory]}" \
+  "BookingService__BaseUrl=${URL[booking]}" -o none
+
+# Inventory checks Catalog before every new hold. Without this explicit
+# Container Apps address it falls back to the local-development port and
+# refuses purchases with a 503.
+az containerapp update -g "$RG" -n tickethive-inventory --set-env-vars \
+  "CatalogService__BaseUrl=${URL[catalog]}" -o none
 
 az containerapp update -g "$RG" -n tickethive-waitingroom --set-env-vars \
   "Services__Catalog__BaseUrl=${URL[catalog]}" \
@@ -223,8 +235,13 @@ az containerapp update -g "$RG" -n tickethive-waitingroom --set-env-vars \
 # Booking uses its own key name for this; see the note in the Phase 5 handover.
 az containerapp update -g "$RG" -n tickethive-booking --set-env-vars \
   "InventoryService__BaseUrl=${URL[inventory]}" \
+  "CatalogService__BaseUrl=${URL[catalog]}" \
   "Services__Inventory__BaseUrl=${URL[inventory]}" \
   "Services__Payment__BaseUrl=${URL[payment]}" -o none
+
+az containerapp update -g "$RG" -n tickethive-notification --set-env-vars \
+  "CatalogService__BaseUrl=${URL[catalog]}" \
+  "BookingService__BaseUrl=${URL[booking]}" -o none
 
 # ------------------------------------------------------------------ gateway --
 # Not in SERVICES: it has no database, no connection-string secret and no

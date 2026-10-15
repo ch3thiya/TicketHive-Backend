@@ -14,6 +14,8 @@ public interface IVenueRepository
     Task<bool> VenueExistsAsync(Guid id);
     Task<List<Venue>> GetAllVenuesAsync();
     Task UpdateVenueAsync(Venue venue);
+    Task<VenueSeatMap> UpsertSeatMapAsync(Guid venueId, VenueSeatMapSpec spec, int seatCount, string createdBy, DateTimeOffset now);
+    Task<bool> DeleteSeatMapAsync(Guid venueId);
 
     // Locks the venue row, counts shows that reference it, and deletes it
     // only if that count is zero — all inside one transaction, so a show

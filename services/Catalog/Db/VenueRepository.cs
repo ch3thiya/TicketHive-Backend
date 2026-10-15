@@ -1,13 +1,16 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using System.Text.Json;
 using Npgsql;
+using NpgsqlTypes;
 using Catalog.Service.Models;
 
 namespace Catalog.Service.Db;
 
 public class VenueRepository : IVenueRepository
 {
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private readonly DbConnectionFactory _connectionFactory;
 
     public VenueRepository(DbConnectionFactory connectionFactory)
@@ -41,9 +44,11 @@ public class VenueRepository : IVenueRepository
         using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
 
         const string sql = @"
-            SELECT id, name, address, capacity, created_at, updated_at
-            FROM venues
-            WHERE id = @Id;
+            SELECT v.id, v.name, v.address, v.capacity, v.created_at, v.updated_at,
+                   sm.layout, sm.seat_count, sm.created_by, sm.created_at, sm.updated_at
+            FROM venues v
+            LEFT JOIN venue_seat_maps sm ON sm.venue_id = v.id
+            WHERE v.id = @Id;
         ";
 
         using var command = new NpgsqlCommand(sql, connection);
@@ -76,9 +81,11 @@ public class VenueRepository : IVenueRepository
         using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
 
         const string sql = @"
-            SELECT id, name, address, capacity, created_at, updated_at
-            FROM venues
-            ORDER BY name ASC;
+            SELECT v.id, v.name, v.address, v.capacity, v.created_at, v.updated_at,
+                   sm.layout, sm.seat_count, sm.created_by, sm.created_at, sm.updated_at
+            FROM venues v
+            LEFT JOIN venue_seat_maps sm ON sm.venue_id = v.id
+            ORDER BY v.name ASC;
         ";
 
         using var command = new NpgsqlCommand(sql, connection);
@@ -114,6 +121,38 @@ public class VenueRepository : IVenueRepository
         command.Parameters.AddWithValue("UpdatedAt", venue.UpdatedAt);
 
         await command.ExecuteNonQueryAsync();
+    }
+
+    public async Task<VenueSeatMap> UpsertSeatMapAsync(
+        Guid venueId, VenueSeatMapSpec spec, int seatCount, string createdBy, DateTimeOffset now)
+    {
+        await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
+        const string sql = @"
+            INSERT INTO venue_seat_maps (venue_id, layout, seat_count, created_by, created_at, updated_at)
+            VALUES (@VenueId, @Layout, @SeatCount, @CreatedBy, @Now, @Now)
+            ON CONFLICT (venue_id) DO UPDATE SET
+                layout = EXCLUDED.layout,
+                seat_count = EXCLUDED.seat_count,
+                updated_at = EXCLUDED.updated_at
+            RETURNING created_by, created_at;";
+
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("VenueId", venueId);
+        command.Parameters.Add(new NpgsqlParameter("Layout", NpgsqlDbType.Jsonb) { Value = JsonSerializer.Serialize(spec, Json) });
+        command.Parameters.AddWithValue("SeatCount", seatCount);
+        command.Parameters.AddWithValue("CreatedBy", createdBy);
+        command.Parameters.AddWithValue("Now", now);
+        await using var reader = await command.ExecuteReaderAsync();
+        await reader.ReadAsync();
+        return new VenueSeatMap(venueId, spec, seatCount, reader.GetString(0), reader.GetFieldValue<DateTimeOffset>(1), now);
+    }
+
+    public async Task<bool> DeleteSeatMapAsync(Guid venueId)
+    {
+        await using var connection = (NpgsqlConnection)await _connectionFactory.CreateConnectionAsync();
+        await using var command = new NpgsqlCommand("DELETE FROM venue_seat_maps WHERE venue_id = @VenueId", connection);
+        command.Parameters.AddWithValue("VenueId", venueId);
+        return await command.ExecuteNonQueryAsync() == 1;
     }
 
     public async Task<VenueDeleteResult?> DeleteVenueIfUnusedAsync(Guid id)
@@ -192,7 +231,7 @@ public class VenueRepository : IVenueRepository
 
     private static Venue MapVenue(NpgsqlDataReader reader)
     {
-        return new Venue
+        var venue = new Venue
         {
             Id = reader.GetGuid(0),
             Name = reader.GetString(1),
@@ -201,5 +240,17 @@ public class VenueRepository : IVenueRepository
             CreatedAt = reader.GetDateTime(4),
             UpdatedAt = reader.GetDateTime(5)
         };
+        if (reader.FieldCount > 6 && !reader.IsDBNull(6))
+        {
+            venue.SeatMap = new VenueSeatMap(
+                venue.Id,
+                JsonSerializer.Deserialize<VenueSeatMapSpec>(reader.GetString(6), Json)!,
+                reader.GetInt32(7),
+                reader.GetString(8),
+                reader.GetFieldValue<DateTimeOffset>(9),
+                reader.GetFieldValue<DateTimeOffset>(10));
+        }
+
+        return venue;
     }
 }

@@ -277,6 +277,37 @@ public class SeatMapRepository(DbConnectionFactory connectionFactory) : ISeatMap
         return CompleteEnableOutcome.Enabled;
     }
 
+    public async Task<DeleteLayoutOutcome> DeleteLayoutAsync(Guid layoutId)
+    {
+        await using var connection = (NpgsqlConnection)await connectionFactory.CreateConnectionAsync();
+        await using var transaction = await connection.BeginTransactionAsync();
+        string? status;
+        await using (var find = new NpgsqlCommand("SELECT status FROM seat_layouts WHERE id = @Id FOR UPDATE", connection, transaction))
+        {
+            find.Parameters.AddWithValue("Id", layoutId);
+            status = (string?)await find.ExecuteScalarAsync();
+        }
+
+        if (status is null)
+        {
+            return DeleteLayoutOutcome.NotFound;
+        }
+
+        if (status == SeatLayoutStatuses.Enabled)
+        {
+            return DeleteLayoutOutcome.Enabled;
+        }
+
+        await using (var delete = new NpgsqlCommand("DELETE FROM seat_layouts WHERE id = @Id", connection, transaction))
+        {
+            delete.Parameters.AddWithValue("Id", layoutId);
+            await delete.ExecuteNonQueryAsync();
+        }
+
+        await transaction.CommitAsync();
+        return DeleteLayoutOutcome.Deleted;
+    }
+
     public async Task<RejectOutcome> RejectAsync(Guid requestId, string reason, string decidedBy, DateTimeOffset now)
     {
         await using var connection = (NpgsqlConnection)await connectionFactory.CreateConnectionAsync();

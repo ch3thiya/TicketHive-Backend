@@ -165,7 +165,7 @@ public class EventService : IEventService
     public async Task<List<EventWithShowsDto>> GetAllPublishedEventsAsync()
     {
         var events = await _repository.GetAllPublishedEventsAsync();
-        return await AssembleEventsWithShowsAsync(events);
+        return await AssembleEventsWithShowsAsync(events, includeCancelledShows: false);
     }
 
     public async Task<List<EventWithShowsDto>> GetPublishedEventsAsync(string? search, string? category, DateOnly? fromDate, DateOnly? toDate, Guid? venueId)
@@ -176,14 +176,16 @@ public class EventService : IEventService
         }
 
         var events = await _repository.GetPublishedEventsAsync(search, category, fromDate, toDate, venueId);
-        return await AssembleEventsWithShowsAsync(events);
+        return await AssembleEventsWithShowsAsync(events, includeCancelledShows: false);
     }
 
     // Assembles a list of events with their shows and ticket categories using
     // two batched queries (all shows for these events, then all categories
     // for those shows) instead of one query per event and per show, so a
     // listing costs a constant number of round trips regardless of size.
-    private async Task<List<EventWithShowsDto>> AssembleEventsWithShowsAsync(List<Event> events)
+    private async Task<List<EventWithShowsDto>> AssembleEventsWithShowsAsync(
+        List<Event> events,
+        bool includeCancelledShows = true)
     {
         if (events.Count == 0)
         {
@@ -200,6 +202,10 @@ public class EventService : IEventService
         foreach (var evt in events)
         {
             var shows = showsByEventId.GetValueOrDefault(evt.Id, new List<Show>());
+            if (!includeCancelledShows)
+            {
+                shows = shows.Where(show => show.Status != "Cancelled").ToList();
+            }
             var showDtos = shows
                 .Select(s => new ShowDetailsDto(
                     s.Id,
@@ -276,7 +282,9 @@ public class EventService : IEventService
             return null;
         }
 
-        var shows = await _repository.GetShowsByEventIdAsync(evt.Id);
+        var shows = (await _repository.GetShowsByEventIdAsync(evt.Id))
+            .Where(show => show.Status != "Cancelled")
+            .ToList();
         var showDtos = new List<ShowDetailsDto>();
 
         foreach (var s in shows)
