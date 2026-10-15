@@ -38,7 +38,7 @@ builder.AddServiceDefaults();
 
 // Add services to the container.
 builder.Services.AddControllers();
-builder.Services.AddOpenApi();
+builder.Services.AddTicketHiveOpenApi();
 
 builder.WebHost.ConfigureKestrel(options =>
 {
@@ -220,10 +220,9 @@ DatabaseMigrator.MigrateIfDevelopment(app.Environment, app.Configuration, connec
     DatabaseMigrator.Migrate(connectionString, Assembly.GetExecutingAssembly(), app.Logger));
 
 // Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
-{
-    app.MapOpenApi();
-}
+// The service is internal in Azure. Its document is exposed read-only through
+// the public gateway so evaluators can use the consolidated Swagger UI.
+app.MapOpenApi().AllowAnonymous();
 
 app.UseCors("AllowFrontend");
 

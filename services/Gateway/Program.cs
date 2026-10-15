@@ -111,6 +111,25 @@ app.UseForwardedHeaders();
 app.UseServiceDefaults();
 app.UseRouting();
 
+// Swagger UI is intentionally public for assessment and developer use. The
+// OpenAPI JSON is fetched from internal services through anonymous, read-only
+// proxy routes; business endpoints keep their existing authorization rules.
+app.UseSwaggerUI(options =>
+{
+    options.RoutePrefix = "swagger";
+    options.DocumentTitle = "TicketHive API Documentation";
+    options.DisplayRequestDuration();
+    options.EnableDeepLinking();
+    options.EnablePersistAuthorization();
+    options.SwaggerEndpoint("/swagger/specs/identity/v1.json", "Identity API v1");
+    options.SwaggerEndpoint("/swagger/specs/catalog/v1.json", "Catalog API v1");
+    options.SwaggerEndpoint("/swagger/specs/inventory/v1.json", "Inventory API v1");
+    options.SwaggerEndpoint("/swagger/specs/waitingroom/v1.json", "Waiting Room API v1");
+    options.SwaggerEndpoint("/swagger/specs/booking/v1.json", "Booking API v1");
+    options.SwaggerEndpoint("/swagger/specs/payment/v1.json", "Payment API v1");
+    options.SwaggerEndpoint("/swagger/specs/notification/v1.json", "Notification API v1");
+});
+
 app.UseCors(FrontendCorsPolicy);
 app.UseRateLimiter();
 app.UseAuthentication();

@@ -41,7 +41,7 @@ builder.AddServiceDefaults();
 // Add services to the container.
 builder.Services.AddControllers();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
-builder.Services.AddOpenApi();
+builder.Services.AddTicketHiveOpenApi();
 
 builder.Services.AddSingleton<DbConnectionFactory>();
 builder.Services.AddSingleton(TimeProvider.System);
@@ -236,10 +236,7 @@ DatabaseMigrator.MigrateIfDevelopment(app.Environment, app.Configuration, connec
     DatabaseMigrator.Migrate(connectionString, Assembly.GetExecutingAssembly(), app.Logger));
 
 // Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
-{
-    app.MapOpenApi();
-}
+app.MapOpenApi().AllowAnonymous();
 
 app.UseCors("AllowFrontend");
 
