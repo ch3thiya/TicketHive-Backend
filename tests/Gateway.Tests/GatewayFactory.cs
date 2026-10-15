@@ -13,7 +13,7 @@ public class GatewayFactory : WebApplicationFactory<Program>
     private const string UnreachableAddress = "http://127.0.0.1:1";
 
     private static readonly string[] Clusters =
-        ["identity", "catalog", "inventory", "waitingroom", "booking", "payment"];
+        ["identity", "catalog", "inventory", "waitingroom", "booking", "payment", "notification"];
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {

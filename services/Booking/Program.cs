@@ -31,7 +31,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.AddServiceDefaults();
 
 builder.Services.AddControllers();
-builder.Services.AddOpenApi();
+builder.Services.AddTicketHiveOpenApi();
 
 builder.Services.AddSingleton<DbConnectionFactory>();
 builder.Services.AddSingleton(TimeProvider.System);
@@ -107,10 +107,7 @@ app.UseServiceDefaults();
 DatabaseMigrator.MigrateIfDevelopment(app.Environment, app.Configuration, connectionString =>
     DatabaseMigrator.Migrate(connectionString, Assembly.GetExecutingAssembly(), app.Logger));
 
-if (app.Environment.IsDevelopment())
-{
-    app.MapOpenApi();
-}
+app.MapOpenApi().AllowAnonymous();
 
 app.UseCors("AllowFrontend");
 if (!app.Environment.IsDevelopment())
