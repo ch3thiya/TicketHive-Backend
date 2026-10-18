@@ -23,6 +23,10 @@ public class OpenApiDocumentationTests : IClassFixture<CatalogApiFactory>
         using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         var root = document.RootElement;
 
+        var server = root.GetProperty("servers")[0];
+        Assert.Equal("/", server.GetProperty("url").GetString());
+        Assert.Equal("TicketHive API Gateway", server.GetProperty("description").GetString());
+
         var bearer = root.GetProperty("components")
             .GetProperty("securitySchemes")
             .GetProperty("Bearer");
