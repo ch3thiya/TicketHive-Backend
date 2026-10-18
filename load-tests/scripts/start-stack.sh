@@ -9,6 +9,7 @@
 #         OTEL=1          export traces/metrics to the Aspire dashboard (localhost:18888)
 #         SKIP_BUILD=1    reuse the last Release build
 #         INVENTORY_MAX_POOL=20   Inventory database pool size for the test stack
+#         SERVICE_MAX_POOL=10     database pool size for each other service
 #         POSTGRES_HOST_PORT=55432 local host port used by the isolated database
 #
 # Stop with ./scripts/stop-stack.sh
@@ -103,8 +104,11 @@ COMMON_ENV=(
   Jwt__Audience=tickethive-load-test
   Logging__LogLevel__Default=Warning          # Information-level request logging would distort latency
 )
-database_connection() { # database
-  printf 'Host=localhost;Port=%s;Database=%s;Username=postgres;Password=postgres' "$POSTGRES_HOST_PORT" "$1"
+database_connection() { # database [maximum pool size]
+  local database="$1" maximum_pool_size="${2:-${SERVICE_MAX_POOL:-10}}"
+  [[ "$maximum_pool_size" =~ ^[1-9][0-9]*$ ]] || fail "database pool size must be a positive integer"
+  printf 'Host=localhost;Port=%s;Database=%s;Username=postgres;Password=postgres;Maximum Pool Size=%s;Timeout=30' \
+    "$POSTGRES_HOST_PORT" "$database" "$maximum_pool_size"
 }
 if [[ "${OTEL:-0}" == "1" ]]; then
   COMMON_ENV+=(OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:18889 OTEL_EXPORTER_OTLP_PROTOCOL=grpc)
@@ -149,10 +153,10 @@ for svc in $SERVICES; do
     Catalog)
       start_service "$svc" "$port" "ConnectionStrings__DefaultConnection=$(database_connection tickethive_catalog)" ;;
     Inventory)
-      inventory_connection="$(database_connection tickethive_inventory)"
+      inventory_connection="$(database_connection tickethive_inventory "${INVENTORY_MAX_POOL:-20}")"
       inventory_env=(
         "AdmissionToken__PublicKeyPem=$(cat "$SECRETS_DIR/admission-public.pem")"
-        "ConnectionStrings__DefaultConnection=${inventory_connection};Maximum Pool Size=${INVENTORY_MAX_POOL:-20};Timeout=30"
+        "ConnectionStrings__DefaultConnection=${inventory_connection}"
       )
       if [[ -n "${INVENTORY_MAX_POOL:-}" ]]; then
         [[ "$INVENTORY_MAX_POOL" =~ ^[1-9][0-9]*$ ]] || fail "INVENTORY_MAX_POOL must be a positive integer"

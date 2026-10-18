@@ -166,6 +166,7 @@ Both are configured through settings only.
 | `OTEL` | 0 | `1` on `start-stack.sh` sends traces to the Aspire dashboard (http://localhost:18888) to find bottlenecks |
 | `SERVICES` | Identity Catalog Inventory WaitingRoom Gateway | Services `start-stack.sh` starts |
 | `INVENTORY_MAX_POOL` | `20` | Maximum Inventory PostgreSQL pool size used by the isolated stack. Override it for controlled capacity experiments. |
+| `SERVICE_MAX_POOL` | `10` | Maximum pool size for each other database-backed service. Keeps their combined demand below the local PostgreSQL server limit during bursts. |
 | `POSTGRES_HOST_PORT` | `55432` | Host port for the isolated PostgreSQL container, deliberately separate from a developer's normal port 5432 instance. |
 
 ---
