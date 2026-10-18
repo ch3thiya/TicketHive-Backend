@@ -45,6 +45,14 @@ wait_for() { # name url timeout_seconds
   until curl -fsS --connect-timeout 2 --max-time 5 -o /dev/null "$url"; do
     sleep 2; waited=$((waited + 2))
     if (( waited >= timeout )); then
+      local port="${url#*localhost:}"
+      port="${port%%/*}"
+      for service_log in "$RUN_DIR"/*-"$port".log; do
+        if [[ -f "$service_log" ]]; then
+          printf '\n[stack] Last 100 lines of %s:\n' "$service_log" >&2
+          tail -100 "$service_log" >&2
+        fi
+      done
       fail "$name did not become ready at $url within ${timeout}s (see $RUN_DIR/*.log)"
     fi
   done
@@ -127,7 +135,17 @@ for svc in $SERVICES; do
   [[ -n "$port" ]] || fail "Unknown service '$svc'"
   case "$svc" in
     Identity)
-      start_service "$svc" "$port" "ConnectionStrings__DefaultConnection=$(database_connection tickethive_identity)" ;;
+      # Identity validates its Asgardeo administration credentials at startup.
+      # The load suite only calls its local internal organizer-status endpoint,
+      # so use unmistakably synthetic values and an unreachable loopback base
+      # URL instead of requiring real credentials on developer or CI machines.
+      start_service "$svc" "$port" \
+        "ConnectionStrings__DefaultConnection=$(database_connection tickethive_identity)" \
+        Wso2__BaseUrl=http://127.0.0.1:1/ \
+        Wso2__AdminUsername=load-test-only \
+        Wso2__AdminPassword=load-test-only \
+        Wso2__M2mClientId=load-test-only \
+        Wso2__M2mClientSecret=load-test-only ;;
     Catalog)
       start_service "$svc" "$port" "ConnectionStrings__DefaultConnection=$(database_connection tickethive_catalog)" ;;
     Inventory)

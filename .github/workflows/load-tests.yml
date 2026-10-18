@@ -9,7 +9,7 @@ on:
     branches: [dev, main]
     paths: ['load-tests/**', 'services/**', 'docker-compose.yml', '.github/workflows/load-tests.yml']
   push:
-    branches: [feature/se3112-testing, feature/se3112-load-tests, feature/se3112-load-testing]
+    branches: [feature/load-testing]
     paths: ['load-tests/**', 'services/**', 'docker-compose.yml', '.github/workflows/load-tests.yml']
   workflow_dispatch:
     inputs:
