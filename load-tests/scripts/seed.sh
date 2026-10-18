@@ -34,6 +34,7 @@ log() { printf '\033[1;34m[seed]\033[0m %s\n' "$*"; }
 
 # shellcheck source=common.sh
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
+assert_local_url "Inventory" "$INVENTORY_URL"
 ORGANIZER_ID="$LOAD_TEST_ORGANIZER_ID"  # fixed, so cleanup.sh can find load-test rows
 EVENT_ID="$(uuid)"
 CAPACITY_SHOW="$(uuid)";   CAPACITY_CATEGORY="$(uuid)"
@@ -42,6 +43,14 @@ QUEUE_SHOW="$(uuid)";      QUEUE_CATEGORY="$(uuid)"
 
 # --- Catalog: one main event with the three shows, plus extra events to browse ---
 if [[ "$SEED_CATALOG" == "1" ]]; then
+  log "Seeding approved organizer in Identity"
+  docker exec -i "$PG_CONTAINER" psql -q -U postgres -d tickethive_identity -v ON_ERROR_STOP=1 <<SQL
+INSERT INTO user_accounts (id, wso2_sub, email, full_name, role, approval_status)
+VALUES ('$ORGANIZER_ID', 'load-test-organizer', 'load-test-organizer@localhost.invalid',
+        'Load Test Organizer', 'Organizer', 'approved')
+ON CONFLICT (id) DO UPDATE SET role = 'Organizer', approval_status = 'approved';
+SQL
+
   log "Seeding Catalog ($((BROWSE_EVENTS + 1)) published events)"
   docker exec -i "$PG_CONTAINER" psql -q -U postgres -d tickethive_catalog -v ON_ERROR_STOP=1 <<SQL
 BEGIN;
@@ -87,7 +96,7 @@ init_stock() { # show_id category_id capacity max_per_customer hold_minutes high
 JSON
 )
   local status
-  status=$(curl -sS -o "$DATA_DIR/.last-response.json" -w '%{http_code}' -X PUT \
+  status=$(curl -sS --connect-timeout 2 --max-time 30 -o "$DATA_DIR/.last-response.json" -w '%{http_code}' -X PUT \
     "$INVENTORY_URL/internal/inventory/shows/$1" \
     -H 'Authorization: Bearer dev-internal-token' \
     -H 'Content-Type: application/json' \

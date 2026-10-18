@@ -5,9 +5,12 @@ name: Load tests
 # environment and no Asgardeo credentials. The group pipeline can call it as
 # a reusable workflow (workflow_call).
 on:
+  pull_request:
+    branches: [dev, main]
+    paths: ['load-tests/**', 'services/**', 'docker-compose.yml', '.github/workflows/load-tests.yml']
   push:
-    branches: [feature/se3112-testing, feature/se3112-load-tests]
-    paths: ['load-tests/**', 'services/**', '.github/workflows/load-tests.yml']
+    branches: [feature/se3112-testing, feature/se3112-load-tests, feature/se3112-load-testing]
+    paths: ['load-tests/**', 'services/**', 'docker-compose.yml', '.github/workflows/load-tests.yml']
   workflow_dispatch:
     inputs:
       profile:

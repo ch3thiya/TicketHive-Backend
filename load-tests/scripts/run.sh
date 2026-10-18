@@ -21,6 +21,21 @@ PROFILE="${2:-smoke}"
 ISSUER_URL="${ISSUER_URL:-http://localhost:9400}"
 TOKEN_COUNT="${TOKEN_COUNT:-5000}"
 
+# shellcheck source=common.sh
+source "$LOAD_DIR/scripts/common.sh"
+
+assert_local_url "token issuer" "$ISSUER_URL"
+if [[ "${TARGET:-gateway}" == "direct" ]]; then
+  assert_local_url "Catalog" "${CATALOG_URL:-http://localhost:5142}"
+  assert_local_url "Inventory" "${INVENTORY_URL:-http://localhost:5219}"
+  assert_local_url "WaitingRoom" "${WAITING_ROOM_URL:-http://localhost:5231}"
+else
+  assert_local_url "gateway" "${GATEWAY_URL:-http://localhost:5080}"
+fi
+if [[ "$TEST" == "rate-limit" ]]; then
+  assert_local_url "rate-limit gateway" "${GATEWAY_DEFAULT_LIMIT_URL:-http://localhost:5081}"
+fi
+
 TESTS="holds oversell availability queue browse rate-limit"
 if [[ -z "$TEST" || ! -f "$LOAD_DIR/tests/$TEST.js" ]]; then
   echo "Usage: $0 <test> [profile]"
@@ -40,7 +55,7 @@ fi
 
 # 2. Tokens: a new subject prefix per run, so per-customer quotas and rate
 #    limits from an earlier run never carry over.
-curl -fsS "$ISSUER_URL/tokens?count=$TOKEN_COUNT&prefix=load-$(date +%s)-" -o "$LOAD_DIR/data/tokens.json" \
+curl -fsS --connect-timeout 2 --max-time 30 "$ISSUER_URL/tokens?count=$TOKEN_COUNT&prefix=load-$(date +%s)-" -o "$LOAD_DIR/data/tokens.json" \
   || { echo "Could not get tokens from $ISSUER_URL (is the stack running? ./scripts/start-stack.sh)" >&2; exit 1; }
 
 # 3. k6

@@ -28,13 +28,17 @@ real customers take. `TARGET=direct` bypasses it to isolate one service.
 
 ```bash
 cd load-tests
-./scripts/start-stack.sh            # infra + token issuer + Catalog, Inventory, WaitingRoom, Gateway
+./scripts/start-stack.sh            # infra + token issuer + Identity, Catalog, Inventory, WaitingRoom, Gateway
 ./scripts/run.sh holds smoke        # seeds data, fetches tokens, runs k6, checks the verdict
 ./scripts/stop-stack.sh             # add --all to stop Postgres/Kafka too
 ```
 
 `run.sh <test> <profile>` exits non-zero if any threshold **or** invariant fails.
 Each run writes three files to `results/`:
+
+The scripts reject every non-loopback target (`localhost`, `127.0.0.1`, or
+`::1`). They cannot be pointed at Azure or another shared deployment. This is
+an intentional cost and production-safety boundary for the assessment.
 
 | File | Contents |
 |---|---|
@@ -160,8 +164,9 @@ Both are configured through settings only.
 | `SPOOF_XFF` | 0 | `1` runs the rate-limit exposure check (below) |
 | `WARMUP_REQUESTS` | 5 | Untimed requests before measuring; `0` measures a cold system |
 | `OTEL` | 0 | `1` on `start-stack.sh` sends traces to the Aspire dashboard (http://localhost:18888) to find bottlenecks |
-| `SERVICES` | Catalog Inventory WaitingRoom Gateway | Services `start-stack.sh` starts |
-| `INVENTORY_MAX_POOL` | unset | `start-stack.sh` only: starts Inventory with `Maximum Pool Size=<n>;Timeout=30` added to its connection string, to test a bounded pool without changing the service. Unset keeps the service's own configuration |
+| `SERVICES` | Identity Catalog Inventory WaitingRoom Gateway | Services `start-stack.sh` starts |
+| `INVENTORY_MAX_POOL` | `20` | Maximum Inventory PostgreSQL pool size used by the isolated stack. Override it for controlled capacity experiments. |
+| `POSTGRES_HOST_PORT` | `55432` | Host port for the isolated PostgreSQL container, deliberately separate from a developer's normal port 5432 instance. |
 
 ---
 
