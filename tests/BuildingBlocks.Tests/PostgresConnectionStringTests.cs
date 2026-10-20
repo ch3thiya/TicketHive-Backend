@@ -1,4 +1,5 @@
 using BuildingBlocks;
+using Npgsql;
 using Xunit;
 
 namespace BuildingBlocks.Tests;
@@ -34,5 +35,25 @@ public class PostgresConnectionStringTests
 
         // Assert
         Assert.Equal(keyValueConnectionString, result);
+    }
+
+    [Fact]
+    public void Normalize_UriWithoutPasswordOrPort_UsesEmptyPasswordAndDefaultPort()
+    {
+        var result = PostgresConnectionString.Normalize("postgres://myuser@dbhost/mydb");
+
+        Assert.Contains("Host=dbhost", result);
+        Assert.Contains("Port=5432", result);
+        Assert.Contains("Username=myuser", result);
+        Assert.Null(new NpgsqlConnectionStringBuilder(result).Password);
+    }
+
+    [Fact]
+    public void Normalize_EscapedCredentials_AreDecoded()
+    {
+        var result = PostgresConnectionString.Normalize("postgresql://first%40last:p%40ss@dbhost/mydb");
+
+        Assert.Contains("Username=first@last", result);
+        Assert.Contains("Password=p@ss", result);
     }
 }

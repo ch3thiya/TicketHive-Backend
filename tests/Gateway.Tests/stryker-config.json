@@ -1,0 +1,14 @@
+{
+  "stryker-config": {
+    "project": "Gateway.csproj",
+    "configuration": "Release",
+    "mutation-level": "Standard",
+    "mutate": [
+      "Proxy/ClientRateLimiter.cs",
+      "Proxy/UpstreamCorsHeaderRemover.cs"
+    ],
+    "test-case-filter": "FullyQualifiedName~RateLimitingTests|FullyQualifiedName~UpstreamCorsHeaderRemoverTests",
+    "reporters": ["progress", "html", "json"],
+    "thresholds": { "high": 90, "low": 80, "break": 80 }
+  }
+}

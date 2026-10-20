@@ -1,0 +1,13 @@
+{
+  "stryker-config": {
+    "project": "Payment.Service.csproj",
+    "configuration": "Release",
+    "mutation-level": "Standard",
+    "mutate": [
+      "Services/PayHereService.cs"
+    ],
+    "test-case-filter": "FullyQualifiedName~PayHereServiceTests",
+    "reporters": ["progress", "html", "json"],
+    "thresholds": { "high": 90, "low": 80, "break": 80 }
+  }
+}

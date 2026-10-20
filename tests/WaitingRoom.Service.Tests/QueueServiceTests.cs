@@ -110,6 +110,45 @@ public class QueueServiceTests
     }
 
     [Fact]
+    public async Task JoinAsync_AtPrequeueOpening_JoinsWithoutAskingCatalog()
+    {
+        var showId = Guid.CreateVersion7();
+        var now = _timeProvider.GetUtcNow();
+        var queue = new Queue(showId, now.AddMinutes(30), now, 0, 0, 50, 30, QueueStatus.PreQueue);
+        var expected = new QueueEntry(showId, "customer-1", 0.5, null, now, null);
+        _mockRepository.Setup(r => r.GetQueueAsync(showId, It.IsAny<CancellationToken>())).ReturnsAsync(queue);
+        _mockRepository.Setup(r => r.JoinPreQueueAsync(showId, "customer-1", now, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(expected);
+
+        var actual = await _service.JoinAsync(showId, "customer-1");
+
+        Assert.Same(expected, actual);
+        _mockCatalogClient.Verify(c => c.GetSalesRulesAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+        _mockRepository.Verify(r => r.RunOnSaleTransitionAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task JoinAsync_AtOnSale_TransitionsPrequeueBeforeAssigningPostSaleNumber()
+    {
+        var showId = Guid.CreateVersion7();
+        var now = _timeProvider.GetUtcNow();
+        var prequeue = new Queue(showId, now, now.AddMinutes(-30), 0, 0, 50, 30, QueueStatus.PreQueue);
+        var open = prequeue with { Status = QueueStatus.Open, NextNumber = 1 };
+        var expected = new QueueEntry(showId, "customer-1", 0.5, 1, now, null);
+        _mockRepository.SetupSequence(r => r.GetQueueAsync(showId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(prequeue)
+            .ReturnsAsync(open);
+        _mockRepository.Setup(r => r.JoinPostSaleAsync(showId, "customer-1", now, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(expected);
+
+        var actual = await _service.JoinAsync(showId, "customer-1");
+
+        Assert.Same(expected, actual);
+        _mockRepository.Verify(r => r.RunOnSaleTransitionAsync(showId, It.IsAny<CancellationToken>()), Times.Once);
+        _mockRepository.Verify(r => r.JoinPreQueueAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task JoinAsync_DuringOnSale_JoinsPostSale()
     {
         // Arrange
@@ -128,6 +167,7 @@ public class QueueServiceTests
         // Assert
         Assert.Same(expectedEntry, result);
         _mockRepository.Verify(r => r.JoinPreQueueAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
+        _mockRepository.Verify(r => r.RunOnSaleTransitionAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]

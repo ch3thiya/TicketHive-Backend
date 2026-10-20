@@ -1,0 +1,14 @@
+{
+  "stryker-config": {
+    "project": "WaitingRoom.Service.csproj",
+    "configuration": "Release",
+    "mutation-level": "Standard",
+    "mutate": [
+      "Services/QueueService.cs",
+      "Services/AdmissionTokenOptionsValidator.cs"
+    ],
+    "test-case-filter": "FullyQualifiedName~QueueServiceTests|FullyQualifiedName~AdmissionTokenOptionsValidatorTests",
+    "reporters": ["progress", "html", "json"],
+    "thresholds": { "high": 90, "low": 80, "break": 80 }
+  }
+}

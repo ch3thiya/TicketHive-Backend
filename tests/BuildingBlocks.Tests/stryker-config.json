@@ -1,0 +1,14 @@
+{
+  "stryker-config": {
+    "project": "BuildingBlocks.csproj",
+    "configuration": "Release",
+    "mutation-level": "Standard",
+    "mutate": [
+      "PostgresConnectionString.cs",
+      "InternalServiceTokenClientOptionsValidator.cs"
+    ],
+    "test-case-filter": "FullyQualifiedName~PostgresConnectionStringTests|FullyQualifiedName~InternalServiceTokenClientOptionsValidatorTests",
+    "reporters": ["progress", "html", "json"],
+    "thresholds": { "high": 90, "low": 80, "break": 80 }
+  }
+}

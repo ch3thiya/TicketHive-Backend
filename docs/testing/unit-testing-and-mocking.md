@@ -31,6 +31,8 @@ dotnet test TicketHive.slnx --configuration Release \
 
 The count is not the quality target by itself. The important cases assert domain outcomes, failure paths, authorization boundaries, time behavior, and collaborator calls.
 
+The later mutation-testing branch adds boundary and interaction tests across the same backend projects. On the combined branch, the command above passes **778 non-integration cases** (20 October 2026).
+
 ## Mocking and isolation matrix
 
 | Area | Representative tests | Isolation/evidence |

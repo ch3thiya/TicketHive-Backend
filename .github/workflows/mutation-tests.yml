@@ -36,6 +36,11 @@ jobs:
           - Booking.Service.Tests
           - Identity.Service.Tests
           - Notification.Service.Tests
+          - Inventory.Service.Tests
+          - WaitingRoom.Service.Tests
+          - Payment.Service.Tests
+          - Gateway.Tests
+          - BuildingBlocks.Tests
 
     steps:
       - uses: actions/checkout@v5
