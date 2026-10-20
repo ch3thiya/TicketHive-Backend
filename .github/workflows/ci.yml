@@ -2,6 +2,10 @@ name: CI
 
 # Pull requests targeting dev or main. No deployment happens here.
 on:
+  push:
+    branches:
+      - feature/se3112-code-quality
+
   pull_request:
     branches: [dev, main]
 
