@@ -6,6 +6,17 @@ namespace Identity.Service.Tests;
 public class OrganizerStatusRulesTests
 {
     [Theory]
+    [InlineData("approved", true)]
+    [InlineData("suspended", true)]
+    [InlineData("pending", false)]
+    [InlineData("Approved", false)]
+    [InlineData(null, false)]
+    public void IsKnownOrganizerStatus_OnlyAcceptsCanonicalOrganizerStates(string? status, bool expected)
+    {
+        Assert.Equal(expected, OrganizerStatuses.IsKnownOrganizerStatus(status));
+    }
+
+    [Theory]
     [InlineData("approved", OrganizerStatusAction.Suspend, OrganizerStatusChangeOutcome.Changed, "suspended")]
     [InlineData("suspended", OrganizerStatusAction.Suspend, OrganizerStatusChangeOutcome.Unchanged, "suspended")]
     [InlineData("suspended", OrganizerStatusAction.Reinstate, OrganizerStatusChangeOutcome.Changed, "approved")]

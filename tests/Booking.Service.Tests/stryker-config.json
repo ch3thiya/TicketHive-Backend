@@ -1,0 +1,22 @@
+{
+  "stryker-config": {
+    "project": "Booking.Service.csproj",
+    "configuration": "Release",
+    "mutation-level": "Standard",
+    "mutate": [
+      "Models/CancellationRules.cs",
+      "Models/ShowSales.cs"
+    ],
+    "test-case-filter": "FullyQualifiedName~CancellationRulesTests|FullyQualifiedName~ShowSalesCalculatorTests",
+    "reporters": [
+      "progress",
+      "html",
+      "json"
+    ],
+    "thresholds": {
+      "high": 90,
+      "low": 80,
+      "break": 80
+    }
+  }
+}

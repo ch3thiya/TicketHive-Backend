@@ -1,0 +1,62 @@
+name: Mutation tests
+
+on:
+  pull_request:
+    branches: [dev, main]
+    paths:
+      - 'services/**'
+      - 'tests/**'
+      - '.config/dotnet-tools.json'
+      - '.github/workflows/mutation-tests.yml'
+  push:
+    branches: [feature/mutation-testing]
+    paths:
+      - 'services/**'
+      - 'tests/**'
+      - '.config/dotnet-tools.json'
+      - '.github/workflows/mutation-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mutation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mutate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        suite:
+          - Catalog.Service.Tests
+          - Booking.Service.Tests
+          - Identity.Service.Tests
+          - Notification.Service.Tests
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore tools and packages
+        run: |
+          dotnet tool restore
+          dotnet restore TicketHive.slnx
+
+      - name: Run ${{ matrix.suite }} mutation scope
+        working-directory: tests/${{ matrix.suite }}
+        run: dotnet stryker
+
+      - name: Upload mutation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-${{ matrix.suite }}
+          path: tests/${{ matrix.suite }}/StrykerOutput/**/reports/*
+          if-no-files-found: warn

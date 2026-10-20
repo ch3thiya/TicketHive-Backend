@@ -34,6 +34,22 @@ public class SeatLayoutRulesTests
     }
 
     [Fact]
+    public void ExactlyMaximumSections_IsAllowed_ButOneMoreIsRejected()
+    {
+        var sections = Enumerable.Range(0, SeatLayoutRules.MaxSections)
+            .Select(i => new SeatLayoutSection($"S{i}", Vip, 1, 1))
+            .ToArray();
+
+        Assert.Empty(Codes(Spec(sections), [new TicketCategory
+        {
+            Id = Vip, Name = "VIP", Capacity = SeatLayoutRules.MaxSections
+        }]));
+        Assert.Equal(new[] { "TooLarge" }, Codes(
+            Spec([.. sections, new SeatLayoutSection("OneTooMany", Vip, 1, 1)]),
+            [new TicketCategory { Id = Vip, Name = "VIP", Capacity = SeatLayoutRules.MaxSections + 1 }]));
+    }
+
+    [Fact]
     public void UnassignedSection_IsRejected()
     {
         var spec = Spec(new SeatLayoutSection("Front", Guid.Empty, 2, 10), new SeatLayoutSection("Hall", General, 10, 10));
@@ -69,17 +85,50 @@ public class SeatLayoutRulesTests
     }
 
     [Theory]
-    [InlineData("", 1, 1)]
-    [InlineData("Front", 0, 10)]
-    [InlineData("Front", 10, 0)]
-    [InlineData("Front", -1, 10)]
-    [InlineData("Front", 201, 10)]
-    [InlineData("Front", 10, 501)]
-    public void BadNamesOrDimensions_AreRejected(string name, int rows, int seats)
+    [InlineData(0, 10)]
+    [InlineData(10, 0)]
+    [InlineData(-1, 10)]
+    [InlineData(SeatLayoutRules.MaxRowsPerSection + 1, 10)]
+    [InlineData(10, SeatLayoutRules.MaxSeatsPerRow + 1)]
+    public void BadDimensions_AreRejectedWithTheDimensionCode(int rows, int seats)
     {
-        var spec = Spec(new SeatLayoutSection(name, Vip, rows, seats));
+        var spec = Spec(new SeatLayoutSection("Front", Vip, rows, seats));
 
-        Assert.NotEmpty(Codes(spec, Categories()));
+        Assert.Contains("InvalidDimensions", Codes(spec, Categories()));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void BlankSectionName_IsRejectedWithTheNameCode(string name)
+    {
+        var spec = Spec(new SeatLayoutSection(name, Vip, 1, 1));
+
+        Assert.Contains("InvalidSectionName", Codes(spec, [new TicketCategory { Id = Vip, Name = "VIP", Capacity = 1 }]));
+    }
+
+    [Fact]
+    public void SectionName_AllowsMaximumLengthButRejectsOneMore()
+    {
+        var maximum = new string('a', SeatLayoutRules.MaxSectionNameLength);
+        var category = new TicketCategory { Id = Vip, Name = "VIP", Capacity = 1 };
+
+        Assert.Empty(Codes(Spec(new SeatLayoutSection(maximum, Vip, 1, 1)), [category]));
+        Assert.Contains("InvalidSectionName", Codes(
+            Spec(new SeatLayoutSection($"{maximum}a", Vip, 1, 1)), [category]));
+    }
+
+    [Fact]
+    public void MaximumDimensionsAndTotal_AreAllowed()
+    {
+        var spec = Spec(new SeatLayoutSection(
+            "Arena", Vip, SeatLayoutRules.MaxRowsPerSection, 250));
+
+        Assert.Equal(SeatLayoutRules.MaxSeats, SeatLayoutRules.SeatCount(spec));
+        Assert.Empty(Codes(spec, [new TicketCategory
+        {
+            Id = Vip, Name = "VIP", Capacity = SeatLayoutRules.MaxSeats
+        }]));
     }
 
     [Fact]
