@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RunSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="XPlat Code Coverage">
+        <Configuration>
+          <Format>cobertura</Format>
+          <Exclude>[*.Tests]*</Exclude>
+          <!-- Unit coverage measures business/application logic. Program wiring,
+               generated OpenAPI code, migrations, and repositories are exercised
+               by API/integration tests and reported by that separate CI run. -->
+          <ExcludeByFile>**/Program.cs,**/obj/**,**/Db/*Repository.cs,**/Db/Migrations/**</ExcludeByFile>
+          <ExcludeByAttribute>GeneratedCodeAttribute,CompilerGeneratedAttribute</ExcludeByAttribute>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>

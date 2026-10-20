@@ -73,17 +73,26 @@ jobs:
       # Testcontainers failure is distinguishable from a logic failure.
       - name: Unit and architecture tests
         run: |
-          dotnet test TicketHive.slnx --configuration Release --no-build \
-            --filter "FullyQualifiedName!~Integration" \
-            --collect:"XPlat Code Coverage" \
-            --logger "trx;LogFileName=unit.trx" --results-directory ./test-results
+          for project in tests/*/*.csproj; do
+            suite="$(basename "$(dirname "$project")")"
+            dotnet test "$project" --configuration Release --no-build \
+              --filter "FullyQualifiedName!~Integration" \
+              --settings tests/unit-coverage.runsettings \
+              --collect:"XPlat Code Coverage" \
+              --logger "trx;LogFileName=unit.trx" \
+              --results-directory "./test-results/unit/$suite"
+          done
 
       - name: Integration tests (Testcontainers)
         run: |
-          dotnet test TicketHive.slnx --configuration Release --no-build \
-            --filter "FullyQualifiedName~Integration" \
-            --collect:"XPlat Code Coverage" \
-            --logger "trx;LogFileName=integration.trx" --results-directory ./test-results
+          for project in tests/*/*.csproj; do
+            suite="$(basename "$(dirname "$project")")"
+            dotnet test "$project" --configuration Release --no-build \
+              --filter "FullyQualifiedName~Integration" \
+              --collect:"XPlat Code Coverage" \
+              --logger "trx;LogFileName=integration.trx" \
+              --results-directory "./test-results/integration/$suite"
+          done
 
       - uses: actions/upload-artifact@v4
         if: always()
