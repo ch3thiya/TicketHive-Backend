@@ -217,6 +217,8 @@ All available tests should pass before creating a Pull Request.
 
 Focused mutation tests and their quality gate are documented in
 [`docs/testing/mutation-testing.md`](docs/testing/mutation-testing.md).
+Whole-backend unit and mocking evidence is documented in
+[`docs/testing/unit-testing-and-mocking.md`](docs/testing/unit-testing-and-mocking.md).
 
 ### 5. Run a Service Locally
 

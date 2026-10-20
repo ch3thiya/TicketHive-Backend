@@ -1,0 +1,15 @@
+{
+  "stryker-config": {
+    "project": "Inventory.Service.csproj",
+    "configuration": "Release",
+    "mutation-level": "Standard",
+    "ignore-mutations": ["string"],
+    "mutate": [
+      "Services/StockService.cs",
+      "Models/SalesEligibilityDecision.cs"
+    ],
+    "test-case-filter": "FullyQualifiedName~StockServiceTests|FullyQualifiedName~HoldServiceSalesEligibilityTests|FullyQualifiedName~SalesEligibilityClientTests",
+    "reporters": ["progress", "html", "json"],
+    "thresholds": { "high": 90, "low": 80, "break": 80 }
+  }
+}

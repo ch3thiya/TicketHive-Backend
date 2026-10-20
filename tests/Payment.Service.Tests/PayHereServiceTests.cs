@@ -20,9 +20,9 @@ public class PayHereServiceTests
             {
                 ["PayHere:MerchantId"] = "1238120",
                 ["PayHere:MerchantSecret"] = "MjM1OTc0NjAzMjM5Njc3OTg3MTExNjY0NjgzODEyMTI0NDYxODM3Mw==",
-                ["PayHere:ReturnUrl"] = "http://localhost:5173/checkout",
-                ["PayHere:CancelUrl"] = "http://localhost:5173/checkout",
-                ["PayHere:NotifyUrl"] = "http://localhost:5006/api/payment/notify"
+                ["PayHere:ReturnUrl"] = "https://tickets.example/paid",
+                ["PayHere:CancelUrl"] = "https://tickets.example/cancelled",
+                ["PayHere:NotifyUrl"] = "https://api.example/payhere/callback"
             })
             .Build();
 
@@ -34,23 +34,23 @@ public class PayHereServiceTests
     public void GenerateCheckoutParams_ReturnsValidParamsAndHash()
     {
         var orderId = Guid.NewGuid();
-        var amount = 1500.00m;
+        var amount = 10.5m;
         var currency = "LKR";
 
         var paramsResult = _payHereService.GenerateCheckoutParams(orderId, amount, currency, "Test Ticket");
 
         Assert.Equal("1238120", paramsResult.MerchantId);
         Assert.Equal(orderId.ToString(), paramsResult.OrderId);
-        Assert.Equal(1500.00m, paramsResult.Amount);
+        Assert.Equal(10.5m, paramsResult.Amount);
         Assert.Equal("LKR", paramsResult.Currency);
         Assert.Equal("Test Ticket", paramsResult.Items);
-        Assert.Equal($"http://localhost:5173/checkout/{orderId}", paramsResult.ReturnUrl);
-        Assert.Equal($"http://localhost:5173/checkout/{orderId}", paramsResult.CancelUrl);
-        Assert.Equal("http://localhost:5006/api/payment/notify", paramsResult.NotifyUrl);
+        Assert.Equal($"https://tickets.example/paid/{orderId}", paramsResult.ReturnUrl);
+        Assert.Equal($"https://tickets.example/cancelled/{orderId}", paramsResult.CancelUrl);
+        Assert.Equal("https://api.example/payhere/callback", paramsResult.NotifyUrl);
 
         var secretHex = Convert.ToHexString(MD5.HashData(Encoding.UTF8.GetBytes(
             "MjM1OTc0NjAzMjM5Njc3OTg3MTExNjY0NjgzODEyMTI0NDYxODM3Mw==")));
-        var raw = $"1238120{orderId}1500.00LKR{secretHex}";
+        var raw = $"1238120{orderId}10.50LKR{secretHex}";
         Assert.Equal(Convert.ToHexString(MD5.HashData(Encoding.UTF8.GetBytes(raw))), paramsResult.Hash);
     }
 
@@ -82,6 +82,26 @@ public class PayHereServiceTests
     {
         Assert.False(_payHereService.VerifyNotificationSignature(
             "merchant", Guid.NewGuid().ToString(), "1500.00", "LKR", "2", signature));
+    }
+
+    [Fact]
+    public void VerifyNotificationSignature_InvalidSignatureLogsTheOrderForInvestigation()
+    {
+        var logger = new Mock<ILogger<PayHereService>>();
+        var service = new PayHereService(Configuration(new Dictionary<string, string?>
+        {
+            ["PayHere:MerchantId"] = "merchant",
+            ["PayHere:MerchantSecret"] = "secret"
+        }), logger.Object);
+        var orderId = Guid.NewGuid().ToString();
+
+        Assert.False(service.VerifyNotificationSignature("merchant", orderId, "10.00", "LKR", "2", "bad-signature"));
+        logger.Verify(log => log.Log(
+            LogLevel.Warning,
+            It.IsAny<EventId>(),
+            It.Is<It.IsAnyType>((state, _) => state.ToString()!.Contains(orderId)),
+            It.IsAny<Exception?>(),
+            It.IsAny<Func<It.IsAnyType, Exception?, string>>()), Times.Once);
     }
 
     [Fact]
