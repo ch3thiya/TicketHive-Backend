@@ -129,7 +129,7 @@ jobs:
           dotnet test TicketHive.slnx --configuration Release --no-build \
             --filter "FullyQualifiedName!~Integration" \
             --collect:"XPlat Code Coverage;Format=opencover,cobertura" \
-            --logger "trx;LogFileName=unit.trx" \
+            --logger "trx;LogFilePrefix=unit" \
             --results-directory ./TestResults-CI/unit
 
       # Integration tests use Testcontainers.
@@ -138,7 +138,7 @@ jobs:
           dotnet test TicketHive.slnx --configuration Release --no-build \
             --filter "FullyQualifiedName~Integration" \
             --collect:"XPlat Code Coverage;Format=opencover,cobertura" \
-            --logger "trx;LogFileName=integration.trx" \
+            --logger "trx;LogFilePrefix=integration" \
             --results-directory ./TestResults-CI/integration
 
       # Always try to finalize Sonar after a successful begin.
