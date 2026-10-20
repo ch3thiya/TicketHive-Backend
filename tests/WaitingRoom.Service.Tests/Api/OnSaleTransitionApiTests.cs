@@ -5,9 +5,10 @@ using System.Threading.Tasks;
 using Npgsql;
 using Xunit;
 using WaitingRoom.Service.Services;
+using WaitingRoom.Service.Tests.Api;
 using WaitingRoom.Service.Tests.Integration;
 
-namespace WaitingRoom.Service.Tests.Api;
+namespace WaitingRoom.Service.Tests.Integration.Api;
 
 // Reproduces the manual-testing report that defect 3 still occurs against
 // the real running service on both the join path and the scheduler path,
