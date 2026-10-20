@@ -1,0 +1,28 @@
+{
+  "stryker-config": {
+    "project": "Catalog.Service.csproj",
+    "configuration": "Release",
+    "mutation-level": "Standard",
+    "ignore-mutations": [
+      "string"
+    ],
+    "mutate": [
+      "Models/EventStatusTransitions.cs",
+      "Models/ShowStatusTransitions.cs",
+      "Models/SalesEligibility.cs",
+      "Models/SeatMap.cs",
+      "Models/VenueSeatMap.cs"
+    ],
+    "test-case-filter": "FullyQualifiedName~EventStatusTransitionsTests|FullyQualifiedName~ShowStatusTransitionsTests|FullyQualifiedName~SalesEligibilityServiceTests|FullyQualifiedName~SeatLayoutRulesTests|FullyQualifiedName~VenueSeatMapRulesTests",
+    "reporters": [
+      "progress",
+      "html",
+      "json"
+    ],
+    "thresholds": {
+      "high": 90,
+      "low": 80,
+      "break": 80
+    }
+  }
+}

@@ -44,6 +44,18 @@ public class ShowSalesCalculatorTests
     }
 
     [Fact]
+    public void UsedRowsOfOneCategory_AreSummedRatherThanTakingOneRow()
+    {
+        var sold = new[] { new SoldRow(A, "LKR", 3, 30m) };
+        var used = new[] { new UsedRow(A, 1), new UsedRow(A, 2) };
+
+        var sales = ShowSalesCalculator.Compose(Show, sold, used, Now).Sales!;
+
+        Assert.Equal(3, sales.TicketsUsed);
+        Assert.Equal(3, Assert.Single(sales.Categories).Used);
+    }
+
+    [Fact]
     public void MoreThanOneCurrency_HasNoTotal()
     {
         var sold = new[] { new SoldRow(A, "LKR", 1, 10m), new SoldRow(B, "USD", 1, 1m) };

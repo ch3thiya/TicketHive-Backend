@@ -23,4 +23,10 @@ public class CancellationRulesTests
     [Fact]
     public void Repeat_does_not_bypass_ownership() =>
         Assert.Equal("NotFound", CancellationRules.Refusal(OrderStatus.Cancelled, false, false, Start, Start, false));
+
+    [Theory]
+    [InlineData(OrderStatus.PaymentPending)]
+    [InlineData(OrderStatus.Failed)]
+    public void Customer_can_only_cancel_a_confirmed_order(OrderStatus status) =>
+        Assert.Equal("OrderNotConfirmed", CancellationRules.Refusal(status, true, false, Start, Start.AddMinutes(-1), false));
 }

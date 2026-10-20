@@ -1,0 +1,21 @@
+{
+  "stryker-config": {
+    "project": "Identity.Service.csproj",
+    "configuration": "Release",
+    "mutation-level": "Standard",
+    "mutate": [
+      "Models/OrganizerStatus.cs"
+    ],
+    "test-case-filter": "FullyQualifiedName~OrganizerStatusRulesTests",
+    "reporters": [
+      "progress",
+      "html",
+      "json"
+    ],
+    "thresholds": {
+      "high": 90,
+      "low": 80,
+      "break": 80
+    }
+  }
+}

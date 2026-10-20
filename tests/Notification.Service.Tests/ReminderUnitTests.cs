@@ -20,6 +20,7 @@ public class ReminderRulesTests
     [InlineData(null, false)]
     [InlineData("no-at-sign", false)]
     [InlineData("a@b", false)]
+    [InlineData("a@.com", false)]
     [InlineData("two@@example.com", false)]
     [InlineData("two@at@example.com", false)]
     [InlineData("has space@example.com", false)]
@@ -28,6 +29,16 @@ public class ReminderRulesTests
     [InlineData("user-sub-without-an-email", false)]
     public void OnlyARealAddressIsDeliverable(string? email, bool expected) =>
         Assert.Equal(expected, ReminderRules.IsDeliverableRecipient(email));
+
+    [Fact]
+    public void RecipientLength_Allows255CharactersButRejects256()
+    {
+        var maximum = $"{new string('a', 250)}@a.co";
+
+        Assert.Equal(255, maximum.Length);
+        Assert.True(ReminderRules.IsDeliverableRecipient(maximum));
+        Assert.False(ReminderRules.IsDeliverableRecipient($"a{maximum}"));
+    }
 
     private static readonly DateTimeOffset Now = new(2026, 12, 1, 0, 0, 0, TimeSpan.Zero);
     private static readonly TimeSpan Window = TimeSpan.FromHours(24);
