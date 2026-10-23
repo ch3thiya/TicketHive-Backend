@@ -1,7 +1,11 @@
 name: CI
 
-# Every pull request and every push to dev. No deployment happens here.
+# Pull requests targeting dev or main, and integration-branch pushes. No deployment happens here.
 on:
+  push:
+    branches:
+      - feature/testing-pipeline
+
   pull_request:
     branches: [dev, main]
 
@@ -13,43 +17,69 @@ permissions:
   contents: read
 
 jobs:
-  # Branch and commit conventions from ADR-016. GitHub's own branch-name rules
-  # need Enterprise, so this job enforces them instead.
+  # Branch and commit conventions from ADR-016.
   conventions:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
-    steps:
-      - name: Branch name
-        run: |
-          branch="${{ github.head_ref }}"
-          if [[ "$branch" == "dev" || "$branch" == "main" ]]; then
-            echo "Release PR from $branch - branch naming rule does not apply"
-            exit 0
-          fi
-          if [[ ! "$branch" =~ ^(feature|fix)/[a-z0-9]+(-[a-z0-9]+)*$ ]]; then
-            echo "::error::Branch '$branch' must match feature/<description> or fix/<description>, lowercase and hyphenated."
-            exit 1
-          fi
-          echo "Branch name OK: $branch"
 
-
-
-  secrets:
-    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      - name: gitleaks
+
+      - name: Branch name
+        run: |
+          branch="${{ github.head_ref }}"
+
+          if [[ "$branch" == "dev" || "$branch" == "main" ]]; then
+            echo "Release PR from $branch - branch naming rule does not apply"
+            exit 0
+          fi
+
+          if [[ ! "$branch" =~ ^(feature|fix)/[a-z0-9]+(-[a-z0-9]+)*$ ]]; then
+            echo "::error::Branch '$branch' must match feature/<description> or fix/<description>, lowercase and hyphenated."
+            exit 1
+          fi
+
+          echo "Branch name OK: $branch"
+
+      - name: Commit message prefixes
+        run: |
+          bad=0
+
+          while read -r sha subject; do
+            if [[ ! "$subject" =~ ^(feat|fix|test|docs|ci|refactor|chore): ]]; then
+              echo "::error::${sha} '${subject}' is missing a prefix (feat: fix: test: docs: ci: refactor: chore:)"
+              bad=1
+            fi
+          done < <(git log --no-merges --format='%h %s' \
+            "origin/${{ github.base_ref }}..HEAD" --not origin/main)
+
+          exit $bad
+
+  secrets:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Gitleaks
         run: |
           docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest \
             detect --source /repo --config /repo/.gitleaks.toml --redact --verbose \
             --log-opts "origin/${{ github.base_ref || 'dev' }}..HEAD"
 
+  # Build, test, collect coverage, and enforce SonarCloud quality.
   build:
     runs-on: ubuntu-24.04
+
     steps:
       - uses: actions/checkout@v5
+        with:
+          # Full history helps SonarCloud identify changed code.
+          fetch-depth: 0
 
       - uses: actions/setup-dotnet@v4
         with:
@@ -62,15 +92,38 @@ jobs:
           key: nuget-${{ hashFiles('**/*.csproj') }}
           restore-keys: nuget-
 
-      - run: dotnet restore TicketHive.slnx
+      - name: Restore dependencies
+        run: dotnet restore TicketHive.slnx
 
       - name: Format check
         run: dotnet format TicketHive.slnx --verify-no-changes --no-restore
 
-      - run: dotnet build TicketHive.slnx --configuration Release --no-restore
+      - name: Install SonarScanner and ReportGenerator
+        run: |
+          dotnet tool install --global dotnet-sonarscanner --version 12.0.0
+          dotnet tool install --global dotnet-reportgenerator-globaltool
 
-      # Unit and architecture tests. Integration tests are a separate job so a
-      # Testcontainers failure is distinguishable from a logic failure.
+          echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+
+      # GitHub Actions automatically identifies this as PR analysis.
+      - name: SonarCloud begin
+        id: sonar_begin
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          dotnet sonarscanner begin \
+            /k:"ch3thiya_TicketHive-Backend" \
+            /o:"ch3thiya" \
+            /d:sonar.host.url="https://sonarcloud.io" \
+            /d:sonar.token="$SONAR_TOKEN" \
+            /d:sonar.cs.opencover.reportsPaths="TestResults-CI/**/coverage.opencover.xml" \
+            /d:sonar.qualitygate.wait=true \
+            /d:sonar.exclusions="coverage-report/**,TestResults*/**"
+
+      - name: Build solution
+        run: dotnet build TicketHive.slnx --configuration Release --no-restore
+
+      # Unit and architecture tests.
       - name: Unit and architecture tests
         run: |
           for project in tests/*/*.csproj; do
@@ -80,32 +133,70 @@ jobs:
               --settings tests/unit-coverage.runsettings \
               --collect:"XPlat Code Coverage" \
               --logger "trx;LogFileName=unit.trx" \
-              --results-directory "./test-results/unit/$suite"
+              --results-directory "./TestResults-CI/unit/$suite"
           done
 
-      - name: Integration tests (Testcontainers)
+      # Integration tests use Testcontainers.
+      - name: Integration tests
         run: |
           for project in tests/*/*.csproj; do
             suite="$(basename "$(dirname "$project")")"
             dotnet test "$project" --configuration Release --no-build \
               --filter "FullyQualifiedName~Integration" \
-              --collect:"XPlat Code Coverage" \
+              --collect:"XPlat Code Coverage;Format=opencover,cobertura" \
               --logger "trx;LogFileName=integration.trx" \
-              --results-directory "./test-results/integration/$suite"
+              --results-directory "./TestResults-CI/integration/$suite"
           done
+
+      # Always try to finalize Sonar after a successful begin.
+      # A failed Quality Gate makes this step and the job fail.
+      - name: SonarCloud end and Quality Gate
+        if: always() && steps.sonar_begin.outcome == 'success'
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          dotnet sonarscanner end /d:sonar.token="$SONAR_TOKEN"
+
+      # Generate an HTML report even if a later quality check fails.
+      - name: Generate HTML coverage report
+        if: always()
+        run: |
+          if find TestResults-CI -type f -name coverage.cobertura.xml -print -quit | grep -q .; then
+            reportgenerator \
+              "-reports:TestResults-CI/**/coverage.cobertura.xml" \
+              "-targetdir:coverage-report" \
+              "-reporttypes:Html;MarkdownSummaryGithub"
+          else
+            echo "No Cobertura coverage report was generated."
+          fi
+
+      - name: Add coverage summary to GitHub Actions
+        if: always()
+        run: |
+          if [ -f coverage-report/SummaryGithub.md ]; then
+            cat coverage-report/SummaryGithub.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Coverage summary was not generated." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: test-results
-          path: ./test-results
+          path: |
+            TestResults-CI/
+            coverage-report/
+          if-no-files-found: warn
 
-  # Which services changed. A BuildingBlocks change counts as all of them.
+  # Determine which services changed.
+  # A BuildingBlocks change counts as all services.
   changes:
     runs-on: ubuntu-24.04
+
     outputs:
       services: ${{ steps.detect.outputs.services }}
       any: ${{ steps.detect.outputs.any }}
+
     steps:
       - uses: actions/checkout@v5
         with:
@@ -114,9 +205,13 @@ jobs:
       - id: detect
         run: |
           base="origin/${{ github.base_ref || 'dev' }}"
+
           git fetch origin "${{ github.base_ref || 'dev' }}" --depth=50 || true
+
           changed="$(git diff --name-only "$base"...HEAD || git diff --name-only HEAD~1)"
-          echo "changed files:"; echo "$changed"
+
+          echo "Changed files:"
+          echo "$changed"
 
           all='["identity","catalog","inventory","waitingroom","booking","payment","notification","gateway"]'
 
@@ -127,6 +222,7 @@ jobs:
           fi
 
           list=()
+
           for svc in Identity Catalog Inventory WaitingRoom Booking Payment Notification Gateway; do
             if grep -q "^services/${svc}/" <<<"$changed"; then
               list+=("\"$(echo "$svc" | tr '[:upper:]' '[:lower:]')\"")
@@ -138,27 +234,36 @@ jobs:
             echo "any=false" >> "$GITHUB_OUTPUT"
           else
             printf -v joined '%s,' "${list[@]}"
+
             echo "services=[${joined%,}]" >> "$GITHUB_OUTPUT"
             echo "any=true" >> "$GITHUB_OUTPUT"
           fi
 
-  # Build the image without pushing: proves the Dockerfile still works.
+  # Build the image without pushing.
   images:
     needs: changes
     if: needs.changes.outputs.any == 'true'
     runs-on: ubuntu-24.04
+
     strategy:
       fail-fast: false
       matrix:
         service: ${{ fromJson(needs.changes.outputs.services) }}
+
     steps:
       - uses: actions/checkout@v5
+
       - name: Resolve project folder
         id: folder
         run: |
           case "${{ matrix.service }}" in
-            waitingroom) echo "name=WaitingRoom" >> "$GITHUB_OUTPUT" ;;
-            *) echo "name=$(python3 -c "print('${{ matrix.service }}'.capitalize())")" >> "$GITHUB_OUTPUT" ;;
+            waitingroom)
+              echo "name=WaitingRoom" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "name=$(python3 -c "print('${{ matrix.service }}'.capitalize())")" >> "$GITHUB_OUTPUT"
+              ;;
           esac
+
       - name: Docker build
         run: docker build -f "services/${{ steps.folder.outputs.name }}/Dockerfile" .
