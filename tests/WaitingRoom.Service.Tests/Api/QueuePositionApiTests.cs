@@ -2,9 +2,10 @@ using System;
 using System.Net.Http;
 using System.Threading.Tasks;
 using Xunit;
+using WaitingRoom.Service.Tests.Api;
 using WaitingRoom.Service.Tests.Integration;
 
-namespace WaitingRoom.Service.Tests.Api;
+namespace WaitingRoom.Service.Tests.Integration.Api;
 
 [Collection("Postgres")]
 public sealed class QueuePositionApiTests : IDisposable

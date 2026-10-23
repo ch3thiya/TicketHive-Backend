@@ -390,6 +390,119 @@ Configured formatting and analyzer checks should be executed where applicable.
 
 Docker images should be built successfully to ensure the service can be containerized.
 
+## SE3112 testing pipeline
+
+The four assignment parts cover the backend as a system, with mutation and load testing focused where they provide the most useful evidence. All changes are proposed to `dev`; none of these test workflows deploys to Azure production.
+
+| Owner | Part | Implementation and evidence |
+| --- | --- | --- |
+| Mahima | Unit testing and mocking | [Whole-backend unit-test guide](docs/testing/unit-testing-and-mocking.md), `tests/`, and the CI unit stage |
+| Chethiya | Mutation testing | [Mutation guide](docs/testing/mutation-testing.md) and the mutation-tests workflow |
+| Manula | Load and performance testing | [Local k6 guide](load-tests/README.md) and the load-tests workflow |
+| Ashen | Code quality and metrics | SonarCloud, coverage reports, and the CI quality gate documented below |
+
+The CI workflow runs on pull requests to `dev` or `main`; mutation and load tests have separate workflows because they are slower and have different setup. Use the linked guides to reproduce each part and download test reports from the corresponding GitHub Actions run. Load tests target an ephemeral local stack in CI, not production services or Azure resources.
+
+## SE3112 Code Quality and Coverage
+
+This part of the testing pipeline measures automated test coverage, analyzes the code with SonarCloud, and checks the analysis against a quality gate. Static analysis examines source code without executing it, complementing tests that execute code to check behaviour. It helps the team find untested code and code-quality or security problems before merging changes. One SonarCloud project analyzes all backend services in this solution.
+
+### Tools
+
+- **SonarCloud** hosts the analysis results, issues, metrics, and quality-gate status.
+- **SonarScanner for .NET** wraps the .NET build and analysis steps and submits their data to SonarCloud.
+- **Coverlet** collects test coverage through the VSTest `XPlat Code Coverage` collector. The workflow asks it for OpenCover files, which SonarCloud's C# coverage importer reads, and Cobertura files, which ReportGenerator uses for the HTML and Markdown reports.
+- **ReportGenerator** combines the Cobertura input files and creates a browsable HTML report and a Markdown summary.
+- **GitHub Actions** restores, formats, builds, tests, runs the analysis, reports coverage, and uploads the results for each applicable workflow run.
+
+### Configuration
+
+The CI workflow expects a GitHub Actions repository secret named `SONAR_TOKEN`. A repository maintainer configures it in **Settings → Secrets and variables → Actions → New repository secret**. The secret value must not be committed to the repository or printed in logs. The workflow also supplies the existing SonarCloud project key `ch3thiya_TicketHive-Backend` and organization key `ch3thiya`.
+
+### GitHub Actions execution
+
+These are the commands used by `.github/workflows/ci.yml` on the GitHub Actions runner. They describe the CI pipeline; they are not a claim that the same commands have been run successfully on every developer's computer.
+
+```bash
+dotnet restore TicketHive.slnx
+dotnet format TicketHive.slnx --verify-no-changes --no-restore
+
+dotnet tool install --global dotnet-sonarscanner --version 12.0.0
+dotnet tool install --global dotnet-reportgenerator-globaltool
+
+dotnet sonarscanner begin \
+  /k:"ch3thiya_TicketHive-Backend" \
+  /o:"ch3thiya" \
+  /d:sonar.host.url="https://sonarcloud.io" \
+  /d:sonar.token="$SONAR_TOKEN" \
+  /d:sonar.cs.opencover.reportsPaths="TestResults-CI/**/coverage.opencover.xml" \
+  /d:sonar.qualitygate.wait=true \
+  /d:sonar.exclusions="coverage-report/**,TestResults*/**"
+
+dotnet build TicketHive.slnx --configuration Release --no-restore
+
+for project in tests/*/*.csproj; do
+  suite="$(basename "$(dirname "$project")")"
+  dotnet test "$project" --configuration Release --no-build \
+    --filter "FullyQualifiedName!~Integration" \
+    --settings tests/unit-coverage.runsettings \
+    --collect:"XPlat Code Coverage" \
+    --logger "trx;LogFileName=unit.trx" \
+    --results-directory "./TestResults-CI/unit/$suite"
+done
+
+for project in tests/*/*.csproj; do
+  suite="$(basename "$(dirname "$project")")"
+  dotnet test "$project" --configuration Release --no-build \
+    --filter "FullyQualifiedName~Integration" \
+    --collect:"XPlat Code Coverage;Format=opencover,cobertura" \
+    --logger "trx;LogFileName=integration.trx" \
+    --results-directory "./TestResults-CI/integration/$suite"
+done
+
+dotnet sonarscanner end /d:sonar.token="$SONAR_TOKEN"
+```
+
+The unit and integration stages use separate directories for every test project so their result files do not overwrite each other. Unit coverage also uses `tests/unit-coverage.runsettings` to exclude infrastructure files from its business-logic measure; integration coverage is collected separately. SonarScanner imports the OpenCover files at `TestResults-CI/**/coverage.opencover.xml`. The `sonar.qualitygate.wait=true` setting makes the analysis wait for SonarCloud's gate result; a failed gate makes the Sonar end step and build job fail.
+
+### Coverage reports
+
+Each test stage requests both OpenCover and Cobertura output from Coverlet. The workflow looks for Cobertura reports from both test stages and passes all matches to ReportGenerator:
+
+```bash
+reportgenerator \
+  "-reports:TestResults-CI/**/coverage.cobertura.xml" \
+  "-targetdir:coverage-report" \
+  "-reporttypes:Html;MarkdownSummaryGithub"
+```
+
+ReportGenerator merges multiple input coverage files into one report. The HTML report is generated under `coverage-report/` (open `coverage-report/index.html`). The workflow appends `coverage-report/SummaryGithub.md` to the GitHub Actions run summary. The downloadable artifact is named `test-results` and includes `TestResults-CI/` and `coverage-report/`; download it from the completed workflow run's **Artifacts** section.
+
+**Line coverage** is the percentage of coverable source lines executed by tests. **Branch coverage** is the percentage of decision outcomes (such as true and false paths) exercised by tests. Higher coverage can reveal untested paths, but it does not prove the tests are complete or correct.
+
+### Quality gate
+
+SonarCloud's gate conditions apply to new code, while coverage metrics on the project overview also describe overall code. The feature-branch dashboard shows the latest analysis; as a dated example, the `feature/se3112-code-quality` analysis from 21 October 2026 was **OK** and reported **55.5% overall coverage**, **58.1% line coverage**, and **46.5% branch coverage**. That analysis reports zero new lines to cover, so its status response has no new-coverage value. The green gate therefore does not mean overall coverage is at least 80%.
+
+View the current metrics on the [TicketHive-Backend feature branch dashboard](https://sonarcloud.io/project/overview?id=ch3thiya_TicketHive-Backend&branch=feature%2Fse3112-code-quality).
+
+The SonarCloud gate conditions reported for the project are:
+
+- Reliability rating must be no worse than `1`.
+- Security rating must be no worse than `1`.
+- Maintainability rating must be no worse than `1`.
+- Coverage must be at least `80%`.
+- Duplicated lines density must not exceed `3%`.
+- Reviewed security hotspots must be `100%`.
+
+The CI workflow waits for the result and fails the job when the gate fails. The 80% coverage threshold is for new code, not an overall-code coverage threshold. This is a failing CI check; whether GitHub blocks a merge also depends on repository branch-protection settings, which are managed separately from SonarCloud and are not documented here as verified.
+
+A green gate applies to the gate's new-code conditions. It does not mean the entire existing codebase has perfect quality or coverage. The SonarCloud overview also reports overall metrics and existing issues, which should be reviewed separately.
+
+### Ashen's responsibility: Code Quality & Metrics
+
+My assigned responsibility is to maintain the SonarCloud analysis and quality-gate integration, use Coverlet to collect test coverage, and use ReportGenerator to make coverage results available as an HTML report and GitHub Actions summary. I can demonstrate the CI workflow, the SonarCloud dashboard, the coverage report, and how a failed quality gate is reported.
+
 ## Pull Request Workflow
 
 All backend changes should follow the Pull Request workflow:

@@ -3,6 +3,11 @@ bin/
 obj/
 StrykerOutput/
 
+# Test and code-quality reports
+.sonarqube/
+TestResults*/
+coverage-report/
+
 # Visual Studio / VS Code
 .vs/
 .vscode/

@@ -4,7 +4,7 @@
     <DataCollectors>
       <DataCollector friendlyName="XPlat Code Coverage">
         <Configuration>
-          <Format>cobertura</Format>
+          <Format>opencover,cobertura</Format>
           <Exclude>[*.Tests]*</Exclude>
           <!-- Unit coverage measures business/application logic. Program wiring,
                generated OpenAPI code, migrations, and repositories are exercised
