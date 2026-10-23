@@ -413,6 +413,7 @@ This part of the testing pipeline measures automated test coverage, analyzes the
 - **SonarScanner for .NET** wraps the .NET build and analysis steps and submits their data to SonarCloud.
 - **Coverlet** collects test coverage through the VSTest `XPlat Code Coverage` collector. The workflow asks it for OpenCover files, which SonarCloud's C# coverage importer reads, and Cobertura files, which ReportGenerator uses for the HTML and Markdown reports.
 - **ReportGenerator** combines the Cobertura input files and creates a browsable HTML report and a Markdown summary.
+- **Coverage.py** measures the Python unified-report generator and supplies SonarCloud with its Cobertura XML report.
 - **GitHub Actions** restores, formats, builds, tests, runs the analysis, reports coverage, and uploads the results for each applicable workflow run.
 
 ### Configuration
@@ -436,6 +437,7 @@ dotnet sonarscanner begin \
   /d:sonar.host.url="https://sonarcloud.io" \
   /d:sonar.token="$SONAR_TOKEN" \
   /d:sonar.cs.opencover.reportsPaths="TestResults-CI/**/coverage.opencover.xml" \
+  /d:sonar.python.coverage.reportPaths="python-coverage.xml" \
   /d:sonar.qualitygate.wait=true \
   /d:sonar.exclusions="coverage-report/**,TestResults*/**"
 
@@ -460,10 +462,15 @@ for project in tests/*/*.csproj; do
     --results-directory "./TestResults-CI/integration/$suite"
 done
 
+python -m pip install coverage==7.16.2
+python -m coverage run --branch --source=scripts -m unittest discover -s scripts/tests -p 'test_*.py'
+python -m coverage report --fail-under=80
+python -m coverage xml -o python-coverage.xml
+
 dotnet sonarscanner end /d:sonar.token="$SONAR_TOKEN"
 ```
 
-The unit and integration stages use separate directories for every test project so their result files do not overwrite each other. Unit coverage also uses `tests/unit-coverage.runsettings` to exclude infrastructure files from its business-logic measure; integration coverage is collected separately. SonarScanner imports the OpenCover files at `TestResults-CI/**/coverage.opencover.xml`. The `sonar.qualitygate.wait=true` setting makes the analysis wait for SonarCloud's gate result; a failed gate makes the Sonar end step and build job fail.
+The unit and integration stages use separate directories for every test project so their result files do not overwrite each other. Unit coverage also uses `tests/unit-coverage.runsettings` to exclude infrastructure files from its business-logic measure; integration coverage is collected separately. SonarScanner imports the OpenCover files at `TestResults-CI/**/coverage.opencover.xml` and Python coverage from `python-coverage.xml`. The `sonar.qualitygate.wait=true` setting makes the analysis wait for SonarCloud's gate result; a failed gate makes the Sonar end step and build job fail.
 
 ### Coverage reports
 
@@ -476,7 +483,7 @@ reportgenerator \
   "-reporttypes:Html;MarkdownSummaryGithub"
 ```
 
-ReportGenerator merges multiple input coverage files into one report. The HTML report is generated under `coverage-report/` (open `coverage-report/index.html`). The workflow appends `coverage-report/SummaryGithub.md` to the GitHub Actions run summary. The downloadable artifact is named `test-results` and includes `TestResults-CI/` and `coverage-report/`; download it from the completed workflow run's **Artifacts** section.
+ReportGenerator merges the .NET Cobertura input files into one report. The HTML report is generated under `coverage-report/` (open `coverage-report/index.html`). The workflow appends `coverage-report/SummaryGithub.md` to the GitHub Actions run summary. The downloadable artifact is named `test-results` and includes `TestResults-CI/`, `coverage-report/`, and the separate `python-coverage.xml`; download it from the completed workflow run's **Artifacts** section. The `unified-test-report` artifact then summarizes all test paradigms together.
 
 **Line coverage** is the percentage of coverable source lines executed by tests. **Branch coverage** is the percentage of decision outcomes (such as true and false paths) exercised by tests. Higher coverage can reveal untested paths, but it does not prove the tests are complete or correct.
 

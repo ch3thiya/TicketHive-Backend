@@ -7,7 +7,6 @@ installing another reporting tool. Missing artifacts are reported, not hidden.
 
 import json
 import os
-import sys
 from collections import Counter
 from pathlib import Path
 from xml.etree import ElementTree
@@ -106,6 +105,20 @@ def build_report(root: Path):
     else:
         issues.append("Coverage summary was not found")
         lines += ["⚠️ Coverage summary was not uploaded.", ""]
+    python_coverage = next(ci.rglob("python-coverage.xml"), None)
+    if python_coverage:
+        try:
+            root_element = ElementTree.parse(python_coverage).getroot()
+            line_rate = 100 * float(root_element.attrib["line-rate"])
+            branch_rate = 100 * float(root_element.attrib["branch-rate"])
+            lines += [f"Python report-generator coverage: {line_rate:.1f}% lines,"
+                      f" {branch_rate:.1f}% branches.", ""]
+        except (ElementTree.ParseError, KeyError, ValueError) as exc:
+            issues.append(f"Python coverage report unreadable: {exc}")
+            lines += ["⚠️ Python coverage report could not be read.", ""]
+    else:
+        issues.append("Python coverage report was not found")
+        lines += ["⚠️ Python coverage report was not uploaded.", ""]
     lines += ["The SonarCloud quality gate is enforced by the CI build job."
               " See that job and the SonarCloud dashboard for issue details.", ""]
 
@@ -162,20 +175,24 @@ def build_report(root: Path):
     lines += table(("Scenario", "Profile", "Verdict", "Thresholds"), load_rows)
     lines += ["", "### Scenario details", "", *details]
 
+    # Report generation should not fail merely because an upstream quality
+    # gate failed: that stage is already red, and the report still exists.
+    evidence_complete = not issues
     for name, value in results.items():
         if value != "success":
             issues.append(f"{name} job result is {value}")
     lines += ["## Overall verdict", "",
               "**PASS** — all three jobs succeeded and required reports were found."
               if not issues else "**INCOMPLETE / FAIL** — " + "; ".join(issues) + ".", ""]
-    return "\n".join(lines), not issues
+    return "\n".join(lines), evidence_complete
 
 
 def main():
-    if len(sys.argv) != 3:
-        raise SystemExit("Usage: unified_test_report.py <artifact-directory> <output.md>")
-    report, passed = build_report(Path(sys.argv[1]))
-    Path(sys.argv[2]).write_text(report, encoding="utf-8")
+    # Fixed paths: artifact contents and command-line arguments must never
+    # choose a file to overwrite in the runner workspace.
+    report, passed = build_report(Path("report-input"))
+    Path("unified-test-report.md").write_text(report, encoding="utf-8")
+    print("Wrote unified-test-report.md (see Overall verdict and uploaded artifact)")
     return 0 if passed else 1
 
 

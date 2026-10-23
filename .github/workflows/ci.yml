@@ -85,6 +85,10 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       - name: Cache NuGet
         uses: actions/cache@v4
         with:
@@ -117,6 +121,7 @@ jobs:
             /d:sonar.host.url="https://sonarcloud.io" \
             /d:sonar.token="$SONAR_TOKEN" \
             /d:sonar.cs.opencover.reportsPaths="TestResults-CI/**/coverage.opencover.xml" \
+            /d:sonar.python.coverage.reportPaths="python-coverage.xml" \
             /d:sonar.qualitygate.wait=true \
             /d:sonar.exclusions="coverage-report/**,TestResults*/**"
 
@@ -147,6 +152,13 @@ jobs:
               --logger "trx;LogFileName=integration.trx" \
               --results-directory "./TestResults-CI/integration/$suite"
           done
+
+      - name: Test Python report generator with coverage
+        run: |
+          python -m pip install coverage==7.16.2
+          python -m coverage run --branch --source=scripts -m unittest discover -s scripts/tests -p 'test_*.py'
+          python -m coverage report --fail-under=80
+          python -m coverage xml -o python-coverage.xml
 
       # Always try to finalize Sonar after a successful begin.
       # A failed Quality Gate makes this step and the job fail.
@@ -186,6 +198,7 @@ jobs:
           path: |
             TestResults-CI/
             coverage-report/
+            python-coverage.xml
           if-no-files-found: warn
 
   # Keep the heavier paradigms independently runnable, but include them in
@@ -202,9 +215,6 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
-
-      - name: Verify report generator
-        run: python3 -m unittest discover -s scripts/tests -p 'test_*.py'
 
       - name: Download CI test results
         uses: actions/download-artifact@v4
@@ -232,7 +242,7 @@ jobs:
           CI_RESULT: ${{ needs.build.result }}
           MUTATION_RESULT: ${{ needs.mutation.result }}
           LOAD_RESULT: ${{ needs.load.result }}
-        run: python3 scripts/unified_test_report.py report-input unified-test-report.md
+        run: python3 scripts/unified_test_report.py
 
       - name: Show unified report in Actions summary
         if: always()

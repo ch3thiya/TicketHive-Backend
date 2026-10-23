@@ -7,6 +7,9 @@ StrykerOutput/
 .sonarqube/
 TestResults*/
 coverage-report/
+.coverage
+python-coverage.xml
+__pycache__/
 
 # Visual Studio / VS Code
 .vs/

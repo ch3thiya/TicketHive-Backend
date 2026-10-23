@@ -1,19 +1,20 @@
 import json
 import tempfile
 import unittest
+from contextlib import chdir
 from pathlib import Path
 from sys import path
 from unittest.mock import patch
 
 path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from unified_test_report import LOAD_TESTS, MUTATION_SUITES, build_report
+from unified_test_report import LOAD_TESTS, MUTATION_SUITES, build_report, main
 
 
 class UnifiedTestReportTests(unittest.TestCase):
     def test_combines_all_stages_from_one_artifact_tree(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = Path(temporary) / "report-input"
             for stage in ("unit", "integration"):
                 trx = root / "ci" / "TestResults-CI" / stage / "Catalog.Service.Tests" / f"{stage}.trx"
                 trx.parent.mkdir(parents=True)
@@ -23,6 +24,8 @@ class UnifiedTestReportTests(unittest.TestCase):
             coverage = root / "ci" / "coverage-report" / "SummaryGithub.md"
             coverage.parent.mkdir(parents=True)
             coverage.write_text("Coverage summary example\n", encoding="utf-8")
+            (root / "ci" / "python-coverage.xml").write_text(
+                '<coverage line-rate="0.9" branch-rate="0.8" />', encoding="utf-8")
             for suite in MUTATION_SUITES:
                 report = root / "mutation" / f"mutation-{suite}" / "reports" / "mutation-report.json"
                 report.parent.mkdir(parents=True)
@@ -46,7 +49,20 @@ class UnifiedTestReportTests(unittest.TestCase):
             self.assertIn("**PASS**", report)
             self.assertIn("| **Total** | 2 | 2 | 0 | 0 |", report)
             self.assertIn("80.00%", report)
+            self.assertIn("Python report-generator coverage: 90.0% lines", report)
             self.assertIn("### Load test: holds", report)
+
+            with patch.dict("os.environ", {"CI_RESULT": "failure",
+                                          "MUTATION_RESULT": "success",
+                                          "LOAD_RESULT": "success"}):
+                report, generated = build_report(root)
+            self.assertTrue(generated)
+            self.assertIn("**INCOMPLETE / FAIL** — CI job result is failure", report)
+            with chdir(temporary), patch.dict("os.environ", {"CI_RESULT": "failure",
+                                                          "MUTATION_RESULT": "success",
+                                                          "LOAD_RESULT": "success"}):
+                self.assertEqual(0, main())
+                self.assertTrue(Path("unified-test-report.md").exists())
 
     def test_missing_artifacts_are_reported_as_incomplete(self):
         with tempfile.TemporaryDirectory() as temporary:
