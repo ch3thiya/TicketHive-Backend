@@ -39,7 +39,7 @@ jobs:
         with:
           node-version: '22'
 
-      - uses: grafana/setup-k6-action@v1
+      - uses: grafana/setup-k6-action@43b9fc21641a76002687994433dd586f56e791b1 # v1
         with:
           k6-version: '0.57.0'
 
