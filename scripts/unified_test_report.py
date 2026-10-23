@@ -188,11 +188,8 @@ def build_report(root: Path):
 
 
 def main():
-    # Fixed paths: artifact contents and command-line arguments must never
-    # choose a file to overwrite in the runner workspace.
     report, passed = build_report(Path("report-input"))
-    Path("unified-test-report.md").write_text(report, encoding="utf-8")
-    print("Wrote unified-test-report.md (see Overall verdict and uploaded artifact)")
+    print(report)
     return 0 if passed else 1
 
 
