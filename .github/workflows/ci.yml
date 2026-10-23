@@ -155,7 +155,7 @@ jobs:
 
       - name: Test Python report generator with coverage
         run: |
-          python -m pip install coverage==7.16.2
+          python -m pip install --only-binary :all: coverage==7.16.2
           python -m coverage run --branch --source=scripts -m unittest discover -s scripts/tests -p 'test_*.py'
           python -m coverage report --fail-under=80
           python -m coverage xml -o python-coverage.xml
@@ -242,7 +242,7 @@ jobs:
           CI_RESULT: ${{ needs.build.result }}
           MUTATION_RESULT: ${{ needs.mutation.result }}
           LOAD_RESULT: ${{ needs.load.result }}
-        run: python3 scripts/unified_test_report.py
+        run: python3 scripts/unified_test_report.py > unified-test-report.md
 
       - name: Show unified report in Actions summary
         if: always()

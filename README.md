@@ -462,7 +462,7 @@ for project in tests/*/*.csproj; do
     --results-directory "./TestResults-CI/integration/$suite"
 done
 
-python -m pip install coverage==7.16.2
+python -m pip install --only-binary :all: coverage==7.16.2
 python -m coverage run --branch --source=scripts -m unittest discover -s scripts/tests -p 'test_*.py'
 python -m coverage report --fail-under=80
 python -m coverage xml -o python-coverage.xml

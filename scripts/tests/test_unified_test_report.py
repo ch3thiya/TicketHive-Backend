@@ -1,7 +1,8 @@
 import json
 import tempfile
 import unittest
-from contextlib import chdir
+from contextlib import chdir, redirect_stdout
+from io import StringIO
 from pathlib import Path
 from sys import path
 from unittest.mock import patch
@@ -58,11 +59,13 @@ class UnifiedTestReportTests(unittest.TestCase):
                 report, generated = build_report(root)
             self.assertTrue(generated)
             self.assertIn("**INCOMPLETE / FAIL** — CI job result is failure", report)
-            with chdir(temporary), patch.dict("os.environ", {"CI_RESULT": "failure",
+            output = StringIO()
+            with chdir(temporary), redirect_stdout(output), patch.dict("os.environ", {"CI_RESULT": "failure",
                                                           "MUTATION_RESULT": "success",
                                                           "LOAD_RESULT": "success"}):
                 self.assertEqual(0, main())
-                self.assertTrue(Path("unified-test-report.md").exists())
+                self.assertFalse(Path("unified-test-report.md").exists())
+            self.assertIn("**INCOMPLETE / FAIL**", output.getvalue())
 
     def test_missing_artifacts_are_reported_as_incomplete(self):
         with tempfile.TemporaryDirectory() as temporary:
