@@ -1,20 +1,7 @@
 name: Mutation tests
 
 on:
-  pull_request:
-    branches: [dev, main]
-    paths:
-      - 'services/**'
-      - 'tests/**'
-      - '.config/dotnet-tools.json'
-      - '.github/workflows/mutation-tests.yml'
-  push:
-    branches: [feature/mutation-testing]
-    paths:
-      - 'services/**'
-      - 'tests/**'
-      - '.config/dotnet-tools.json'
-      - '.github/workflows/mutation-tests.yml'
+  workflow_call:
   workflow_dispatch:
 
 permissions:
