@@ -260,11 +260,11 @@ Keep a full `load` run's report open as a fallback.
 
 ## Pipeline
 
-`.github/workflows/load-tests.yml` starts the same stack on a GitHub runner
+The full CI workflow calls `.github/workflows/load-tests.yml`, which starts the same stack on a GitHub runner
 (Docker and .NET are preinstalled), runs every test with the `smoke` profile,
-uploads `results/`, and adds each report to the job summary. It also runs on
-manual trigger with a profile choice, and as a reusable workflow
-(`workflow_call`) for the group pipeline.
+uploads `results/`, adds each report to the job summary, and supplies the six
+verdicts and scenario details to CI's unified test report. It also runs on a
+manual trigger with a profile choice for a standalone demo.
 
 ## Layout
 

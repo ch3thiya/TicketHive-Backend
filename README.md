@@ -401,7 +401,7 @@ The four assignment parts cover the backend as a system, with mutation and load 
 | Manula | Load and performance testing | [Local k6 guide](load-tests/README.md) and the load-tests workflow |
 | Ashen | Code quality and metrics | SonarCloud, coverage reports, and the CI quality gate documented below |
 
-The CI workflow runs on pull requests to `dev` or `main`; mutation and load tests have separate workflows because they are slower and have different setup. Use the linked guides to reproduce each part and download test reports from the corresponding GitHub Actions run. Load tests target an ephemeral local stack in CI, not production services or Azure resources.
+The CI workflow runs on pull requests to `dev` or `main`, on merges to `dev`, and on manual dispatch. It calls the reusable mutation and load workflows, then combines all three jobs' artifacts into a **unified-test-report**. Open that artifact or the CI run's **Summary** for unit/integration totals, coverage, mutation scores, and all six k6 verdicts and scenario details. The individual artifacts remain available for drill-down. Mutation and load also support manual runs for individual demonstrations; they stay separate because they use different tools, runners, and time budgets. Load tests target an ephemeral local stack in CI, not production services or Azure resources. A full CI run consumes more GitHub Actions minutes than a unit-only run.
 
 ## SE3112 Code Quality and Coverage
 

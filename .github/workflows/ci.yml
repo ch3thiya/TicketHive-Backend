@@ -1,13 +1,13 @@
 name: CI
 
-# Pull requests targeting dev or main, and integration-branch pushes. No deployment happens here.
+# Full testing pipeline for pull requests and dev merges. No deployment happens here.
 on:
   push:
-    branches:
-      - feature/testing-pipeline
+    branches: [dev]
 
   pull_request:
     branches: [dev, main]
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -186,6 +186,67 @@ jobs:
           path: |
             TestResults-CI/
             coverage-report/
+          if-no-files-found: warn
+
+  # Keep the heavier paradigms independently runnable, but include them in
+  # every full CI run so the report always describes one commit/run.
+  mutation:
+    uses: ./.github/workflows/mutation-tests.yml
+
+  load:
+    uses: ./.github/workflows/load-tests.yml
+
+  report:
+    needs: [build, mutation, load]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Verify report generator
+        run: python3 -m unittest discover -s scripts/tests -p 'test_*.py'
+
+      - name: Download CI test results
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: test-results
+          path: report-input/ci
+
+      - name: Download mutation reports
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          pattern: mutation-*
+          path: report-input/mutation
+
+      - name: Download load results
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: load-test-results-smoke
+          path: report-input/load
+
+      - name: Generate unified report
+        env:
+          CI_RESULT: ${{ needs.build.result }}
+          MUTATION_RESULT: ${{ needs.mutation.result }}
+          LOAD_RESULT: ${{ needs.load.result }}
+        run: python3 scripts/unified_test_report.py report-input unified-test-report.md
+
+      - name: Show unified report in Actions summary
+        if: always()
+        run: |
+          if [ -f unified-test-report.md ]; then
+            cat unified-test-report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload unified report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unified-test-report
+          path: unified-test-report.md
           if-no-files-found: warn
 
   # Determine which services changed.
