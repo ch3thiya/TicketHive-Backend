@@ -6,10 +6,9 @@
         <Configuration>
           <Format>opencover,cobertura</Format>
           <Exclude>[*.Tests]*</Exclude>
-          <!-- Unit coverage measures business/application logic. Program wiring,
-               generated OpenAPI code, migrations, and repositories are exercised
-               by API/integration tests and reported by that separate CI run. -->
-          <ExcludeByFile>**/Program.cs,**/obj/**,**/Db/*Repository.cs,**/Db/Migrations/**</ExcludeByFile>
+          <!-- WebApplicationFactory-based tests execute startup wiring too.
+               Repositories are measured by the integration suite. -->
+          <ExcludeByFile>**/obj/**,**/Db/*Repository.cs,**/Db/Migrations/**</ExcludeByFile>
           <ExcludeByAttribute>GeneratedCodeAttribute,CompilerGeneratedAttribute</ExcludeByAttribute>
         </Configuration>
       </DataCollector>

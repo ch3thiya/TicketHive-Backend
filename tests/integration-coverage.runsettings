@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RunSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="XPlat Code Coverage">
+        <Configuration>
+          <Format>opencover,cobertura</Format>
+          <Exclude>[*.Tests]*</Exclude>
+          <!-- Keep application startup and repositories in scope, but exclude
+               generated source that is not maintained by this repository. -->
+          <ExcludeByFile>**/obj/**,**/Db/Migrations/**</ExcludeByFile>
+          <ExcludeByAttribute>GeneratedCodeAttribute,CompilerGeneratedAttribute</ExcludeByAttribute>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>
