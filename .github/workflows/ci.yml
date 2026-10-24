@@ -148,6 +148,7 @@ jobs:
             suite="$(basename "$(dirname "$project")")"
             dotnet test "$project" --configuration Release --no-build \
               --filter "FullyQualifiedName~Integration" \
+              --settings tests/integration-coverage.runsettings \
               --collect:"XPlat Code Coverage;Format=opencover,cobertura" \
               --logger "trx;LogFileName=integration.trx" \
               --results-directory "./TestResults-CI/integration/$suite"

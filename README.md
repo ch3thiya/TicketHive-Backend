@@ -457,6 +457,7 @@ for project in tests/*/*.csproj; do
   suite="$(basename "$(dirname "$project")")"
   dotnet test "$project" --configuration Release --no-build \
     --filter "FullyQualifiedName~Integration" \
+    --settings tests/integration-coverage.runsettings \
     --collect:"XPlat Code Coverage;Format=opencover,cobertura" \
     --logger "trx;LogFileName=integration.trx" \
     --results-directory "./TestResults-CI/integration/$suite"
@@ -470,7 +471,7 @@ python -m coverage xml -o python-coverage.xml
 dotnet sonarscanner end /d:sonar.token="$SONAR_TOKEN"
 ```
 
-The unit and integration stages use separate directories for every test project so their result files do not overwrite each other. Unit coverage also uses `tests/unit-coverage.runsettings` to exclude infrastructure files from its business-logic measure; integration coverage is collected separately. SonarScanner imports the OpenCover files at `TestResults-CI/**/coverage.opencover.xml` and Python coverage from `python-coverage.xml`. The `sonar.qualitygate.wait=true` setting makes the analysis wait for SonarCloud's gate result; a failed gate makes the Sonar end step and build job fail.
+The unit and integration stages use separate directories for every test project so their result files do not overwrite each other. Unit coverage excludes repositories, which are covered by integration tests, while both stages exclude generated source. Startup code remains in scope for API tests. SonarScanner imports the OpenCover files at `TestResults-CI/**/coverage.opencover.xml` and Python coverage from `python-coverage.xml`. The `sonar.qualitygate.wait=true` setting makes the analysis wait for SonarCloud's gate result; a failed gate makes the Sonar end step and build job fail.
 
 ### Coverage reports
 
@@ -486,6 +487,8 @@ reportgenerator \
 ReportGenerator merges the .NET Cobertura input files into one report. The HTML report is generated under `coverage-report/` (open `coverage-report/index.html`). The workflow appends `coverage-report/SummaryGithub.md` to the GitHub Actions run summary. The downloadable artifact is named `test-results` and includes `TestResults-CI/`, `coverage-report/`, and the separate `python-coverage.xml`; download it from the completed workflow run's **Artifacts** section. The `unified-test-report` artifact then summarizes all test paradigms together.
 
 **Line coverage** is the percentage of coverable source lines executed by tests. **Branch coverage** is the percentage of decision outcomes (such as true and false paths) exercised by tests. Higher coverage can reveal untested paths, but it does not prove the tests are complete or correct.
+
+The 24 October 2026 local combined unit/integration run measured at least 60% line coverage for every application assembly: Booking 70%, BuildingBlocks 95.2%, Catalog 76.3%, Gateway 100%, Identity 82.2%, Inventory 92.6%, Notification 63.5%, Payment 64%, and WaitingRoom 91.3%. These are ReportGenerator assembly totals, not SonarCloud's separate new-code gate. Both stages exclude generated `obj/` source and migrations; application startup is included, and PostgreSQL repositories remain in the integration measure. Gateway's 100% line figure reflects its small handwritten codebase and does not prove every routing or security scenario is covered. The CI artifact remains the source of truth for subsequent runs.
 
 ### Quality gate
 

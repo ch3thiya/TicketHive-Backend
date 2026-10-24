@@ -52,9 +52,9 @@ Strict mocks in the Payment tests check both sides of an interaction: expected c
 
 ## Coverage evidence
 
-CI collects Cobertura for the unit and integration runs separately. Unit coverage uses `tests/unit-coverage.runsettings` so its denominator represents unit-testable business/application logic; startup wiring, generated code, migrations, and PostgreSQL repositories belong to the integration report.
+CI collects Cobertura for the unit and integration runs separately. Unit coverage uses `tests/unit-coverage.runsettings` to exclude PostgreSQL repositories, which integration tests exercise. Both stages exclude generated code and migrations. Startup wiring remains in scope when API tests execute it.
 
-The targeted Payment work changed its raw service-package unit coverage from **15.15% lines / 9.31% branches** to **26.48% lines / 20.80% branches**. That raw package number still includes infrastructure outside unit scope. With `tests/unit-coverage.runsettings` applied, the Payment unit scope is **72.95% lines / 85.89% branches**. The main classes report:
+Earlier targeted Payment work changed its raw service-package unit coverage from **15.15% lines / 9.31% branches** to **26.48% lines / 20.80% branches**. The former unit-only scope measured **72.95% lines / 85.89% branches** before startup was included. The current combined unit/integration assembly measure is **64% lines** in the 24 October 2026 local run, with startup and repository code included. The main business classes report:
 
 | Class/method group | Line coverage | Branch coverage |
 |---|---:|---:|
